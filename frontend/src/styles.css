@@ -1,0 +1,28 @@
+body {
+  background: radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08), transparent 25%),
+    radial-gradient(circle at 90% 10%, rgba(16, 185, 129, 0.08), transparent 20%),
+    #f8fafc;
+}
+
+.card {
+  border: 1px solid #e2e8f0;
+}
+
+.object-fit-cover {
+  object-fit: cover;
+}
+
+.toast-container .toast {
+  min-width: 260px;
+}
+
+.form-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: 0.75rem;
+}
+
+.badge.text-bg-light {
+  border: 1px solid #e2e8f0;
+}

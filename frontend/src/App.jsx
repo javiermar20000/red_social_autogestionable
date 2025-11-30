@@ -69,6 +69,15 @@ const categoriesByBusinessType = {
   RESTAURANTE: foodCategoryTypes,
 };
 
+const detectMediaTypeFromUrl = (value = '') => {
+  if (!value) return 'IMAGEN';
+  const lower = value.toLowerCase();
+  if (lower.startsWith('data:video')) return 'VIDEO';
+  if (/\.(mp4|webm|ogg)(\?.*)?$/.test(lower)) return 'VIDEO';
+  if (lower.includes('/video')) return 'VIDEO';
+  return 'IMAGEN';
+};
+
 function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [exploreOpen, setExploreOpen] = useState(false);
@@ -120,6 +129,8 @@ function App() {
     categoryIds: [],
     businessId: '',
     mediaUrl: '',
+    mediaType: 'IMAGEN',
+    precio: '',
   });
 
   const [adminQueues, setAdminQueues] = useState({ tenants: [], users: [], businesses: [], publications: [] });
@@ -131,6 +142,28 @@ function App() {
   const notify = (variant, message) => {
     setAlerts((prev) => [...prev, { id: crypto.randomUUID(), variant, message }]);
     setTimeout(() => setAlerts((prev) => prev.slice(1)), 4000);
+  };
+
+  const handleMediaUrlChange = (value) => {
+    const mediaType = detectMediaTypeFromUrl(value);
+    setPublicationForm((prev) => ({ ...prev, mediaUrl: value, mediaType }));
+  };
+
+  const handleMediaFileChange = (file) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+    if (!isImage && !isVideo) {
+      notify('danger', 'Solo se permiten imágenes o videos cortos');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      handleMediaUrlChange(result);
+    };
+    reader.onerror = () => notify('danger', 'No se pudo leer el archivo de portada');
+    reader.readAsDataURL(file);
   };
 
   const loadPublicTenants = async () => {
@@ -438,11 +471,15 @@ function App() {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({
-          ...publicationForm,
+          titulo: publicationForm.titulo,
+          contenido: publicationForm.contenido,
+          tipo: publicationForm.tipo,
           businessId,
           categoryIds: publicationForm.categoryIds,
           fechaFinVigencia: publicationForm.fechaFinVigencia || undefined,
           mediaUrl: publicationForm.mediaUrl || undefined,
+          mediaType: publicationForm.mediaType,
+          precio: publicationForm.precio === '' ? null : Number(publicationForm.precio),
         }),
       });
       notify('success', 'Publicación creada y enviada a validación');
@@ -454,6 +491,8 @@ function App() {
         categoryIds: [],
         businessId: '',
         mediaUrl: '',
+        mediaType: 'IMAGEN',
+        precio: '',
       });
       loadFeed();
       loadAdminQueues();
@@ -531,14 +570,27 @@ function App() {
 
   const feedWithDecorations = useMemo(
     () =>
-      feed.map((item, idx) => ({
-        ...item,
-        coverUrl: item.coverUrl || placeholderImages[(Number(item.id) || idx) % placeholderImages.length],
-        categories:
-          item.categories ||
-          (item.categoryIds || []).map((cid) => categories.find((c) => c.id === cid) || { id: cid, name: cid }),
-        business: item.business || businesses.find((b) => b.id === item.businessId),
-      })),
+      feed.map((item, idx) => {
+        const fallbackCover = placeholderImages[(Number(item.id) || idx) % placeholderImages.length];
+        const coverUrl = item.coverUrl || fallbackCover;
+        const coverType = item.coverType || detectMediaTypeFromUrl(item.coverUrl || '');
+        const precio =
+          item.precio === null || item.precio === undefined
+            ? null
+            : Number.isFinite(Number(item.precio))
+            ? Number(item.precio)
+            : null;
+        return {
+          ...item,
+          coverUrl,
+          coverType,
+          precio,
+          categories:
+            item.categories ||
+            (item.categoryIds || []).map((cid) => categories.find((c) => c.id === cid) || { id: cid, name: cid }),
+          business: item.business || businesses.find((b) => b.id === item.businessId),
+        };
+      }),
     [feed, categories, businesses]
   );
 
@@ -874,19 +926,59 @@ function App() {
                     />
                   </div>
                   <div>
-                    <Label>Imagen de portada (URL)</Label>
+                    <Label>Precio</Label>
                     <Input
-                      placeholder="https://..."
-                      value={publicationForm.mediaUrl}
-                      onChange={(e) => setPublicationForm((prev) => ({ ...prev, mediaUrl: e.target.value }))}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Opcional"
+                      value={publicationForm.precio}
+                      onChange={(e) => setPublicationForm((prev) => ({ ...prev, precio: e.target.value }))}
                     />
                   </div>
                   <div className="md:col-span-2">
+                    <Label>Portada (imagen o video)</Label>
+                    <div className="mt-1 space-y-2 rounded-lg border border-dashed border-input p-3">
+                      <Input
+                        placeholder="https://... o pega un data URL"
+                        value={publicationForm.mediaUrl}
+                        onChange={(e) => handleMediaUrlChange(e.target.value)}
+                      />
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-input bg-muted/60 px-3 py-2 text-sm font-medium hover:bg-muted">
+                          <input
+                            type="file"
+                            accept="image/*,video/mp4,video/webm,video/ogg"
+                            className="sr-only"
+                            onChange={(e) => handleMediaFileChange(e.target.files?.[0] || null)}
+                          />
+                          Subir archivo
+                        </label>
+                        <p className="text-xs text-muted-foreground">
+                          Acepta imagen o video corto. Se enviará como enlace o base64 al backend.
+                        </p>
+                      </div>
+                      {publicationForm.mediaUrl && (
+                        <div className="overflow-hidden rounded-lg border bg-muted/40">
+                          {publicationForm.mediaType === 'VIDEO' ? (
+                            <video src={publicationForm.mediaUrl} controls className="h-56 w-full object-cover" />
+                          ) : (
+                            <img src={publicationForm.mediaUrl} alt="Portada" className="h-56 w-full object-cover" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
                     <Label>Categorías</Label>
-                    {selectedBusinessForPublication?.type && categoriesByBusinessType[selectedBusinessForPublication.type] && (
+                    {selectedBusinessForPublication?.type && categoriesByBusinessType[selectedBusinessForPublication.type] ? (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Mostrando categorías de {selectedBusinessForPublication.type === 'CAFETERIA' ? 'cafés' : 'comidas'} según
-                        el tipo de negocio seleccionado.
+                        Solo verás categorías permitidas para un{' '}
+                        {selectedBusinessForPublication.type === 'CAFETERIA' ? 'negocio de cafetería' : 'restaurante'}.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Si el negocio no es restaurante o cafetería se muestran todas las categorías disponibles.
                       </p>
                     )}
                     <div className="mt-2 flex flex-wrap gap-2">

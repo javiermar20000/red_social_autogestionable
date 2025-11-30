@@ -23,14 +23,27 @@ const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit }) =
     visitas,
     categories = [],
     coverUrl,
+    coverType,
+    precio,
   } = publication;
+  const isVideo =
+    coverType === 'VIDEO' ||
+    (typeof coverUrl === 'string' && (coverUrl.startsWith('data:video') || /\.(mp4|webm|ogg)(\?.*)?$/i.test(coverUrl)));
+  const formattedPrice =
+    precio === null || precio === undefined || Number.isNaN(Number(precio))
+      ? null
+      : `$${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(precio))}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
         <div className="grid md:grid-cols-2 gap-0">
           <div className="relative bg-muted">
-            <img src={coverUrl || placeholderImg} alt={titulo} className="w-full h-full object-cover" />
+            {isVideo ? (
+              <video src={coverUrl || placeholderImg} controls className="w-full h-full object-cover" />
+            ) : (
+              <img src={coverUrl || placeholderImg} alt={titulo} className="w-full h-full object-cover" />
+            )}
           </div>
 
           <div className="p-6 flex flex-col">
@@ -42,6 +55,11 @@ const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit }) =
                 <span className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
                   {estado}
                 </span>
+                {formattedPrice && (
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    {formattedPrice}
+                  </span>
+                )}
               </div>
               <Button size="icon" variant="ghost" className="rounded-full">
                 <MoreHorizontal className="h-5 w-5" />
@@ -55,6 +73,7 @@ const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit }) =
               </DialogDescription>
             </DialogHeader>
 
+            {formattedPrice && <p className="mt-2 text-sm font-semibold text-emerald-700">{formattedPrice}</p>}
             <p className="mt-4 text-muted-foreground leading-relaxed whitespace-pre-line">{contenido}</p>
 
             <div className="mt-4 flex flex-wrap gap-2">

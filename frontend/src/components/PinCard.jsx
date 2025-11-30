@@ -12,8 +12,17 @@ const statusClasses = {
 
 const PinCard = ({ publication, onSelect }) => {
   const [isHovered, setIsHovered] = useState(false);
-  const image = publication.coverUrl || publication.placeholder || placeholderImg;
+  const mediaSrc = publication.coverUrl || publication.placeholder || placeholderImg;
   const statusClass = statusClasses[publication.estado] || 'bg-slate-700 text-white';
+  const isVideo =
+    publication.coverType === 'VIDEO' ||
+    (typeof mediaSrc === 'string' && (mediaSrc.startsWith('data:video') || /\.(mp4|webm|ogg)(\?.*)?$/i.test(mediaSrc)));
+  const formattedPrice =
+    publication.precio === null || publication.precio === undefined || Number.isNaN(Number(publication.precio))
+      ? null
+      : `$${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(
+          Number(publication.precio)
+        )}`;
 
   return (
     <div
@@ -27,7 +36,19 @@ const PinCard = ({ publication, onSelect }) => {
       onKeyDown={(e) => e.key === 'Enter' && onSelect?.(publication)}
     >
       <div className="relative">
-        <img src={image} alt={publication.titulo} className="h-auto w-full object-cover" loading="lazy" />
+        {isVideo ? (
+          <video
+            src={mediaSrc}
+            className="h-auto w-full object-cover"
+            muted
+            loop
+            playsInline
+            controls={isHovered}
+            preload="metadata"
+          />
+        ) : (
+          <img src={mediaSrc} alt={publication.titulo} className="h-auto w-full object-cover" loading="lazy" />
+        )}
 
         <div
           className={`absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent transition-opacity duration-300 ${
@@ -44,6 +65,9 @@ const PinCard = ({ publication, onSelect }) => {
           </div>
 
           <div className="absolute right-3 top-3 flex gap-2">
+            {formattedPrice && (
+              <span className="rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white">{formattedPrice}</span>
+            )}
             <Button size="sm" variant="secondary" className="h-9 rounded-full px-4 font-semibold" onClick={(e) => e.stopPropagation()}>
               Ver más
             </Button>

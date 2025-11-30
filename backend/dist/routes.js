@@ -298,9 +298,13 @@ router.post('/businesses/:id/publications', authMiddleware, requireRole([RolUsua
     ensureUserReady(user);
     const tenantId = user.tenantId;
     const { id } = req.params;
-    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [] } = req.body;
+    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio } = req.body;
     if (!titulo || !contenido)
         return res.status(400).json({ message: 'Título y contenido son obligatorios' });
+    const precioNormalizado = precio === undefined || precio === null || precio === '' ? null : Number.parseFloat(precio);
+    if (precioNormalizado !== null && (!Number.isFinite(precioNormalizado) || precioNormalizado < 0)) {
+        return res.status(400).json({ message: 'Precio inválido' });
+    }
     const publication = await runWithContext({ tenantId }, async (manager) => {
         const business = await manager
             .getRepository(Business)
@@ -334,24 +338,34 @@ router.post('/businesses/:id/publications', authMiddleware, requireRole([RolUsua
             tipo: tipo || PublicacionTipo.AVISO_GENERAL,
             estado: PublicacionEstado.PENDIENTE_VALIDACION,
             fechaFinVigencia: fechaFinVigencia ? new Date(fechaFinVigencia) : null,
+            precio: precioNormalizado,
         });
         const saved = await publicationRepo.save(record);
         if (validCategoryIds.length) {
             const links = validCategoryIds.map((cid) => ({ publicationId: saved.id, categoryId: cid }));
             await manager.getRepository(PublicationCategory).save(links);
         }
-        const mediaUrls = [];
-        const { mediaUrl, mediaUrls: mediaUrlsBody } = req.body;
-        if (mediaUrl)
-            mediaUrls.push(mediaUrl);
-        if (Array.isArray(mediaUrlsBody))
-            mediaUrls.push(...mediaUrlsBody.filter(Boolean));
-        if (mediaUrls.length) {
+        const mediaEntries = [];
+        const { mediaUrl, mediaUrls: mediaUrlsBody, mediaItems: mediaItemsBody, mediaType } = req.body;
+        if (mediaUrl) {
+            mediaEntries.push({ url: mediaUrl, tipo: mediaType === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN });
+        }
+        if (Array.isArray(mediaUrlsBody)) {
+            mediaUrlsBody.filter(Boolean).forEach((url) => mediaEntries.push({ url, tipo: MediaTipo.IMAGEN }));
+        }
+        if (Array.isArray(mediaItemsBody)) {
+            mediaItemsBody.forEach((item) => {
+                if (!item?.url)
+                    return;
+                mediaEntries.push({ url: item.url, tipo: item.tipo === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN });
+            });
+        }
+        if (mediaEntries.length) {
             const mediaRepo = manager.getRepository(Media);
-            const records = mediaUrls.map((url, index) => ({
+            const records = mediaEntries.map((entry, index) => ({
                 publicationId: saved.id,
-                url,
-                tipo: MediaTipo.IMAGEN,
+                url: entry.url,
+                tipo: entry.tipo === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN,
                 orden: index,
                 descripcion: null,
             }));
@@ -398,6 +412,7 @@ router.get('/businesses/:id/publications', optionalAuthMiddleware, asyncHandler(
             ...p,
             categoryIds: grouped[p.id] || [],
             coverUrl: mediaGrouped[p.id]?.[0]?.url || null,
+            coverType: mediaGrouped[p.id]?.[0]?.tipo || null,
         }));
     });
     res.json(publications);
@@ -465,6 +480,7 @@ router.get('/feed/publications', optionalAuthMiddleware, asyncHandler(async (req
             categories: categoriesByPublication[p.id] || [],
             business: businessMap[p.businessId],
             coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
+            coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
         }));
     });
     const publications = tenantId ? await fetchPublications(tenantId) : await fetchPublications(null);

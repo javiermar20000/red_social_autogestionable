@@ -32,6 +32,19 @@ export class Publication {
   contenido!: string;
 
   @Column({
+    name: 'precio',
+    type: 'numeric',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (value: number | null) => value,
+      from: (value: string | null) => (value === null ? null : Number(value)),
+    },
+  })
+  precio!: number | null;
+
+  @Column({
     name: 'tipo',
     type: 'enum',
     enum: PublicacionTipo,

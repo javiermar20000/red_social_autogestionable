@@ -46,6 +46,20 @@ __decorate([
 ], Publication.prototype, "contenido", void 0);
 __decorate([
     Column({
+        name: 'precio',
+        type: 'numeric',
+        precision: 10,
+        scale: 2,
+        nullable: true,
+        transformer: {
+            to: (value) => value,
+            from: (value) => (value === null ? null : Number(value)),
+        },
+    }),
+    __metadata("design:type", Number)
+], Publication.prototype, "precio", void 0);
+__decorate([
+    Column({
         name: 'tipo',
         type: 'enum',
         enum: PublicacionTipo,

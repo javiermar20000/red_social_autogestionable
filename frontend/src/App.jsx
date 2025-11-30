@@ -24,10 +24,8 @@ const API_URL = import.meta.env.VITE_API_URL || '/api';
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 
 const fetchJson = async (path, options = {}) => {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.message || 'Error de servidor');

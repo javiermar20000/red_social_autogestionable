@@ -1,7 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
+import Header from './components/Header.jsx';
+import MasonryGrid from './components/MasonryGrid.jsx';
+import PinCard from './components/PinCard.jsx';
+import PinDetailDialog from './components/PinDetailDialog.jsx';
+import AuthDialog from './components/AuthDialog.jsx';
+import ExploreDialog from './components/ExploreDialog.jsx';
+import { Button } from './components/ui/Button.jsx';
+import { Input } from './components/ui/Input.jsx';
+import { Label } from './components/ui/Label.jsx';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/Tabs.jsx';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/Dialog.jsx';
+import { cn } from './lib/cn.js';
+import pin1 from './assets/pin1.jpg';
+import pin2 from './assets/pin2.jpg';
+import pin3 from './assets/pin3.jpg';
+import pin4 from './assets/pin4.jpg';
+import pin5 from './assets/pin5.jpg';
+import pin6 from './assets/pin6.jpg';
+import pin7 from './assets/pin7.jpg';
+import pin8 from './assets/pin8.jpg';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
-const placeholderImg = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80';
+const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 
 const fetchJson = async (path, options = {}) => {
   const res = await fetch(`${API_URL}${path}`, {
@@ -15,9 +35,49 @@ const fetchJson = async (path, options = {}) => {
   return data;
 };
 
+const publicationTypes = [
+  { value: 'AVISO_GENERAL', label: 'Aviso general' },
+  { value: 'PROMOCION', label: 'Promoción' },
+  { value: 'EVENTO', label: 'Evento' },
+];
+
+const cafeCategoryTypes = [
+  'ESPRESSO',
+  'AMERICANO',
+  'CAPPUCCINO',
+  'LATTE',
+  'MOCHA',
+  'FLAT_WHITE',
+  'MACCHIATO',
+  'COLD_BREW',
+  'AFFOGATO',
+];
+
+const foodCategoryTypes = [
+  'PIZZA',
+  'SUSHI',
+  'HAMBURGUESAS',
+  'PASTAS',
+  'COMIDA_MEXICANA',
+  'COMIDA_CHINA',
+  'COMIDA_INDIAN',
+  'POSTRES',
+  'SANDWICHES',
+  'ENSALADAS',
+];
+
+const categoriesByBusinessType = {
+  CAFETERIA: cafeCategoryTypes,
+  RESTAURANTE: foodCategoryTypes,
+};
+
 function App() {
-  const [authMode, setAuthMode] = useState('login');
-  const [authForm, setAuthForm] = useState({ nombre: '', email: '', password: '', role: 'OFERENTE' });
+  const [authOpen, setAuthOpen] = useState(false);
+  const [exploreOpen, setExploreOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const [authLoading, setAuthLoading] = useState(false);
+
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [currentUser, setCurrentUser] = useState(() => {
     const stored = localStorage.getItem('user');
@@ -27,18 +87,19 @@ function App() {
   const [alerts, setAlerts] = useState([]);
 
   const [tenants, setTenants] = useState([]);
-  const [selectedTenantId, setSelectedTenantId] = useState('');
+  const [selectedTenantId, setSelectedTenantId] = useState(() => localStorage.getItem('tenantId') || '');
   const [tenantInfo, setTenantInfo] = useState(null);
 
   const [categoryTypes, setCategoryTypes] = useState([]);
   const [categories, setCategories] = useState([]);
 
   const [businesses, setBusinesses] = useState([]);
-  const [selectedBusinessId, setSelectedBusinessId] = useState('');
-  const [publications, setPublications] = useState([]);
 
-  const [businessSearch, setBusinessSearch] = useState('');
-  const [publicationSearch, setPublicationSearch] = useState('');
+  const [feed, setFeed] = useState([]);
+  const [loadingFeed, setLoadingFeed] = useState(false);
+  const [filters, setFilters] = useState({ search: '', categoryId: '', businessId: '' });
+
+  const [selectedPublication, setSelectedPublication] = useState(null);
 
   const [tenantForm, setTenantForm] = useState({ nombre: '', dominio: '' });
   const [categoryForm, setCategoryForm] = useState({ name: '', type: '', tenantId: '' });
@@ -59,35 +120,39 @@ function App() {
     tipo: 'AVISO_GENERAL',
     fechaFinVigencia: '',
     categoryIds: [],
+    businessId: '',
+    mediaUrl: '',
   });
 
   const [adminQueues, setAdminQueues] = useState({ tenants: [], users: [], businesses: [], publications: [] });
 
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+  const isAdmin = currentUser?.role === 'admin';
+  const isOferente = currentUser?.rol === 'OFERENTE';
 
   const notify = (variant, message) => {
     setAlerts((prev) => [...prev, { id: crypto.randomUUID(), variant, message }]);
-    setTimeout(() => setAlerts((prev) => prev.slice(1)), 3500);
+    setTimeout(() => setAlerts((prev) => prev.slice(1)), 4000);
   };
 
   const loadPublicTenants = async () => {
     try {
       const data = await fetchJson('/public/tenants');
       setTenants(data);
-      if (!selectedTenantId && data.length) {
-        setSelectedTenantId(String(data[0].id));
-      }
     } catch (err) {
       notify('danger', err.message);
     }
   };
 
   const loadTenantInfo = async () => {
-    if (!token || currentUser?.role === 'admin') return;
+    if (!token || isAdmin) return;
     try {
       const data = await fetchJson('/tenants/me', { headers: authHeaders });
       setTenantInfo(data);
-      if (data?.id) setSelectedTenantId(String(data.id));
+      if (data?.id) {
+        setSelectedTenantId(String(data.id));
+        localStorage.setItem('tenantId', String(data.id));
+      }
     } catch (err) {
       notify('danger', err.message);
     }
@@ -129,25 +194,25 @@ function App() {
     }
   };
 
-  const loadPublications = async () => {
-    if (!selectedTenantId || !selectedBusinessId) {
-      setPublications([]);
-      return;
-    }
+  const loadFeed = async () => {
+    setLoadingFeed(true);
     try {
-      const headers = { ...authHeaders };
-      const data = await fetchJson(`/businesses/${selectedBusinessId}/publications?tenantId=${selectedTenantId}`, {
-        headers,
-      });
-      setPublications(data);
+      const params = new URLSearchParams();
+      if (filters.search) params.set('search', filters.search);
+      if (filters.categoryId) params.set('categoryId', filters.categoryId);
+      if (filters.businessId) params.set('businessId', filters.businessId);
+      const data = await fetchJson(`/feed/publications?${params.toString()}`, { headers: authHeaders });
+      setFeed(data);
     } catch (err) {
       notify('danger', err.message);
-      setPublications([]);
+      setFeed([]);
+    } finally {
+      setLoadingFeed(false);
     }
   };
 
   const loadAdminQueues = async () => {
-    if (currentUser?.role !== 'admin') return;
+    if (!isAdmin) return;
     try {
       const [tenantsPending, usersPending, businessesPending, publicationsPending] = await Promise.all([
         fetchJson('/admin/tenants/pending', { headers: authHeaders }),
@@ -183,45 +248,89 @@ function App() {
   }, [selectedTenantId]);
 
   useEffect(() => {
-    loadPublications();
-  }, [selectedBusinessId, selectedTenantId, currentUser]);
+    const timeout = setTimeout(() => {
+      loadFeed();
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [filters.search, filters.categoryId, filters.businessId, currentUser]);
 
   useEffect(() => {
     loadAdminQueues();
   }, [currentUser]);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const activePublicationBusinessId = useMemo(
+    () => publicationForm.businessId || filters.businessId || businesses[0]?.id || '',
+    [publicationForm.businessId, filters.businessId, businesses]
+  );
+
+  const selectedBusinessForPublication = useMemo(
+    () => businesses.find((b) => String(b.id) === String(activePublicationBusinessId)) || null,
+    [businesses, activePublicationBusinessId]
+  );
+
+  const filteredCategoriesForPublication = useMemo(() => {
+    const businessType = selectedBusinessForPublication?.type;
+    const allowedTypes = businessType ? categoriesByBusinessType[businessType] : null;
+    if (!allowedTypes) return categories;
+    const allowedSet = new Set(allowedTypes);
+    return categories.filter((cat) => allowedSet.has(cat.type));
+  }, [categories, selectedBusinessForPublication]);
+
+  useEffect(() => {
+    if (!publicationForm.businessId && businesses.length) {
+      setPublicationForm((prev) => ({ ...prev, businessId: businesses[0].id }));
+    }
+  }, [businesses, publicationForm.businessId]);
+
+  useEffect(() => {
+    const allowedIds = new Set(filteredCategoriesForPublication.map((c) => c.id));
+    setPublicationForm((prev) => {
+      const filteredIds = prev.categoryIds.filter((id) => allowedIds.has(id));
+      if (filteredIds.length === prev.categoryIds.length) return prev;
+      return { ...prev, categoryIds: filteredIds };
+    });
+  }, [filteredCategoriesForPublication]);
+
+  const handleLogin = async (credentials) => {
+    setAuthLoading(true);
     try {
       const data = await fetchJson('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email: authForm.email, password: authForm.password }),
+        body: JSON.stringify(credentials),
       });
       setToken(data.token);
       localStorage.setItem('token', data.token);
       const user = data.admin ? { ...data.admin, role: 'admin' } : data.user;
       setCurrentUser(user);
       localStorage.setItem('user', JSON.stringify(user));
+      if (user?.tenantId) {
+        setSelectedTenantId(String(user.tenantId));
+        localStorage.setItem('tenantId', String(user.tenantId));
+      }
+      setAuthOpen(false);
       notify('success', 'Sesión iniciada');
-      setAuthMode('login');
       loadTenantInfo();
       loadAdminQueues();
     } catch (err) {
       notify('danger', err.message);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
+  const handleRegister = async (payload) => {
+    setAuthLoading(true);
     try {
       await fetchJson('/auth/register', {
         method: 'POST',
-        body: JSON.stringify(authForm),
+        body: JSON.stringify(payload),
       });
       notify('success', 'Usuario creado, ahora inicia sesión');
-      setAuthMode('login');
+      setAuthOpen(true);
     } catch (err) {
       notify('danger', err.message);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -244,8 +353,11 @@ function App() {
       });
       setTenantInfo(data.tenant);
       setSelectedTenantId(String(data.tenant.id));
+      localStorage.setItem('tenantId', String(data.tenant.id));
       setTenantForm({ nombre: '', dominio: '' });
       notify('success', 'Tenant solicitado, espera aprobación del admin');
+      setCreateOpen(false);
+      loadPublicTenants();
     } catch (err) {
       notify('danger', err.message);
     }
@@ -282,11 +394,22 @@ function App() {
         latitude: businessForm.latitude || null,
         longitude: businessForm.longitude || null,
       };
-      await fetchJson('/businesses', {
+      const data = await fetchJson('/businesses', {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(payload),
       });
+      const tenantIdFromResponse = data?.tenant?.id ? String(data.tenant.id) : null;
+      if (tenantIdFromResponse) {
+        setTenantInfo(data.tenant);
+        setSelectedTenantId(tenantIdFromResponse);
+        localStorage.setItem('tenantId', tenantIdFromResponse);
+        if (currentUser) {
+          const updatedUser = { ...currentUser, tenantId: data.tenant.id };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+      }
       notify('success', 'Negocio enviado a validación del admin');
       setBusinessForm({
         name: '',
@@ -299,7 +422,9 @@ function App() {
         latitude: '',
         longitude: '',
       });
-      loadBusinesses();
+      if (!tenantIdFromResponse || tenantIdFromResponse === selectedTenantId) {
+        loadBusinesses();
+      }
       loadAdminQueues();
     } catch (err) {
       notify('danger', err.message);
@@ -308,20 +433,31 @@ function App() {
 
   const handleCreatePublication = async (e) => {
     e.preventDefault();
-    if (!selectedBusinessId) return notify('danger', 'Selecciona un negocio');
+    const businessId = activePublicationBusinessId;
+    if (!businessId) return notify('danger', 'Selecciona un negocio para publicar');
     try {
-      await fetchJson(`/businesses/${selectedBusinessId}/publications`, {
+      await fetchJson(`/businesses/${businessId}/publications`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({
           ...publicationForm,
+          businessId,
           categoryIds: publicationForm.categoryIds,
           fechaFinVigencia: publicationForm.fechaFinVigencia || undefined,
+          mediaUrl: publicationForm.mediaUrl || undefined,
         }),
       });
       notify('success', 'Publicación creada y enviada a validación');
-      setPublicationForm({ titulo: '', contenido: '', tipo: 'AVISO_GENERAL', fechaFinVigencia: '', categoryIds: [] });
-      loadPublications();
+      setPublicationForm({
+        titulo: '',
+        contenido: '',
+        tipo: 'AVISO_GENERAL',
+        fechaFinVigencia: '',
+        categoryIds: [],
+        businessId: '',
+        mediaUrl: '',
+      });
+      loadFeed();
       loadAdminQueues();
     } catch (err) {
       notify('danger', err.message);
@@ -361,6 +497,7 @@ function App() {
       notify('success', 'Negocio aprobado');
       loadAdminQueues();
       loadBusinesses();
+      loadFeed();
     } catch (err) {
       notify('danger', err.message);
     }
@@ -377,223 +514,544 @@ function App() {
       });
       notify('success', `Publicación ${approve ? 'aprobada' : 'rechazada'}`);
       loadAdminQueues();
-      loadPublications();
+      loadFeed();
     } catch (err) {
       notify('danger', err.message);
     }
   };
 
-  const filteredBusinesses = useMemo(() => {
-    const term = businessSearch.toLowerCase();
-    return businesses.filter((biz) => {
-      const matches = !term || biz.name?.toLowerCase().includes(term) || biz.description?.toLowerCase().includes(term);
-      return matches;
-    });
-  }, [businesses, businessSearch]);
+  const handleRegisterVisit = async (publication) => {
+    const tenantForVisit = publication?.business?.tenantId || selectedTenantId;
+    if (!publication?.id || !tenantForVisit || publication.estado !== 'PUBLICADA') return;
+    try {
+      await fetchJson(`/publications/${publication.id}/visit?tenantId=${tenantForVisit}`, { method: 'POST' });
+      loadFeed();
+    } catch {
+      // silencioso
+    }
+  };
 
-  const filteredPublications = useMemo(() => {
-    const term = publicationSearch.toLowerCase();
-    return publications.filter((item) => {
-      const matchesSearch =
-        !term || item.titulo?.toLowerCase().includes(term) || item.contenido?.toLowerCase().includes(term);
-      return matchesSearch;
-    });
-  }, [publications, publicationSearch]);
+  const feedWithDecorations = useMemo(
+    () =>
+      feed.map((item, idx) => ({
+        ...item,
+        coverUrl: item.coverUrl || placeholderImages[(Number(item.id) || idx) % placeholderImages.length],
+        categories:
+          item.categories ||
+          (item.categoryIds || []).map((cid) => categories.find((c) => c.id === cid) || { id: cid, name: cid }),
+        business: item.business || businesses.find((b) => b.id === item.businessId),
+      })),
+    [feed, categories, businesses]
+  );
 
-  const roleLabel =
-    currentUser?.role === 'admin'
-      ? 'Admin global'
-      : currentUser?.rol === 'OFERENTE'
-      ? 'Oferente'
-      : currentUser?.rol === 'VISITANTE'
-      ? 'Visitante'
-      : 'Invitado';
+  const derivedCategories = useMemo(() => {
+    const map = new Map();
+    feedWithDecorations.forEach((pub) => {
+      (pub.categories || []).forEach((cat) => {
+        const id = cat.id || cat;
+        const name = cat.name || cat;
+        if (!map.has(id)) map.set(id, { id, name });
+      });
+    });
+    return Array.from(map.values());
+  }, [feedWithDecorations]);
 
   return (
-    <div className="bg-light min-vh-100">
-      <div className="container py-4">
-        <div className="mb-4 p-4 bg-white rounded shadow-sm d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+    <div className="min-h-screen bg-background">
+      <Header
+        search={filters.search}
+        onSearchChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
+        onExplore={() => setExploreOpen(true)}
+        onCreate={() => setCreateOpen(true)}
+        onAuth={() => setAuthOpen(true)}
+        onLogout={handleLogout}
+        currentUser={currentUser}
+      />
+
+      <main className="container px-4 py-6 space-y-6">
+        <section className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-uppercase text-secondary mb-1 fw-semibold">Red social autogestionable</p>
-            <h1 className="mb-2">GastroHub</h1>
-            <p className="text-muted mb-0">
-              Multi-tenant con validación por admin. Gestiona tenants, negocios y publicaciones con estados y categorías tipadas.
-            </p>
+            <p className="text-sm uppercase tracking-wide text-muted-foreground">Publicaciones aceptadas</p>
+            <h2 className="mt-1 text-3xl font-bold">GastroHub</h2>
+            <p className="text-muted-foreground">Explora todas las publicaciones públicas de la comunidad gastronómica.</p>
           </div>
-          <div className="text-end">
-            {currentUser ? (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={loadFeed}>
+              Actualizar
+            </Button>
+            <Button onClick={() => setCreateOpen(true)}>Crear</Button>
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-card p-4 shadow-soft">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant={filters.categoryId ? 'outline' : 'secondary'}
+              onClick={() => setFilters((prev) => ({ ...prev, categoryId: '' }))}
+            >
+              Todas las categorías
+            </Button>
+            {derivedCategories.map((cat) => (
+              <Button
+                key={cat.id}
+                size="sm"
+                variant={filters.categoryId === cat.id ? 'default' : 'outline'}
+                onClick={() => setFilters((prev) => ({ ...prev, categoryId: cat.id }))}
+              >
+                {cat.name}
+              </Button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          {loadingFeed ? (
+            <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
+              Cargando feed...
+            </div>
+          ) : feedWithDecorations.length ? (
+            <MasonryGrid>
+              {feedWithDecorations.map((pub) => (
+                <PinCard key={pub.id} publication={pub} onSelect={setSelectedPublication} />
+              ))}
+            </MasonryGrid>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
+              Aún no hay publicaciones publicadas.
+            </div>
+          )}
+        </section>
+
+        {(isOferente || isAdmin) && (
+          <section className="rounded-2xl bg-card p-5 shadow-soft">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="mb-1">
-                  Conectado como <strong>{currentUser.email || currentUser.nombre}</strong>
-                </p>
-                <span className="badge bg-primary me-2">{roleLabel}</span>
-                {currentUser.estadoRegistro && (
-                  <span className="badge bg-info text-dark me-2">Estado: {currentUser.estadoRegistro}</span>
-                )}
-                <button className="btn btn-outline-secondary btn-sm" onClick={handleLogout}>
-                  Cerrar sesión
-                </button>
+                <p className="text-sm text-muted-foreground">Gestión rápida</p>
+                <h4 className="text-xl font-semibold">Negocios y categorías</h4>
               </div>
-            ) : (
-              <span className="badge bg-secondary">Visitante</span>
-            )}
-          </div>
-        </div>
-
-        <div className="row g-3">
-          <div className="col-lg-4">
-            <div className="card shadow-sm mb-3">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h5 className="card-title mb-0">{authMode === 'login' ? 'Iniciar sesión' : 'Registrarse'}</h5>
-                  <button className="btn btn-link p-0" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>
-                    {authMode === 'login' ? 'Crear cuenta' : 'Ya tengo cuenta'}
-                  </button>
-                </div>
-                <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="vstack gap-3">
-                  {authMode === 'register' && (
-                    <div>
-                      <label className="form-label">Nombre</label>
-                      <input
-                        className="form-control"
-                        value={authForm.nombre}
-                        onChange={(e) => setAuthForm({ ...authForm, nombre: e.target.value })}
-                        required
-                      />
-                    </div>
-                  )}
-                  <div>
-                    <label className="form-label">Email</label>
-                    <input
-                      type="email"
-                      className="form-control"
-                      value={authForm.email}
-                      onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Contraseña</label>
-                    <input
-                      type="password"
-                      className="form-control"
-                      value={authForm.password}
-                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                      required
-                    />
-                  </div>
-                  {authMode === 'register' && (
-                    <div>
-                      <label className="form-label">Rol</label>
-                      <select
-                        className="form-select"
-                        value={authForm.role}
-                        onChange={(e) => setAuthForm({ ...authForm, role: e.target.value })}
-                      >
-                        <option value="OFERENTE">Oferente</option>
-                        <option value="VISITANTE">Visitante</option>
-                        <option value="admin">Admin global</option>
-                      </select>
-                    </div>
-                  )}
-                  <button className="btn btn-primary" type="submit">
-                    {authMode === 'login' ? 'Entrar' : 'Registrar'}
-                  </button>
-                </form>
-              </div>
+              <Button variant="outline" onClick={() => setCreateOpen(true)}>
+                Abrir panel de creación
+              </Button>
             </div>
-
-            <div className="card shadow-sm mb-3">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <h5 className="card-title mb-0">Tenants activos</h5>
-                  <button className="btn btn-sm btn-outline-secondary" onClick={loadPublicTenants}>
-                    Actualizar
-                  </button>
-                </div>
-                <select
-                  className="form-select mb-2"
-                  value={selectedTenantId}
-                  onChange={(e) => {
-                    setSelectedTenantId(e.target.value);
-                    setSelectedBusinessId('');
-                  }}
-                >
-                  <option value="">Selecciona un tenant</option>
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nombre} (#{t.id})
-                    </option>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-border p-4">
+                <h5 className="font-semibold">Categorias activas</h5>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {categories.map((c) => (
+                    <span key={c.id} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
+                      {c.name} · {c.type}
+                    </span>
                   ))}
-                </select>
-                {tenantInfo && (
-                  <div className="alert alert-info mb-0">
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <div className="fw-semibold">Tu tenant</div>
-                        <div className="small">Estado: {tenantInfo.estado}</div>
-                      </div>
-                      <span className="badge bg-secondary">ID {tenantInfo.id}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {currentUser?.rol === 'OFERENTE' && (
-              <div className="card shadow-sm mb-3">
-                <div className="card-body">
-                  <h5 className="card-title mb-2">Solicitar tenant</h5>
-                  <p className="text-muted small">Un admin debe validarlo antes de poder publicar.</p>
-                  <form className="vstack gap-2" onSubmit={handleCreateTenant}>
-                    <input
-                      className="form-control"
-                      placeholder="Nombre del tenant"
-                      value={tenantForm.nombre}
-                      onChange={(e) => setTenantForm({ ...tenantForm, nombre: e.target.value })}
-                      required
-                    />
-                    <input
-                      className="form-control"
-                      placeholder="Dominio (opcional)"
-                      value={tenantForm.dominio}
-                      onChange={(e) => setTenantForm({ ...tenantForm, dominio: e.target.value })}
-                    />
-                    <button className="btn btn-success" type="submit">
-                      Enviar solicitud
-                    </button>
-                  </form>
+                  {!categories.length && <p className="text-sm text-muted-foreground">Sin categorías</p>}
                 </div>
               </div>
-            )}
-          </div>
+              <div className="rounded-xl border border-border p-4">
+                <h5 className="font-semibold">Negocios activos ({businesses.length})</h5>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {businesses.map((b) => (
+                    <span key={b.id} className="rounded-full border px-3 py-1 text-xs">
+                      {b.name} · {b.type}
+                    </span>
+                  ))}
+                  {!businesses.length && <p className="text-sm text-muted-foreground">Sin negocios activos</p>}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
-          <div className="col-lg-8">
-            {(currentUser?.role === 'admin' || currentUser?.rol === 'OFERENTE') && (
-              <div className="card shadow-sm mb-3">
-                <div className="card-body">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h5 className="card-title mb-0">Categorías por tenant</h5>
-                    <span className="badge text-bg-light border">Tipos: {categoryTypes.length}</span>
+        {isAdmin && (
+          <section className="rounded-2xl bg-card p-5 shadow-soft">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Panel de validación</p>
+                <h4 className="text-xl font-semibold">Pendientes de aprobación</h4>
+              </div>
+              <Button variant="outline" onClick={loadAdminQueues}>
+                Recargar
+              </Button>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-border p-4">
+                <div className="flex items-center justify-between">
+                  <h6 className="font-semibold">Tenants</h6>
+                  <span className="text-xs text-muted-foreground">{adminQueues.tenants.length}</span>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {adminQueues.tenants.map((t) => (
+                    <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
+                      <div>
+                        <p className="font-semibold">{t.nombre}</p>
+                        <p className="text-xs text-muted-foreground">#{t.id}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => handleApproveTenant(t.id, 'approve')}>
+                          Aprobar
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleApproveTenant(t.id, 'reject')}>
+                          Rechazar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {!adminQueues.tenants.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border p-4">
+                <div className="flex items-center justify-between">
+                  <h6 className="font-semibold">Oferentes</h6>
+                  <span className="text-xs text-muted-foreground">{adminQueues.users.length}</span>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {adminQueues.users.map((u) => (
+                    <div key={u.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
+                      <div>
+                        <p className="font-semibold">{u.email}</p>
+                        <p className="text-xs text-muted-foreground">#{u.id}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => handleApproveUser(u.id, 'approve')}>
+                          Aprobar
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleApproveUser(u.id, 'reject')}>
+                          Rechazar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {!adminQueues.users.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border p-4">
+                <div className="flex items-center justify-between">
+                  <h6 className="font-semibold">Negocios</h6>
+                  <span className="text-xs text-muted-foreground">{adminQueues.businesses.length}</span>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {adminQueues.businesses.map((b) => (
+                    <div key={b.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
+                      <div>
+                        <p className="font-semibold">{b.name}</p>
+                        <p className="text-xs text-muted-foreground">Tenant #{b.tenantId}</p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => handleApproveBusiness(b.id)}>
+                        Aprobar
+                      </Button>
+                    </div>
+                  ))}
+                  {!adminQueues.businesses.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border p-4">
+                <div className="flex items-center justify-between">
+                  <h6 className="font-semibold">Publicaciones</h6>
+                  <span className="text-xs text-muted-foreground">{adminQueues.publications.length}</span>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {adminQueues.publications.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
+                      <div>
+                        <p className="font-semibold">{p.titulo}</p>
+                        <p className="text-xs text-muted-foreground">Negocio #{p.businessId}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => handleApprovePublication(p.id, true)}>
+                          Aprobar
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleApprovePublication(p.id, false)}>
+                          Rechazar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {!adminQueues.publications.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+      </main>
+
+      <AuthDialog
+        open={authOpen}
+        onOpenChange={setAuthOpen}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        loading={authLoading}
+      />
+
+      <ExploreDialog
+        open={exploreOpen}
+        onOpenChange={setExploreOpen}
+        categories={derivedCategories}
+        selectedCategoryId={filters.categoryId}
+        onSelect={(id) => setFilters((prev) => ({ ...prev, categoryId: id }))}
+        onClear={() => setFilters((prev) => ({ ...prev, categoryId: '' }))}
+      />
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader className="text-left">
+            <DialogTitle>Crear o gestionar contenido</DialogTitle>
+            <DialogDescription>
+              Publica novedades, registra negocios, categorías o solicita tu tenant directamente desde aquí.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!currentUser ? (
+            <div className="rounded-xl border border-dashed border-border p-4 text-center">
+              <p className="text-muted-foreground">Inicia sesión para crear contenido.</p>
+              <Button className="mt-3" onClick={() => setAuthOpen(true)}>
+                Abrir login
+              </Button>
+            </div>
+          ) : (
+            <Tabs defaultValue="publicacion" className="mt-4">
+              <TabsList className="w-full grid grid-cols-2 md:grid-cols-4">
+                <TabsTrigger value="publicacion">Publicación</TabsTrigger>
+                <TabsTrigger value="negocio">Negocio</TabsTrigger>
+                {(isOferente || isAdmin) && <TabsTrigger value="tenant">Tenant</TabsTrigger>}
+                {(isOferente || isAdmin) && <TabsTrigger value="categoria">Categoría</TabsTrigger>}
+              </TabsList>
+
+              <TabsContent value="publicacion" className="mt-4">
+                <form className="grid gap-3 md:grid-cols-2" onSubmit={handleCreatePublication}>
+                  <div className="md:col-span-2">
+                    <Label>Título</Label>
+                    <Input
+                      value={publicationForm.titulo}
+                      onChange={(e) => setPublicationForm((prev) => ({ ...prev, titulo: e.target.value }))}
+                      required
+                    />
                   </div>
-                  <form className="row g-2" onSubmit={handleCreateCategory}>
-                    <div className="col-md-4">
-                      <input
-                        className="form-control"
-                        placeholder="Nombre"
-                        value={categoryForm.name}
-                        onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                  <div>
+                    <Label>Tipo</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      value={publicationForm.tipo}
+                      onChange={(e) => setPublicationForm((prev) => ({ ...prev, tipo: e.target.value }))}
+                    >
+                      {publicationTypes.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Negocio</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      value={publicationForm.businessId}
+                      onChange={(e) => setPublicationForm((prev) => ({ ...prev, businessId: e.target.value }))}
+                      required
+                    >
+                      <option value="">Selecciona negocio</option>
+                      {businesses.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Contenido</Label>
+                    <textarea
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      rows={3}
+                      value={publicationForm.contenido}
+                      onChange={(e) => setPublicationForm((prev) => ({ ...prev, contenido: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Fin de vigencia</Label>
+                    <Input
+                      type="date"
+                      value={publicationForm.fechaFinVigencia}
+                      onChange={(e) => setPublicationForm((prev) => ({ ...prev, fechaFinVigencia: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Imagen de portada (URL)</Label>
+                    <Input
+                      placeholder="https://..."
+                      value={publicationForm.mediaUrl}
+                      onChange={(e) => setPublicationForm((prev) => ({ ...prev, mediaUrl: e.target.value }))}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Categorías</Label>
+                    {selectedBusinessForPublication?.type && categoriesByBusinessType[selectedBusinessForPublication.type] && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Mostrando categorías de {selectedBusinessForPublication.type === 'CAFETERIA' ? 'cafés' : 'comidas'} según
+                        el tipo de negocio seleccionado.
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {filteredCategoriesForPublication.map((c) => {
+                        const checked = publicationForm.categoryIds.includes(c.id);
+                        return (
+                          <button
+                            type="button"
+                            key={c.id}
+                            className={cn(
+                              'rounded-full border px-3 py-1 text-xs',
+                              checked ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-secondary-foreground'
+                            )}
+                            onClick={() =>
+                              setPublicationForm((prev) => ({
+                                ...prev,
+                                categoryIds: checked
+                                  ? prev.categoryIds.filter((id) => id !== c.id)
+                                  : [...prev.categoryIds, c.id],
+                              }))
+                            }
+                          >
+                            {c.name}
+                          </button>
+                        );
+                      })}
+                      {!filteredCategoriesForPublication.length && (
+                        <p className="text-sm text-muted-foreground">Crea una categoría del tipo correspondiente primero.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Button type="submit">Publicar (queda pendiente de validación)</Button>
+                  </div>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="negocio" className="mt-4">
+                <form className="grid gap-3 md:grid-cols-2" onSubmit={handleCreateBusiness}>
+                  <div>
+                    <Label>Nombre</Label>
+                    <Input
+                      value={businessForm.name}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, name: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label>Tipo</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      value={businessForm.type}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, type: e.target.value }))}
+                    >
+                      <option value="RESTAURANTE">Restaurante</option>
+                      <option value="CAFETERIA">Cafetería</option>
+                      <option value="BAR">Bar</option>
+                      <option value="FOODTRUCK">Foodtruck</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Descripción</Label>
+                    <textarea
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      rows={3}
+                      value={businessForm.description}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, description: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Ciudad</Label>
+                    <Input value={businessForm.city} onChange={(e) => setBusinessForm((prev) => ({ ...prev, city: e.target.value }))} />
+                  </div>
+                    <div>
+                      <Label>Región</Label>
+                      <Input
+                        value={businessForm.region}
+                        onChange={(e) => setBusinessForm((prev) => ({ ...prev, region: e.target.value }))}
+                      />
+                    </div>
+                  <div>
+                    <Label>Dirección</Label>
+                    <Input
+                      value={businessForm.address}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, address: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Rango precios</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      value={businessForm.priceRange}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, priceRange: e.target.value }))}
+                    >
+                      <option value="">Sin definir</option>
+                      <option value="BAJO">Bajo</option>
+                      <option value="MEDIO">Medio</option>
+                      <option value="ALTO">Alto</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Latitud</Label>
+                    <Input
+                      value={businessForm.latitude}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, latitude: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Longitud</Label>
+                    <Input
+                      value={businessForm.longitude}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, longitude: e.target.value }))}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Button type="submit">Enviar a validación</Button>
+                  </div>
+                </form>
+              </TabsContent>
+
+              {(isOferente || isAdmin) && (
+                <TabsContent value="tenant" className="mt-4">
+                  <form className="space-y-3" onSubmit={handleCreateTenant}>
+                    <div>
+                      <Label>Nombre del tenant</Label>
+                      <Input
+                        value={tenantForm.nombre}
+                        onChange={(e) => setTenantForm((prev) => ({ ...prev, nombre: e.target.value }))}
                         required
                       />
                     </div>
-                    <div className="col-md-4">
+                    <div>
+                      <Label>Dominio (opcional)</Label>
+                      <Input
+                        value={tenantForm.dominio}
+                        onChange={(e) => setTenantForm((prev) => ({ ...prev, dominio: e.target.value }))}
+                      />
+                    </div>
+                    <Button type="submit">Solicitar tenant</Button>
+                  </form>
+                </TabsContent>
+              )}
+
+              {(isOferente || isAdmin) && (
+                <TabsContent value="categoria" className="mt-4">
+                  <form className="grid gap-3 md:grid-cols-3" onSubmit={handleCreateCategory}>
+                    <div className="md:col-span-1">
+                      <Label>Nombre</Label>
+                      <Input
+                        value={categoryForm.name}
+                        onChange={(e) => setCategoryForm((prev) => ({ ...prev, name: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="md:col-span-1">
+                      <Label>Tipo</Label>
                       <select
-                        className="form-select"
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                         value={categoryForm.type}
-                        onChange={(e) => setCategoryForm({ ...categoryForm, type: e.target.value })}
+                        onChange={(e) => setCategoryForm((prev) => ({ ...prev, type: e.target.value }))}
                         required
                       >
-                        <option value="">Tipo de categoría</option>
+                        <option value="">Selecciona tipo</option>
                         {categoryTypes.map((t) => (
                           <option key={t} value={t}>
                             {t}
@@ -601,442 +1059,49 @@ function App() {
                         ))}
                       </select>
                     </div>
-                    {currentUser?.role === 'admin' && (
-                      <div className="col-md-4">
-                        <input
-                          className="form-control"
-                          placeholder="Tenant ID (opcional)"
+                    {isAdmin && (
+                      <div className="md:col-span-1">
+                        <Label>Tenant ID</Label>
+                        <Input
                           value={categoryForm.tenantId}
-                          onChange={(e) => setCategoryForm({ ...categoryForm, tenantId: e.target.value })}
+                          onChange={(e) => setCategoryForm((prev) => ({ ...prev, tenantId: e.target.value }))}
+                          placeholder="Opcional"
                         />
                       </div>
                     )}
-                    <div className="col-12">
-                      <button className="btn btn-outline-primary" type="submit">
-                        Crear categoría
-                      </button>
+                    <div className="md:col-span-3">
+                      <Button type="submit">Crear categoría</Button>
                     </div>
                   </form>
-                  <div className="mt-3 d-flex flex-wrap gap-2">
-                    {categories.map((c) => (
-                      <span key={c.id} className="badge bg-info text-dark">
-                        {c.name} · {c.type}
-                      </span>
-                    ))}
-                    {!categories.length && <p className="text-muted mb-0">Sin categorías para este tenant.</p>}
-                  </div>
-                </div>
-              </div>
+                </TabsContent>
+              )}
+            </Tabs>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <PinDetailDialog
+        open={Boolean(selectedPublication)}
+        onOpenChange={(open) => !open && setSelectedPublication(null)}
+        publication={selectedPublication}
+        onRegisterVisit={handleRegisterVisit}
+      />
+
+      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+        {alerts.map((a) => (
+          <div
+            key={a.id}
+            className={cn(
+              'rounded-xl px-4 py-3 text-sm font-semibold shadow-hover text-white',
+              a.variant === 'danger' && 'bg-rose-500',
+              a.variant === 'success' && 'bg-emerald-500',
+              a.variant === 'info' && 'bg-sky-500',
+              a.variant === 'warning' && 'bg-amber-500'
             )}
-
-            <div className="card shadow-sm mb-3">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <h5 className="card-title mb-0">Negocios activos</h5>
-                  <input
-                    type="search"
-                    className="form-control form-control-sm w-auto"
-                    placeholder="Buscar por nombre"
-                    value={businessSearch}
-                    onChange={(e) => setBusinessSearch(e.target.value)}
-                  />
-                </div>
-                <div className="row g-3">
-                  {filteredBusinesses.map((biz) => (
-                    <div className="col-md-6" key={biz.id}>
-                      <div
-                        className={`card h-100 ${selectedBusinessId === biz.id ? 'border-primary' : ''}`}
-                        role="button"
-                        onClick={() => setSelectedBusinessId(biz.id)}
-                      >
-                        <div className="card-body">
-                          <div className="d-flex justify-content-between align-items-start">
-                            <div>
-                              <h6 className="card-subtitle text-muted">#{biz.id}</h6>
-                              <h5 className="card-title">{biz.name}</h5>
-                              <small className="text-muted">{biz.type}</small>
-                            </div>
-                            <span className={`badge ${biz.status === 'ACTIVO' ? 'bg-success' : 'bg-secondary'}`}>
-                              {biz.status}
-                            </span>
-                          </div>
-                          <p className="card-text text-muted">{biz.description || 'Sin descripción'}</p>
-                          <div className="text-muted small">
-                            {[biz.city, biz.region].filter(Boolean).join(' · ')} {biz.address ? ` · ${biz.address}` : ''}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {!filteredBusinesses.length && <p className="text-muted">No hay negocios activos en este tenant.</p>}
-                </div>
-              </div>
-            </div>
-
-            {(currentUser?.rol === 'OFERENTE' || currentUser?.role === 'admin') && (
-              <div className="card shadow-sm mb-3">
-                <div className="card-body">
-                  <h5 className="card-title mb-3">Registrar negocio (queda INACTIVO hasta que un admin lo valide)</h5>
-                  <form className="row g-3" onSubmit={handleCreateBusiness}>
-                    <div className="col-md-6">
-                      <label className="form-label">Nombre</label>
-                      <input
-                        className="form-control"
-                        value={businessForm.name}
-                        onChange={(e) => setBusinessForm({ ...businessForm, name: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Tipo</label>
-                      <select
-                        className="form-select"
-                        value={businessForm.type}
-                        onChange={(e) => setBusinessForm({ ...businessForm, type: e.target.value })}
-                      >
-                        <option value="RESTAURANTE">Restaurante</option>
-                        <option value="CAFETERIA">Cafetería</option>
-                        <option value="BAR">Bar</option>
-                        <option value="FOODTRUCK">Foodtruck</option>
-                      </select>
-                    </div>
-                    <div className="col-12">
-                      <label className="form-label">Descripción</label>
-                      <textarea
-                        className="form-control"
-                        value={businessForm.description}
-                        onChange={(e) => setBusinessForm({ ...businessForm, description: e.target.value })}
-                        rows={2}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Ciudad</label>
-                      <input
-                        className="form-control"
-                        value={businessForm.city}
-                        onChange={(e) => setBusinessForm({ ...businessForm, city: e.target.value })}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Región</label>
-                      <input
-                        className="form-control"
-                        value={businessForm.region}
-                        onChange={(e) => setBusinessForm({ ...businessForm, region: e.target.value })}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Dirección</label>
-                      <input
-                        className="form-control"
-                        value={businessForm.address}
-                        onChange={(e) => setBusinessForm({ ...businessForm, address: e.target.value })}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Rango precios</label>
-                      <select
-                        className="form-select"
-                        value={businessForm.priceRange}
-                        onChange={(e) => setBusinessForm({ ...businessForm, priceRange: e.target.value })}
-                      >
-                        <option value="">Sin definir</option>
-                        <option value="BAJO">Bajo</option>
-                        <option value="MEDIO">Medio</option>
-                        <option value="ALTO">Alto</option>
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Latitud</label>
-                      <input
-                        className="form-control"
-                        value={businessForm.latitude}
-                        onChange={(e) => setBusinessForm({ ...businessForm, latitude: e.target.value })}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Longitud</label>
-                      <input
-                        className="form-control"
-                        value={businessForm.longitude}
-                        onChange={(e) => setBusinessForm({ ...businessForm, longitude: e.target.value })}
-                      />
-                    </div>
-                    <div className="col-12">
-                      <button className="btn btn-success" type="submit">
-                        Enviar a validación
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {selectedBusinessId && (
-              <div className="card shadow-sm mb-3">
-                <div className="card-body">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h5 className="card-title mb-0">Publicaciones del negocio #{selectedBusinessId}</h5>
-                    <input
-                      className="form-control form-control-sm w-auto"
-                      placeholder="Buscar"
-                      value={publicationSearch}
-                      onChange={(e) => setPublicationSearch(e.target.value)}
-                    />
-                  </div>
-
-                  {(currentUser?.rol === 'OFERENTE' || currentUser?.role === 'admin') && (
-                    <form className="border rounded p-3 mb-3 bg-light" onSubmit={handleCreatePublication}>
-                      <div className="row g-3">
-                        <div className="col-md-8">
-                          <label className="form-label">Título</label>
-                          <input
-                            className="form-control"
-                            value={publicationForm.titulo}
-                            onChange={(e) => setPublicationForm({ ...publicationForm, titulo: e.target.value })}
-                            required
-                          />
-                        </div>
-                        <div className="col-md-4">
-                          <label className="form-label">Tipo</label>
-                          <select
-                            className="form-select"
-                            value={publicationForm.tipo}
-                            onChange={(e) => setPublicationForm({ ...publicationForm, tipo: e.target.value })}
-                          >
-                            <option value="AVISO_GENERAL">Aviso</option>
-                            <option value="PROMOCION">Promoción</option>
-                            <option value="EVENTO">Evento</option>
-                          </select>
-                        </div>
-                        <div className="col-12">
-                          <label className="form-label">Contenido</label>
-                          <textarea
-                            className="form-control"
-                            rows={3}
-                            value={publicationForm.contenido}
-                            onChange={(e) => setPublicationForm({ ...publicationForm, contenido: e.target.value })}
-                          />
-                        </div>
-                        <div className="col-md-6">
-                          <label className="form-label">Fin de vigencia</label>
-                          <input
-                            type="date"
-                            className="form-control"
-                            value={publicationForm.fechaFinVigencia}
-                            onChange={(e) => setPublicationForm({ ...publicationForm, fechaFinVigencia: e.target.value })}
-                          />
-                        </div>
-                        <div className="col-md-6">
-                          <label className="form-label">Categorías</label>
-                          <div className="d-flex flex-wrap gap-2">
-                            {categories.map((c) => {
-                              const checked = publicationForm.categoryIds.includes(c.id);
-                              return (
-                                <label key={c.id} className="form-check">
-                                  <input
-                                    type="checkbox"
-                                    className="form-check-input me-1"
-                                    checked={checked}
-                                    onChange={() => {
-                                      setPublicationForm((prev) => ({
-                                        ...prev,
-                                        categoryIds: checked
-                                          ? prev.categoryIds.filter((id) => id !== c.id)
-                                          : [...prev.categoryIds, c.id],
-                                      }));
-                                    }}
-                                  />
-                                  {c.name}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <div className="col-12">
-                          <button className="btn btn-primary" type="submit">
-                            Publicar (queda pendiente)
-                          </button>
-                        </div>
-                      </div>
-                    </form>
-                  )}
-
-                  <div className="row g-3">
-                    {filteredPublications.map((item) => (
-                      <div className="col-md-6" key={item.id}>
-                        <div className="card h-100 shadow-sm">
-                          <div className="ratio ratio-16x9">
-                            <img src={placeholderImg} alt={item.titulo} className="rounded-top object-fit-cover" />
-                          </div>
-                          <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                              <div>
-                                <h5 className="card-title mb-1">{item.titulo}</h5>
-                                <small className="text-muted">{item.tipo}</small>
-                              </div>
-                              <span
-                                className={`badge ${
-                                  item.estado === 'PUBLICADA'
-                                    ? 'text-bg-success'
-                                    : item.estado === 'PENDIENTE_VALIDACION'
-                                    ? 'text-bg-warning'
-                                    : 'text-bg-secondary'
-                                }`}
-                              >
-                                {item.estado}
-                              </span>
-                            </div>
-                            <p className="card-text">{item.contenido}</p>
-                            <div className="d-flex justify-content-between align-items-center">
-                              <small className="text-muted">Visitas: {item.visitas}</small>
-                              <div className="d-flex gap-1">
-                                {(item.categoryIds || []).map((cid) => {
-                                  const cat = categories.find((c) => c.id === cid);
-                                  return (
-                                    <span key={cid} className="badge text-bg-light border">
-                                      {cat?.name || cid}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {!filteredPublications.length && <p className="text-muted">No hay publicaciones visibles.</p>}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentUser?.role === 'admin' && (
-              <div className="card shadow-sm">
-                <div className="card-body">
-                  <h5 className="card-title mb-3">Panel de validación (admin)</h5>
-                  <div className="row g-3">
-                    <div className="col-md-6">
-                      <div className="border rounded p-3 h-100">
-                        <div className="d-flex justify-content-between align-items-center mb-2">
-                          <h6 className="mb-0">Tenants pendientes</h6>
-                          <span className="badge bg-secondary">{adminQueues.tenants.length}</span>
-                        </div>
-                        {adminQueues.tenants.map((t) => (
-                          <div key={t.id} className="d-flex justify-content-between align-items-center border-bottom py-2">
-                            <div>
-                              <div className="fw-semibold">{t.nombre}</div>
-                              <small className="text-muted">#{t.id}</small>
-                            </div>
-                            <div className="d-flex gap-1">
-                              <button className="btn btn-sm btn-outline-success" onClick={() => handleApproveTenant(t.id, 'approve')}>
-                                Aprobar
-                              </button>
-                              <button className="btn btn-sm btn-outline-danger" onClick={() => handleApproveTenant(t.id, 'reject')}>
-                                Rechazar
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        {!adminQueues.tenants.length && <p className="text-muted mb-0">Sin pendientes.</p>}
-                      </div>
-                    </div>
-
-                    <div className="col-md-6">
-                      <div className="border rounded p-3 h-100">
-                        <div className="d-flex justify-content-between align-items-center mb-2">
-                          <h6 className="mb-0">Oferentes pendientes</h6>
-                          <span className="badge bg-secondary">{adminQueues.users.length}</span>
-                        </div>
-                        {adminQueues.users.map((u) => (
-                          <div key={u.id} className="d-flex justify-content-between align-items-center border-bottom py-2">
-                            <div>
-                              <div className="fw-semibold">{u.email}</div>
-                              <small className="text-muted">#{u.id}</small>
-                            </div>
-                            <div className="d-flex gap-1">
-                              <button className="btn btn-sm btn-outline-success" onClick={() => handleApproveUser(u.id, 'approve')}>
-                                Aprobar
-                              </button>
-                              <button className="btn btn-sm btn-outline-danger" onClick={() => handleApproveUser(u.id, 'reject')}>
-                                Rechazar
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        {!adminQueues.users.length && <p className="text-muted mb-0">Sin pendientes.</p>}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="row g-3 mt-2">
-                    <div className="col-md-6">
-                      <div className="border rounded p-3 h-100">
-                        <div className="d-flex justify-content-between align-items-center mb-2">
-                          <h6 className="mb-0">Negocios por aprobar</h6>
-                          <span className="badge bg-secondary">{adminQueues.businesses.length}</span>
-                        </div>
-                        {adminQueues.businesses.map((b) => (
-                          <div key={b.id} className="d-flex justify-content-between align-items-center border-bottom py-2">
-                            <div>
-                              <div className="fw-semibold">{b.name}</div>
-                              <small className="text-muted">Tenant #{b.tenantId}</small>
-                            </div>
-                            <button className="btn btn-sm btn-outline-success" onClick={() => handleApproveBusiness(b.id)}>
-                              Aprobar
-                            </button>
-                          </div>
-                        ))}
-                        {!adminQueues.businesses.length && <p className="text-muted mb-0">Sin pendientes.</p>}
-                      </div>
-                    </div>
-
-                    <div className="col-md-6">
-                      <div className="border rounded p-3 h-100">
-                        <div className="d-flex justify-content-between align-items-center mb-2">
-                          <h6 className="mb-0">Publicaciones pendientes</h6>
-                          <span className="badge bg-secondary">{adminQueues.publications.length}</span>
-                        </div>
-                        {adminQueues.publications.map((p) => (
-                          <div key={p.id} className="d-flex justify-content-between align-items-center border-bottom py-2">
-                            <div>
-                              <div className="fw-semibold">{p.titulo}</div>
-                              <small className="text-muted">Negocio #{p.businessId}</small>
-                            </div>
-                            <div className="d-flex gap-1">
-                              <button className="btn btn-sm btn-outline-success" onClick={() => handleApprovePublication(p.id, true)}>
-                                Aprobar
-                              </button>
-                              <button className="btn btn-sm btn-outline-danger" onClick={() => handleApprovePublication(p.id, false)}>
-                                Rechazar
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        {!adminQueues.publications.length && <p className="text-muted mb-0">Sin pendientes.</p>}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+          >
+            {a.message}
           </div>
-        </div>
-
-        <div className="toast-container position-fixed bottom-0 end-0 p-3" style={{ zIndex: 1080 }}>
-          {alerts.map((a) => (
-            <div key={a.id} className={`toast align-items-center text-bg-${a.variant} show`}>
-              <div className="d-flex">
-                <div className="toast-body">{a.message}</div>
-                <button
-                  type="button"
-                  className="btn-close btn-close-white me-2 m-auto"
-                  onClick={() => setAlerts((prev) => prev.filter((x) => x.id !== a.id))}
-                ></button>
-              </div>
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
     </div>
   );

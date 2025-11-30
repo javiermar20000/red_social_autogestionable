@@ -6,6 +6,7 @@ import { Tenant, TenantEstado } from './entities/Tenant.js';
 import { Category, CategoriaTipo } from './entities/Category.js';
 import { Business, NegocioEstado, NegocioRangoPrecio, NegocioTipo } from './entities/Business.js';
 import { Publication, PublicacionEstado, PublicacionTipo } from './entities/Publication.js';
+import { Media, MediaTipo } from './entities/Media.js';
 import { PublicationCategory } from './entities/PublicationCategory.js';
 import { PublicationReview, RevisionResultado } from './entities/PublicationReview.js';
 import { In } from 'typeorm';
@@ -25,22 +26,62 @@ const getTenantIdFromRequest = (req: AuthRequest) => {
   return fromQuery || (typeof fromHeader === 'string' ? fromHeader : undefined) || req.auth?.tenantId || null;
 };
 
-const ensureTenantIsActive = async (tenantId: string) => {
+const ensureTenantIsActive = async (tenantId: string, options: { allowAutoActivate?: boolean } = {}) => {
+  const { allowAutoActivate = false } = options;
   const tenant = await runWithContext({ isAdmin: true }, (manager) =>
     manager.getRepository(Tenant).findOne({ where: { id: tenantId } })
   );
   if (!tenant) throw new Error('Tenant no encontrado');
-  if (tenant.estado !== TenantEstado.ACTIVO) throw new Error('El tenant debe estar activo');
+  if (tenant.estado !== TenantEstado.ACTIVO) {
+    if (allowAutoActivate && tenant.estado === TenantEstado.PENDIENTE_VALIDACION) {
+      await runWithContext({ isAdmin: true }, (manager) =>
+        manager.getRepository(Tenant).update({ id: tenantId }, { estado: TenantEstado.ACTIVO })
+      );
+      return { ...tenant, estado: TenantEstado.ACTIVO };
+    }
+    throw new Error('El tenant debe estar activo');
+  }
   return tenant;
 };
 
-const ensureUserReady = (user: User) => {
+const ensureUserReady = (user: User, options: { requireTenant?: boolean } = {}) => {
+  const { requireTenant = true } = options;
   if (user.estadoRegistro !== EstadoRegistroUsuario.ACTIVO) {
     throw new Error('Tu cuenta debe ser validada por un admin');
   }
-  if (!user.tenantId) {
+  if (requireTenant && !user.tenantId) {
     throw new Error('Debes tener un tenant asignado');
   }
+};
+
+const categoriaTiposCafe: CategoriaTipo[] = [
+  CategoriaTipo.ESPRESSO,
+  CategoriaTipo.AMERICANO,
+  CategoriaTipo.CAPPUCCINO,
+  CategoriaTipo.LATTE,
+  CategoriaTipo.MOCHA,
+  CategoriaTipo.FLAT_WHITE,
+  CategoriaTipo.MACCHIATO,
+  CategoriaTipo.COLD_BREW,
+  CategoriaTipo.AFFOGATO,
+];
+
+const categoriaTiposComida: CategoriaTipo[] = [
+  CategoriaTipo.PIZZA,
+  CategoriaTipo.SUSHI,
+  CategoriaTipo.HAMBURGUESAS,
+  CategoriaTipo.PASTAS,
+  CategoriaTipo.COMIDA_MEXICANA,
+  CategoriaTipo.COMIDA_CHINA,
+  CategoriaTipo.COMIDA_INDIAN,
+  CategoriaTipo.POSTRES,
+  CategoriaTipo.SANDWICHES,
+  CategoriaTipo.ENSALADAS,
+];
+
+const categoriasPermitidasPorNegocio: Partial<Record<NegocioTipo, CategoriaTipo[]>> = {
+  [NegocioTipo.CAFETERIA]: categoriaTiposCafe,
+  [NegocioTipo.RESTAURANTE]: categoriaTiposComida,
 };
 
 // ========================
@@ -318,13 +359,37 @@ router.post(
   requireRole([RolUsuario.OFERENTE]),
   asyncHandler(async (req: AuthRequest, res) => {
     const user = req.auth!.user!;
-    ensureUserReady(user);
-    const tenant = await ensureTenantIsActive(user.tenantId!);
+    ensureUserReady(user, { requireTenant: false });
     const { name, type, description, address, city, region, priceRange, latitude, longitude } = req.body;
     if (!name) return res.status(400).json({ message: 'Nombre es obligatorio' });
-    const business = await runWithContext({ tenantId: tenant.id }, (manager) =>
+
+    let tenant = null as Tenant | null;
+    if (user.tenantId) {
+      tenant = await ensureTenantIsActive(user.tenantId, { allowAutoActivate: true });
+    } else {
+      const tenantName = String(name || `Tenant de ${user.nombre}`).slice(0, 255);
+      tenant = await runWithContext({ isAdmin: true }, async (manager) => {
+        const repo = manager.getRepository(Tenant);
+        const created = repo.create({
+          nombre: tenantName,
+          dominio: null,
+          estado: TenantEstado.ACTIVO,
+          creadorOferenteId: user.id,
+          validadorAdminId: null,
+        });
+        const saved = await repo.save(created);
+        await manager.getRepository(User).update({ id: user.id }, { tenantId: saved.id });
+        return saved;
+      });
+      user.tenantId = tenant.id;
+    }
+
+    const tenantId = tenant?.id;
+    if (!tenantId) throw new Error('No se pudo crear o asociar un tenant');
+
+    const business = await runWithContext({ tenantId }, (manager) =>
       manager.getRepository(Business).save({
-        tenantId: tenant.id,
+        tenantId,
         ownerId: user.id,
         name,
         type: (type as NegocioTipo) || NegocioTipo.RESTAURANTE,
@@ -338,7 +403,7 @@ router.post(
         status: NegocioEstado.INACTIVO,
       })
     );
-    res.json({ business });
+    res.json({ business, tenant });
   })
 );
 
@@ -397,6 +462,14 @@ router.post(
         if (categories.length !== categoryIds.length) {
           throw new Error('Alguna categoría no existe en este tenant');
         }
+        const allowedTypes = categoriasPermitidasPorNegocio[business.type];
+        if (allowedTypes) {
+          const allowedSet = new Set(allowedTypes);
+          const invalidCategories = categories.filter((c) => !allowedSet.has(c.type));
+          if (invalidCategories.length) {
+            throw new Error('Alguna categoría no es válida para el tipo de negocio');
+          }
+        }
         validCategoryIds.push(...categories.map((c) => c.id));
       }
 
@@ -415,6 +488,23 @@ router.post(
         const links = validCategoryIds.map((cid) => ({ publicationId: saved.id, categoryId: cid }));
         await manager.getRepository(PublicationCategory).save(links);
       }
+
+      const mediaUrls: string[] = [];
+      const { mediaUrl, mediaUrls: mediaUrlsBody } = req.body as { mediaUrl?: string; mediaUrls?: string[] };
+      if (mediaUrl) mediaUrls.push(mediaUrl);
+      if (Array.isArray(mediaUrlsBody)) mediaUrls.push(...mediaUrlsBody.filter(Boolean));
+      if (mediaUrls.length) {
+        const mediaRepo = manager.getRepository(Media);
+        const records = mediaUrls.map((url, index) => ({
+          publicationId: saved.id,
+          url,
+          tipo: MediaTipo.IMAGEN,
+          orden: index,
+          descripcion: null,
+        }));
+        await mediaRepo.save(records);
+      }
+
       return saved;
     });
 
@@ -442,15 +532,112 @@ router.get(
         order: { fechaPublicacion: 'DESC', fechaCreacion: 'DESC' },
       });
       if (!rows.length) return [];
+      const publicationIds = rows.map((p) => p.id);
       const linkRepo = manager.getRepository(PublicationCategory);
-      const links = await linkRepo.find({ where: { publicationId: In(rows.map((p) => p.id)) } });
+      const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
+      const mediaRepo = manager.getRepository(Media);
+      const medias = await mediaRepo.find({ where: { publicationId: In(publicationIds) } });
+
       const grouped = links.reduce<Record<string, string[]>>((acc, link) => {
         acc[link.publicationId] = acc[link.publicationId] || [];
         acc[link.publicationId].push(link.categoryId);
         return acc;
       }, {});
-      return rows.map((p) => ({ ...p, categoryIds: grouped[p.id] || [] }));
+      const mediaGrouped = medias.reduce<Record<string, Media[]>>((acc, item) => {
+        acc[item.publicationId] = acc[item.publicationId] || [];
+        acc[item.publicationId].push(item);
+        return acc;
+      }, {});
+
+      return rows.map((p) => ({
+        ...p,
+        categoryIds: grouped[p.id] || [],
+        coverUrl: mediaGrouped[p.id]?.[0]?.url || null,
+      }));
     });
+    res.json(publications);
+  })
+);
+
+router.get(
+  '/feed/publications',
+  optionalAuthMiddleware,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const tenantId = getTenantIdFromRequest(req);
+    const statusFilter = PublicacionEstado.PUBLICADA;
+    const searchTerm = typeof req.query.search === 'string' ? req.query.search.toLowerCase() : '';
+    const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : null;
+    const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : null;
+
+    const fetchPublications = async (ctxTenantId: string | null) =>
+      runWithContext({ tenantId: ctxTenantId ?? undefined, isAdmin: ctxTenantId ? req.auth?.isAdminGlobal : true }, async (manager) => {
+        const businessRepo = manager.getRepository(Business);
+        const businesses = await businessRepo.find({
+          where: {
+            ...(ctxTenantId ? { tenantId: ctxTenantId } : {}),
+            status: NegocioEstado.ACTIVO,
+          },
+        });
+        const businessIds = businesses.map((b) => b.id);
+        if (!businessIds.length) return [];
+
+        const qb = manager.getRepository(Publication).createQueryBuilder('p');
+        qb.where('p.businessId IN (:...bizIds)', { bizIds: businessIds });
+        qb.andWhere('p.estado = :estado', { estado: statusFilter });
+        if (businessId) qb.andWhere('p.businessId = :businessId', { businessId });
+        if (categoryId) {
+          qb.andWhere(
+            'p.id IN (SELECT pc.publicacion_id FROM publicacion_categoria pc WHERE pc.categoria_id = :categoryId)',
+            { categoryId }
+          );
+        }
+        if (searchTerm) {
+          qb.andWhere('(LOWER(p.titulo) LIKE :term OR LOWER(p.contenido) LIKE :term)', { term: `%${searchTerm}%` });
+        }
+        qb.orderBy('p.fechaPublicacion', 'DESC').addOrderBy('p.fechaCreacion', 'DESC');
+        const rows = await qb.getMany();
+        if (!rows.length) return [];
+
+        const publicationIds = rows.map((p) => p.id);
+        const linkRepo = manager.getRepository(PublicationCategory);
+        const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
+        const mediaRepo = manager.getRepository(Media);
+        const medias = await mediaRepo.find({ where: { publicationId: In(publicationIds) } });
+        const categoryRepo = manager.getRepository(Category);
+        const categoryIds = [...new Set(links.map((l) => l.categoryId))];
+        const categoryEntities = categoryIds.length ? await categoryRepo.find({ where: { id: In(categoryIds) } }) : [];
+
+        const categoriesByPublication = links.reduce<Record<string, Category[]>>((acc, link) => {
+          const found = categoryEntities.find((c) => c.id === link.categoryId);
+          if (found) {
+            acc[link.publicationId] = acc[link.publicationId] || [];
+            acc[link.publicationId].push(found);
+          }
+          return acc;
+        }, {});
+
+        const mediaByPublication = medias.reduce<Record<string, Media[]>>((acc, media) => {
+          acc[media.publicationId] = acc[media.publicationId] || [];
+          acc[media.publicationId].push(media);
+          return acc;
+        }, {});
+
+        const businessMap = businesses.reduce<Record<string, Business>>((acc, biz) => {
+          acc[biz.id] = biz;
+          return acc;
+        }, {});
+
+        return rows.map((p) => ({
+          ...p,
+          categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
+          categories: categoriesByPublication[p.id] || [],
+          business: businessMap[p.businessId],
+          coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
+        }));
+      });
+
+    const publications = tenantId ? await fetchPublications(tenantId) : await fetchPublications(null);
+
     res.json(publications);
   })
 );

@@ -25,9 +25,6 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
             <Button variant="ghost" className="text-sm font-medium" onClick={onExplore}>
               Explorar
             </Button>
-            <Button variant="ghost" className="text-sm font-medium" onClick={onCreate}>
-              Crear
-            </Button>
           </nav>
         </div>
 

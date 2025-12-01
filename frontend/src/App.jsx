@@ -619,20 +619,6 @@ function App() {
       />
 
       <main className="container px-4 py-6 space-y-6">
-        <section className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm uppercase tracking-wide text-muted-foreground">Publicaciones aceptadas</p>
-            <h2 className="mt-1 text-3xl font-bold">GastroHub</h2>
-            <p className="text-muted-foreground">Explora todas las publicaciones públicas de la comunidad gastronómica.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={loadFeed}>
-              Actualizar
-            </Button>
-            <Button onClick={() => setCreateOpen(true)}>Crear</Button>
-          </div>
-        </section>
-
         <section className="rounded-2xl bg-card p-4 shadow-soft">
           <div className="flex flex-wrap items-center gap-2">
             <Button

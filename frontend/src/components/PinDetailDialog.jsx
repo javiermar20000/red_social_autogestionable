@@ -94,9 +94,6 @@ const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit }) =
                 <p className="font-semibold">{authorName || business?.name || 'GastroHub'}</p>
                 <p className="text-sm text-muted-foreground">{visitas} visitas</p>
               </div>
-              <Button size="sm" variant="outline" className="ml-auto rounded-full" onClick={() => onRegisterVisit?.(publication)}>
-                Registrar visita
-              </Button>
             </div>
 
             <div className="mt-6 flex items-center gap-3">

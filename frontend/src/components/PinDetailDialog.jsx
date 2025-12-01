@@ -5,7 +5,7 @@ import { Button } from './ui/Button.jsx';
 import { Avatar, AvatarFallback } from './ui/Avatar.jsx';
 import placeholderImg from '../assets/pin1.jpg';
 
-const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit }) => {
+const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit, onEdit, onDelete, currentUser }) => {
   useEffect(() => {
     if (open && publication?.id && onRegisterVisit) {
       onRegisterVisit(publication);
@@ -26,6 +26,9 @@ const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit }) =
     coverType,
     precio,
   } = publication;
+  const canManage =
+    (currentUser?.rol === 'OFERENTE' && publication.authorId && publication.authorId === currentUser.id) ||
+    currentUser?.role === 'admin';
   const isVideo =
     coverType === 'VIDEO' ||
     (typeof coverUrl === 'string' && (coverUrl.startsWith('data:video') || /\.(mp4|webm|ogg)(\?.*)?$/i.test(coverUrl)));
@@ -61,9 +64,21 @@ const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit }) =
                   </span>
                 )}
               </div>
-              <Button size="icon" variant="ghost" className="rounded-full">
-                <MoreHorizontal className="h-5 w-5" />
-              </Button>
+              <div className="flex items-center gap-2">
+                {canManage && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => onEdit?.(publication)}>
+                      Editar
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => onDelete?.(publication.id)}>
+                      Eliminar
+                    </Button>
+                  </>
+                )}
+                <Button size="icon" variant="ghost" className="rounded-full">
+                  <MoreHorizontal className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
 
             <DialogHeader className="items-start text-left">

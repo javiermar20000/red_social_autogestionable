@@ -13,6 +13,7 @@ const statusClasses = {
 const PinCard = ({ publication, onSelect }) => {
   const [isHovered, setIsHovered] = useState(false);
   const mediaSrc = publication.coverUrl || publication.placeholder || placeholderImg;
+  const categories = publication.categories || [];
   const statusClass = statusClasses[publication.estado] || 'bg-slate-700 text-white';
   const isVideo =
     publication.coverType === 'VIDEO' ||
@@ -102,6 +103,15 @@ const PinCard = ({ publication, onSelect }) => {
           </div>
         </div>
       </div>
+      {!!categories.length && (
+        <div className="flex flex-wrap gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
+          {categories.map((cat) => (
+            <span key={cat.id || cat} className="rounded-full bg-secondary px-3 py-1 text-[11px] font-semibold text-secondary-foreground">
+              {cat.name || cat}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

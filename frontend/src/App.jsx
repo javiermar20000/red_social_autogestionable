@@ -135,6 +135,29 @@ function App() {
   });
 
   const [adminQueues, setAdminQueues] = useState({ tenants: [], users: [], businesses: [], publications: [] });
+  const [myPublications, setMyPublications] = useState([]);
+  const [loadingMyPublications, setLoadingMyPublications] = useState(false);
+  const [editingPublicationId, setEditingPublicationId] = useState(null);
+
+  const resetPublicationForm = () => {
+    setPublicationForm({
+      titulo: '',
+      contenido: '',
+      tipo: 'AVISO_GENERAL',
+      fechaFinVigencia: '',
+      categoryIds: [],
+      businessId: '',
+      mediaUrl: '',
+      mediaType: 'IMAGEN',
+      precio: '',
+    });
+    setEditingPublicationId(null);
+  };
+
+  const openCreateDialog = () => {
+    resetPublicationForm();
+    setCreateOpen(true);
+  };
 
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
   const isAdmin = currentUser?.role === 'admin';
@@ -233,13 +256,44 @@ function App() {
       if (filters.search) params.set('search', filters.search);
       if (filters.categoryId) params.set('categoryId', filters.categoryId);
       if (filters.businessId) params.set('businessId', filters.businessId);
-      const data = await fetchJson(`/feed/publications?${params.toString()}`, { headers: authHeaders });
+      if (currentUser?.rol === 'OFERENTE') params.set('mine', 'true');
+      const tenantParam = selectedTenantId || currentUser?.tenantId;
+      if (tenantParam) params.set('tenantId', tenantParam);
+      const query = params.toString();
+      const data = await fetchJson(`/feed/publications${query ? `?${query}` : ''}`, { headers: authHeaders });
       setFeed(data);
     } catch (err) {
       notify('danger', err.message);
       setFeed([]);
     } finally {
       setLoadingFeed(false);
+    }
+  };
+
+  const loadMyPublications = async () => {
+    if (!isOferente) {
+      setMyPublications([]);
+      setLoadingMyPublications(false);
+      return;
+    }
+    setLoadingMyPublications(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedTenantId) params.set('tenantId', selectedTenantId);
+      const query = params.toString();
+      const data = await fetchJson(`/publications/mine${query ? `?${query}` : ''}`, { headers: authHeaders });
+      const decorated = data.map((item, idx) => {
+        const fallbackCover = placeholderImages[(Number(item.id) || idx) % placeholderImages.length];
+        const coverUrl = item.coverUrl || fallbackCover;
+        const coverType = item.coverType || detectMediaTypeFromUrl(item.coverUrl || '');
+        return { ...item, coverUrl, coverType };
+      });
+      setMyPublications(decorated);
+    } catch (err) {
+      notify('danger', err.message);
+      setMyPublications([]);
+    } finally {
+      setLoadingMyPublications(false);
     }
   };
 
@@ -284,11 +338,17 @@ function App() {
       loadFeed();
     }, 300);
     return () => clearTimeout(timeout);
-  }, [filters.search, filters.categoryId, filters.businessId, currentUser]);
+  }, [filters.search, filters.categoryId, filters.businessId, currentUser, selectedTenantId]);
 
   useEffect(() => {
     loadAdminQueues();
   }, [currentUser]);
+
+  useEffect(() => {
+    if (isOferente) {
+      loadMyPublications();
+    }
+  }, [isOferente, selectedTenantId]);
 
   const activePublicationBusinessId = useMemo(
     () => publicationForm.businessId || filters.businessId || businesses[0]?.id || '',
@@ -300,13 +360,22 @@ function App() {
     [businesses, activePublicationBusinessId]
   );
 
+  const categorizedCategories = useMemo(() => {
+    const categoria_cafe = categories.filter((c) => cafeCategoryTypes.includes(c.type));
+    const categoria_restaurant = categories.filter((c) => foodCategoryTypes.includes(c.type));
+    const otros = categories.filter(
+      (c) => !categoria_cafe.includes(c) && !categoria_restaurant.includes(c)
+    );
+    return { categoria_cafe, categoria_restaurant, otros };
+  }, [categories]);
+
   const filteredCategoriesForPublication = useMemo(() => {
     const businessType = selectedBusinessForPublication?.type;
-    const allowedTypes = businessType ? categoriesByBusinessType[businessType] : null;
-    if (!allowedTypes) return categories;
-    const allowedSet = new Set(allowedTypes);
-    return categories.filter((cat) => allowedSet.has(cat.type));
-  }, [categories, selectedBusinessForPublication]);
+    if (!businessType) return categories;
+    if (businessType === 'CAFETERIA') return categorizedCategories.categoria_cafe;
+    if (businessType === 'RESTAURANTE') return categorizedCategories.categoria_restaurant;
+    return categories;
+  }, [categories, categorizedCategories, selectedBusinessForPublication]);
 
   useEffect(() => {
     if (!publicationForm.businessId && businesses.length) {
@@ -371,6 +440,9 @@ function App() {
     setCurrentUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    setMyPublications([]);
+    setEditingPublicationId(null);
+    resetPublicationForm();
     setTenantInfo(null);
     notify('info', 'Sesión cerrada');
   };
@@ -463,13 +535,46 @@ function App() {
     }
   };
 
+  const handleEditPublication = (publication) => {
+    setEditingPublicationId(publication.id);
+    setPublicationForm({
+      titulo: publication.titulo || '',
+      contenido: publication.contenido || '',
+      tipo: publication.tipo || 'AVISO_GENERAL',
+      fechaFinVigencia: publication.fechaFinVigencia ? String(publication.fechaFinVigencia).slice(0, 10) : '',
+      categoryIds:
+        publication.categoryIds ||
+        (publication.categories || []).map((c) => c.id || c).filter(Boolean) ||
+        [],
+      businessId: publication.businessId || publication.business?.id || '',
+      mediaUrl: publication.coverUrl || '',
+      mediaType: publication.coverType || detectMediaTypeFromUrl(publication.coverUrl || ''),
+      precio: publication.precio === null || publication.precio === undefined ? '' : publication.precio,
+    });
+    setCreateOpen(true);
+  };
+
+  const handleDeletePublication = async (publicationId) => {
+    const confirmed = window.confirm('¿Eliminar esta publicación?');
+    if (!confirmed) return;
+    try {
+      await fetchJson(`/publications/${publicationId}`, { method: 'DELETE', headers: authHeaders });
+      notify('success', 'Publicación eliminada');
+      loadFeed();
+      loadMyPublications();
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
   const handleCreatePublication = async (e) => {
     e.preventDefault();
     const businessId = activePublicationBusinessId;
     if (!businessId) return notify('danger', 'Selecciona un negocio para publicar');
+    const isEditing = Boolean(editingPublicationId);
     try {
-      await fetchJson(`/businesses/${businessId}/publications`, {
-        method: 'POST',
+      await fetchJson(isEditing ? `/publications/${editingPublicationId}` : `/businesses/${businessId}/publications`, {
+        method: isEditing ? 'PUT' : 'POST',
         headers: authHeaders,
         body: JSON.stringify({
           titulo: publicationForm.titulo,
@@ -483,19 +588,11 @@ function App() {
           precio: publicationForm.precio === '' ? null : Number(publicationForm.precio),
         }),
       });
-      notify('success', 'Publicación creada y enviada a validación');
-      setPublicationForm({
-        titulo: '',
-        contenido: '',
-        tipo: 'AVISO_GENERAL',
-        fechaFinVigencia: '',
-        categoryIds: [],
-        businessId: '',
-        mediaUrl: '',
-        mediaType: 'IMAGEN',
-        precio: '',
-      });
+      notify('success', isEditing ? 'Publicación actualizada' : 'Publicación creada y enviada a validación');
+      resetPublicationForm();
+      setCreateOpen(false);
       loadFeed();
+      loadMyPublications();
       loadAdminQueues();
     } catch (err) {
       notify('danger', err.message);
@@ -613,7 +710,7 @@ function App() {
         search={filters.search}
         onSearchChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
         onExplore={() => setExploreOpen(true)}
-        onCreate={() => setCreateOpen(true)}
+        onCreate={openCreateDialog}
         onAuth={() => setAuthOpen(true)}
         onLogout={handleLogout}
         currentUser={currentUser}
@@ -638,6 +735,54 @@ function App() {
           )}
         </section>
 
+        {isOferente && (
+          <section className="rounded-2xl bg-card p-5 shadow-soft">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Tus publicaciones</p>
+                <h4 className="text-xl font-semibold">Gestiona y edita lo que ya publicaste</h4>
+              </div>
+              <Button variant="outline" onClick={openCreateDialog}>
+                Nueva publicación
+              </Button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {loadingMyPublications && <p className="text-sm text-muted-foreground">Cargando tus publicaciones...</p>}
+              {!loadingMyPublications && !myPublications.length && (
+                <p className="text-sm text-muted-foreground">Aún no tienes publicaciones creadas.</p>
+              )}
+              {myPublications.map((pub) => (
+                <div
+                  key={pub.id}
+                  className="flex flex-col gap-3 rounded-xl border border-border bg-muted/40 p-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">
+                      {pub.estado} · {pub.business?.name || 'Negocio'}
+                    </p>
+                    <h5 className="text-lg font-semibold">{pub.titulo}</h5>
+                    <div className="flex flex-wrap gap-2">
+                      {(pub.categories || []).map((cat) => (
+                        <span key={cat.id || cat} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
+                          {cat.name || cat}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleEditPublication(pub)}>
+                      Editar
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDeletePublication(pub.id)}>
+                      Eliminar
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {(isOferente || isAdmin) && (
           <section className="rounded-2xl bg-card p-5 shadow-soft">
             <div className="flex items-center justify-between">
@@ -645,7 +790,7 @@ function App() {
                 <p className="text-sm text-muted-foreground">Gestión rápida</p>
                 <h4 className="text-xl font-semibold">Negocios y categorías</h4>
               </div>
-              <Button variant="outline" onClick={() => setCreateOpen(true)}>
+              <Button variant="outline" onClick={openCreateDialog}>
                 Abrir panel de creación
               </Button>
             </div>
@@ -841,12 +986,10 @@ function App() {
               </Button>
             </div>
           ) : (
-            <Tabs defaultValue="publicacion" className="mt-4">
-              <TabsList className="w-full grid grid-cols-2 md:grid-cols-4">
+            <Tabs defaultValue="publicacion" className="mt-2">
+              <TabsList className="w-full grid grid-cols-2 md:grid-cols-2">
                 <TabsTrigger value="publicacion">Publicación</TabsTrigger>
                 <TabsTrigger value="negocio">Negocio</TabsTrigger>
-                {(isOferente || isAdmin) && <TabsTrigger value="tenant">Tenant</TabsTrigger>}
-                {(isOferente || isAdmin) && <TabsTrigger value="categoria">Categoría</TabsTrigger>}
               </TabsList>
 
               <TabsContent value="publicacion" className="mt-4">
@@ -992,7 +1135,16 @@ function App() {
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <Button type="submit">Publicar (queda pendiente de validación)</Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="submit">
+                        {editingPublicationId ? 'Actualizar publicación' : 'Publicar (queda pendiente de validación)'}
+                      </Button>
+                      {editingPublicationId && (
+                        <Button type="button" variant="outline" onClick={resetPublicationForm}>
+                          Cancelar edición
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </form>
               </TabsContent>
@@ -1156,6 +1308,19 @@ function App() {
         onOpenChange={(open) => !open && setSelectedPublication(null)}
         publication={selectedPublication}
         onRegisterVisit={handleRegisterVisit}
+        onEdit={(pub) => {
+          if (pub) {
+            handleEditPublication(pub);
+            setSelectedPublication(null);
+          }
+        }}
+        onDelete={(id) => {
+          if (id) {
+            handleDeletePublication(id);
+            setSelectedPublication(null);
+          }
+        }}
+        currentUser={currentUser}
       />
 
       <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">

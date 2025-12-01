@@ -82,6 +82,7 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [exploreOpen, setExploreOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const currentYear = new Date().getFullYear();
 
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -789,6 +790,22 @@ function App() {
           </section>
         )}
       </main>
+
+      <footer className="border-t border-border bg-card/80">
+        <div className="container px-4 py-8 space-y-6 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Sobre la app</p>
+            <p className="max-w-3xl text-sm text-muted-foreground">
+              GastroHub es la red social autogestionable para negocios gastronómicos: comparte novedades, gestiona tus
+              locales y deja que la comunidad descubra tus productos en un feed curado.
+            </p>
+          </div>
+          <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
+            <p>Creado para comunidades que se autogestionan y comparten gastronomía local.</p>
+            <p>© {currentYear} GastroHub. Todos los derechos reservados.</p>
+          </div>
+        </div>
+      </footer>
 
       <AuthDialog
         open={authOpen}

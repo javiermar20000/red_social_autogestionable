@@ -619,28 +619,6 @@ function App() {
       />
 
       <main className="container px-4 py-6 space-y-6">
-        <section className="rounded-2xl bg-card p-4 shadow-soft">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant={filters.categoryId ? 'outline' : 'secondary'}
-              onClick={() => setFilters((prev) => ({ ...prev, categoryId: '' }))}
-            >
-              Todas las categorías
-            </Button>
-            {derivedCategories.map((cat) => (
-              <Button
-                key={cat.id}
-                size="sm"
-                variant={filters.categoryId === cat.id ? 'default' : 'outline'}
-                onClick={() => setFilters((prev) => ({ ...prev, categoryId: cat.id }))}
-              >
-                {cat.name}
-              </Button>
-            ))}
-          </div>
-        </section>
-
         <section>
           {loadingFeed ? (
             <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">

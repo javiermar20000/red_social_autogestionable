@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Search, Heart, Bell, User, LogOut, PlusCircle, Menu, X } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
 import { Input } from './ui/Input.jsx';
+import logo from '../assets/logo_gastrohub.png';
 
 const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout, currentUser }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -17,7 +18,7 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="container relative flex h-16 items-center justify-between px-4 gap-3">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-primary">GastroHub</h1>
+          <img src={logo} alt="GastroHub" className="h-10 w-auto" />
           <nav className="hidden items-center gap-2 md:flex">
             <Button variant="ghost" className="text-sm font-medium" onClick={() => onSearchChange('')}>
               Inicio

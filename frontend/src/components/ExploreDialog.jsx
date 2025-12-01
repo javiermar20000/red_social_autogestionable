@@ -17,7 +17,7 @@ const ExploreDialog = ({ open, onOpenChange, categories = [], selectedCategoryId
     : [
         { id: 'CAFETERIA', name: 'Cafeterías', type: 'CAFETERIA' },
         { id: 'RESTAURANTE', name: 'Restaurantes', type: 'RESTAURANTE' },
-        { id: 'TIENDA', name: 'Tiendas', type: 'TIENDA' },
+        { id: 'TIENDA', name: 'Filtrar', type: 'TIENDA' },
       ];
 
   return (

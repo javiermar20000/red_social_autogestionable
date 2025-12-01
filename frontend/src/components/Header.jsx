@@ -94,7 +94,7 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
                       </p>
                     </>
                   ) : (
-                    <p className="text-sm font-medium">Bienvenido a GastroHub</p>
+                    <p className="text-sm font-medium text-center">Bienvenido a GastroHub</p>
                   )}
                 </div>
                 <div className="flex flex-col gap-1 p-2">
@@ -109,7 +109,11 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
                   </Button>
                   <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onExplore)}>
                     <Bell className="h-5 w-5" />
-                    Explorar categorías
+                    Notificaciones
+                  </Button>
+                  <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onExplore)}>
+                    <Heart className="h-5 w-5" />
+                    Me gusta
                   </Button>
                   <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onExplore)}>
                     <Heart className="h-5 w-5" />

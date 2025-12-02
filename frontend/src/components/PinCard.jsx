@@ -10,6 +10,12 @@ const statusClasses = {
   INACTIVA: 'bg-slate-400 text-white',
 };
 
+const formatCategoryLabel = (cat) => {
+  const type = cat?.type;
+  const name = cat?.name || type || cat;
+  return type && name && type !== name ? `${type} · ${name}` : name;
+};
+
 const PinCard = ({ publication, onSelect }) => {
   const [isHovered, setIsHovered] = useState(false);
   const mediaSrc = publication.coverUrl || publication.placeholder || placeholderImg;
@@ -24,6 +30,7 @@ const PinCard = ({ publication, onSelect }) => {
       : `$${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(
           Number(publication.precio)
         )}`;
+  const mainCategoryLabel = categories.length ? formatCategoryLabel(categories[0]) : null;
 
   return (
     <div
@@ -61,6 +68,11 @@ const PinCard = ({ publication, onSelect }) => {
             {publication.business?.type && (
               <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800">
                 {publication.business.type}
+              </span>
+            )}
+            {mainCategoryLabel && (
+              <span className="rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-800">
+                {mainCategoryLabel}
               </span>
             )}
           </div>
@@ -107,7 +119,7 @@ const PinCard = ({ publication, onSelect }) => {
         <div className="flex flex-wrap gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
           {categories.map((cat) => (
             <span key={cat.id || cat} className="rounded-full bg-secondary px-3 py-1 text-[11px] font-semibold text-secondary-foreground">
-              {cat.name || cat}
+              {formatCategoryLabel(cat)}
             </span>
           ))}
         </div>

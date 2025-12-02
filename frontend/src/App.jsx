@@ -69,6 +69,32 @@ const categoriesByBusinessType = {
   RESTAURANTE: foodCategoryTypes,
 };
 
+const normalizeCategory = (cat, fallbackList = []) => {
+  if (!cat) return null;
+  if (typeof cat === 'string') {
+    const found = fallbackList.find((c) => String(c.id) === String(cat));
+    if (found) return normalizeCategory(found, fallbackList);
+    return { id: String(cat), name: String(cat), type: String(cat) };
+  }
+  const id = cat.id ?? cat.slug ?? cat.type ?? cat.name;
+  const type = cat.type || cat.name || (cat.id ? String(cat.id) : '');
+  const name = cat.name || type || (id ? String(id) : '');
+  return { ...cat, id: id ? String(id) : name, name, type: type || name };
+};
+
+const formatCategoryLabel = (cat) => {
+  if (!cat) return '';
+  const type = cat.type || '';
+  const name = cat.name || type || cat.id || '';
+  return type && name && type !== name ? `${type} · ${name}` : name || type;
+};
+
+const humanizeCategoryType = (type = '') =>
+  type
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
 const detectMediaTypeFromUrl = (value = '') => {
   if (!value) return 'IMAGEN';
   const lower = value.toLowerCase();
@@ -128,6 +154,7 @@ function App() {
     tipo: 'AVISO_GENERAL',
     fechaFinVigencia: '',
     categoryIds: [],
+    categoryTypes: [],
     businessId: '',
     mediaUrl: '',
     mediaType: 'IMAGEN',
@@ -146,6 +173,7 @@ function App() {
       tipo: 'AVISO_GENERAL',
       fechaFinVigencia: '',
       categoryIds: [],
+      categoryTypes: [],
       businessId: '',
       mediaUrl: '',
       mediaType: 'IMAGEN',
@@ -222,16 +250,19 @@ function App() {
     }
   };
 
-  const loadCategories = async () => {
-    if (!selectedTenantId) {
+  const loadCategories = async (tenantIdOverride) => {
+    const tenantToUse = tenantIdOverride || selectedTenantId;
+    if (!tenantToUse) {
       setCategories([]);
-      return;
+      return [];
     }
     try {
-      const data = await fetchJson(`/categories?tenantId=${selectedTenantId}`, { headers: authHeaders });
+      const data = await fetchJson(`/categories?tenantId=${tenantToUse}`, { headers: authHeaders });
       setCategories(data);
+      return data;
     } catch (err) {
       notify('danger', err.message);
+      return [];
     }
   };
 
@@ -286,7 +317,17 @@ function App() {
         const fallbackCover = placeholderImages[(Number(item.id) || idx) % placeholderImages.length];
         const coverUrl = item.coverUrl || fallbackCover;
         const coverType = item.coverType || detectMediaTypeFromUrl(item.coverUrl || '');
-        return { ...item, coverUrl, coverType };
+        const normalizedCategories = (item.categories || [])
+          .map((cat) => normalizeCategory(cat, categories))
+          .filter(Boolean);
+        const categoryIds = normalizedCategories.map((c) => c.id);
+        return {
+          ...item,
+          coverUrl,
+          coverType,
+          categories: normalizedCategories,
+          categoryIds: item.categoryIds || categoryIds,
+        };
       });
       setMyPublications(decorated);
     } catch (err) {
@@ -360,22 +401,13 @@ function App() {
     [businesses, activePublicationBusinessId]
   );
 
-  const categorizedCategories = useMemo(() => {
-    const categoria_cafe = categories.filter((c) => cafeCategoryTypes.includes(c.type));
-    const categoria_restaurant = categories.filter((c) => foodCategoryTypes.includes(c.type));
-    const otros = categories.filter(
-      (c) => !categoria_cafe.includes(c) && !categoria_restaurant.includes(c)
-    );
-    return { categoria_cafe, categoria_restaurant, otros };
-  }, [categories]);
-
-  const filteredCategoriesForPublication = useMemo(() => {
+  const allowedCategoryTypesForBusiness = useMemo(() => {
     const businessType = selectedBusinessForPublication?.type;
-    if (!businessType) return categories;
-    if (businessType === 'CAFETERIA') return categorizedCategories.categoria_cafe;
-    if (businessType === 'RESTAURANTE') return categorizedCategories.categoria_restaurant;
-    return categories;
-  }, [categories, categorizedCategories, selectedBusinessForPublication]);
+    if (businessType && categoriesByBusinessType[businessType]) {
+      return categoriesByBusinessType[businessType];
+    }
+    return categoryTypes;
+  }, [selectedBusinessForPublication, categoryTypes]);
 
   useEffect(() => {
     if (!publicationForm.businessId && businesses.length) {
@@ -384,13 +416,13 @@ function App() {
   }, [businesses, publicationForm.businessId]);
 
   useEffect(() => {
-    const allowedIds = new Set(filteredCategoriesForPublication.map((c) => c.id));
+    const allowed = new Set((allowedCategoryTypesForBusiness || []).map((t) => String(t)));
     setPublicationForm((prev) => {
-      const filteredIds = prev.categoryIds.filter((id) => allowedIds.has(id));
-      if (filteredIds.length === prev.categoryIds.length) return prev;
-      return { ...prev, categoryIds: filteredIds };
+      const filteredTypes = (prev.categoryTypes || []).filter((t) => allowed.has(String(t)));
+      if (filteredTypes.length === (prev.categoryTypes || []).length) return prev;
+      return { ...prev, categoryTypes: filteredTypes, categoryIds: filteredTypes.length ? prev.categoryIds : [] };
     });
-  }, [filteredCategoriesForPublication]);
+  }, [allowedCategoryTypesForBusiness]);
 
   const handleLogin = async (credentials) => {
     setAuthLoading(true);
@@ -544,7 +576,12 @@ function App() {
       fechaFinVigencia: publication.fechaFinVigencia ? String(publication.fechaFinVigencia).slice(0, 10) : '',
       categoryIds:
         publication.categoryIds ||
-        (publication.categories || []).map((c) => c.id || c).filter(Boolean) ||
+        (publication.categories || []).map((c) => (c?.id ? String(c.id) : String(c))).filter(Boolean) ||
+        [],
+      categoryTypes:
+        (publication.categories || [])
+          .map((c) => c?.type)
+          .filter(Boolean) ||
         [],
       businessId: publication.businessId || publication.business?.id || '',
       mediaUrl: publication.coverUrl || '',
@@ -572,6 +609,47 @@ function App() {
     const businessId = activePublicationBusinessId;
     if (!businessId) return notify('danger', 'Selecciona un negocio para publicar');
     const isEditing = Boolean(editingPublicationId);
+    const businessForPublication =
+      businesses.find((b) => String(b.id) === String(businessId)) || selectedBusinessForPublication;
+    const tenantForCategories =
+      businessForPublication?.tenantId || selectedTenantId || tenantInfo?.id || currentUser?.tenantId || null;
+    const selectedCategoryTypes = publicationForm.categoryTypes || [];
+    let categoryIdsToSend = publicationForm.categoryIds || [];
+    if (selectedCategoryTypes.length) {
+      if (!tenantForCategories) return notify('danger', 'No se pudo determinar el tenant para las categorías');
+      try {
+        const createdIds = await Promise.all(
+          selectedCategoryTypes.map(async (type) => {
+            const existing = categories.find(
+              (c) => c.type === type && String(c.tenantId) === String(tenantForCategories)
+            );
+            if (existing) return String(existing.id);
+            const name = humanizeCategoryType(type);
+            try {
+              const created = await fetchJson('/categories', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ name, type, tenantId: tenantForCategories }),
+              });
+              return String(created.id);
+            } catch (err) {
+              // Si ya existe, recarga y busca de nuevo
+              const refreshed = await loadCategories(tenantForCategories);
+              const found = refreshed.find(
+                (c) => c.type === type && String(c.tenantId) === String(tenantForCategories)
+              );
+              if (found) return String(found.id);
+              throw err;
+            }
+          })
+        );
+        categoryIdsToSend = createdIds.filter(Boolean);
+        await loadCategories(tenantForCategories);
+      } catch (err) {
+        notify('danger', err.message);
+        return;
+      }
+    }
     try {
       await fetchJson(isEditing ? `/publications/${editingPublicationId}` : `/businesses/${businessId}/publications`, {
         method: isEditing ? 'PUT' : 'POST',
@@ -581,7 +659,7 @@ function App() {
           contenido: publicationForm.contenido,
           tipo: publicationForm.tipo,
           businessId,
-          categoryIds: publicationForm.categoryIds,
+          categoryIds: categoryIdsToSend,
           fechaFinVigencia: publicationForm.fechaFinVigencia || undefined,
           mediaUrl: publicationForm.mediaUrl || undefined,
           mediaType: publicationForm.mediaType,
@@ -678,14 +756,20 @@ function App() {
             : Number.isFinite(Number(item.precio))
             ? Number(item.precio)
             : null;
+        const rawCategories =
+          item.categories && item.categories.length
+            ? item.categories
+            : (item.categoryIds || []).map(
+                (cid) => categories.find((c) => String(c.id) === String(cid)) || { id: cid, name: cid }
+              );
+        const normalizedCategories = rawCategories.map((cat) => normalizeCategory(cat, categories)).filter(Boolean);
         return {
           ...item,
           coverUrl,
           coverType,
           precio,
-          categories:
-            item.categories ||
-            (item.categoryIds || []).map((cid) => categories.find((c) => c.id === cid) || { id: cid, name: cid }),
+          categories: normalizedCategories,
+          categoryIds: item.categoryIds || normalizedCategories.map((c) => c.id),
           business: item.business || businesses.find((b) => b.id === item.businessId),
         };
       }),
@@ -698,7 +782,8 @@ function App() {
       (pub.categories || []).forEach((cat) => {
         const id = cat.id || cat;
         const name = cat.name || cat;
-        if (!map.has(id)) map.set(id, { id, name });
+        const type = cat.type || cat.name || cat;
+        if (!map.has(id)) map.set(id, { id, name, type });
       });
     });
     return Array.from(map.values());
@@ -764,7 +849,7 @@ function App() {
                     <div className="flex flex-wrap gap-2">
                       {(pub.categories || []).map((cat) => (
                         <span key={cat.id || cat} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
-                          {cat.name || cat}
+                          {formatCategoryLabel(cat)}
                         </span>
                       ))}
                     </div>
@@ -1095,23 +1180,16 @@ function App() {
                   </div>
                   <div className="md:col-span-2">
                     <Label>Categorías</Label>
-                    {selectedBusinessForPublication?.type && categoriesByBusinessType[selectedBusinessForPublication.type] ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Solo verás categorías permitidas para un{' '}
-                        {selectedBusinessForPublication.type === 'CAFETERIA' ? 'negocio de cafetería' : 'restaurante'}.
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Si el negocio no es restaurante o cafetería se muestran todas las categorías disponibles.
-                      </p>
-                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Selecciona las categorías permitidas para este negocio. Se crean automáticamente si aún no existen.
+                    </p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {filteredCategoriesForPublication.map((c) => {
-                        const checked = publicationForm.categoryIds.includes(c.id);
+                      {allowedCategoryTypesForBusiness.map((type) => {
+                        const checked = (publicationForm.categoryTypes || []).includes(type);
                         return (
                           <button
                             type="button"
-                            key={c.id}
+                            key={type}
                             className={cn(
                               'rounded-full border px-3 py-1 text-xs',
                               checked ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-secondary-foreground'
@@ -1119,18 +1197,19 @@ function App() {
                             onClick={() =>
                               setPublicationForm((prev) => ({
                                 ...prev,
-                                categoryIds: checked
-                                  ? prev.categoryIds.filter((id) => id !== c.id)
-                                  : [...prev.categoryIds, c.id],
+                                categoryTypes: checked
+                                  ? (prev.categoryTypes || []).filter((t) => t !== type)
+                                  : [...(prev.categoryTypes || []), type],
+                                categoryIds: [],
                               }))
                             }
                           >
-                            {c.name}
+                            {formatCategoryLabel({ type, name: humanizeCategoryType(type) })}
                           </button>
                         );
                       })}
-                      {!filteredCategoriesForPublication.length && (
-                        <p className="text-sm text-muted-foreground">Crea una categoría del tipo correspondiente primero.</p>
+                      {!allowedCategoryTypesForBusiness.length && (
+                        <p className="text-sm text-muted-foreground">Selecciona primero un negocio para ver sus categorías.</p>
                       )}
                     </div>
                   </div>

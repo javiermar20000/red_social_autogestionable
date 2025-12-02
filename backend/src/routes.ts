@@ -623,10 +623,21 @@ router.get(
       const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
       const mediaRepo = manager.getRepository(Media);
       const medias = await mediaRepo.find({ where: { publicationId: In(publicationIds) } });
+      const categoryRepo = manager.getRepository(Category);
+      const categoryIds = [...new Set(links.map((l) => l.categoryId))];
+      const categoryEntities = categoryIds.length ? await categoryRepo.find({ where: { id: In(categoryIds) } }) : [];
 
       const grouped = links.reduce<Record<string, string[]>>((acc, link) => {
         acc[link.publicationId] = acc[link.publicationId] || [];
         acc[link.publicationId].push(link.categoryId);
+        return acc;
+      }, {});
+      const categoriesByPublication = links.reduce<Record<string, Category[]>>((acc, link) => {
+        const found = categoryEntities.find((c) => c.id === link.categoryId);
+        if (found) {
+          acc[link.publicationId] = acc[link.publicationId] || [];
+          acc[link.publicationId].push(found);
+        }
         return acc;
       }, {});
       const mediaGrouped = medias.reduce<Record<string, Media[]>>((acc, item) => {
@@ -638,6 +649,7 @@ router.get(
       return rows.map((p) => ({
         ...p,
         categoryIds: grouped[p.id] || [],
+        categories: categoriesByPublication[p.id] || [],
         coverUrl: mediaGrouped[p.id]?.[0]?.url || null,
         coverType: mediaGrouped[p.id]?.[0]?.tipo || null,
       }));

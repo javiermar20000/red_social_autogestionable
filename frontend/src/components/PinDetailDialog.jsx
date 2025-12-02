@@ -5,6 +5,12 @@ import { Button } from './ui/Button.jsx';
 import { Avatar, AvatarFallback } from './ui/Avatar.jsx';
 import placeholderImg from '../assets/pin1.jpg';
 
+const formatCategoryLabel = (cat) => {
+  const type = cat?.type;
+  const name = cat?.name || type || cat;
+  return type && name && type !== name ? `${type} · ${name}` : name;
+};
+
 const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit, onEdit, onDelete, currentUser }) => {
   useEffect(() => {
     if (open && publication?.id && onRegisterVisit) {
@@ -91,13 +97,18 @@ const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit, onE
             {formattedPrice && <p className="mt-2 text-sm font-semibold text-emerald-700">{formattedPrice}</p>}
             <p className="mt-4 text-muted-foreground leading-relaxed whitespace-pre-line">{contenido}</p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {categories.map((cat) => (
-                <span key={cat.id || cat} className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
-                  {cat.name || cat}
-                </span>
-              ))}
-            </div>
+            {categories.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo de alimento</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {categories.map((cat) => (
+                    <span key={cat.id || cat} className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
+                      {formatCategoryLabel(cat)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mt-6 flex items-center gap-3">
               <Avatar>

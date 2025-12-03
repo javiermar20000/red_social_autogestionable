@@ -31,6 +31,7 @@ const PinCard = ({ publication, onSelect }) => {
           Number(publication.precio)
         )}`;
   const mainCategoryLabel = categories.length ? formatCategoryLabel(categories[0]) : null;
+  const displayPrice = formattedPrice || 'Sin precio';
 
   return (
     <div
@@ -77,18 +78,6 @@ const PinCard = ({ publication, onSelect }) => {
             )}
           </div>
 
-          <div className="absolute right-3 top-3 flex gap-2">
-            {formattedPrice && (
-              <span className="rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white">{formattedPrice}</span>
-            )}
-            <Button size="sm" variant="secondary" className="h-9 rounded-full px-4 font-semibold" onClick={(e) => e.stopPropagation()}>
-              Ver más
-            </Button>
-            <Button size="icon" variant="secondary" className="h-9 w-9 rounded-full" onClick={(e) => e.stopPropagation()}>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
             <div className="text-white">
               <h3 className="line-clamp-1 text-sm font-semibold">{publication.titulo}</h3>
@@ -115,15 +104,10 @@ const PinCard = ({ publication, onSelect }) => {
           </div>
         </div>
       </div>
-      {!!categories.length && (
-        <div className="flex flex-wrap gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
-          {categories.map((cat) => (
-            <span key={cat.id || cat} className="rounded-full bg-secondary px-3 py-1 text-[11px] font-semibold text-secondary-foreground">
-              {formatCategoryLabel(cat)}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-col items-center justify-center bg-red-600 px-4 py-3 text-center text-white">
+        <p className="text-sm font-semibold">{publication.titulo}</p>
+        <p className="text-xs opacity-90">{displayPrice}</p>
+      </div>
     </div>
   );
 };

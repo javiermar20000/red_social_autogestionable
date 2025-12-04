@@ -1,14 +1,7 @@
 import { useState } from 'react';
-import { Heart, Share2, MoreHorizontal } from 'lucide-react';
+import { Heart, Share2 } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
 import placeholderImg from '../assets/pin2.jpg';
-
-const statusClasses = {
-  PUBLICADA: 'bg-emerald-500 text-white',
-  PENDIENTE_VALIDACION: 'bg-amber-500 text-white',
-  RECHAZADA: 'bg-rose-500 text-white',
-  INACTIVA: 'bg-slate-400 text-white',
-};
 
 const formatCategoryLabel = (cat) => {
   const type = cat?.type;
@@ -20,7 +13,6 @@ const PinCard = ({ publication, onSelect }) => {
   const [isHovered, setIsHovered] = useState(false);
   const mediaSrc = publication.coverUrl || publication.placeholder || placeholderImg;
   const categories = publication.categories || [];
-  const statusClass = statusClasses[publication.estado] || 'bg-slate-700 text-white';
   const isVideo =
     publication.coverType === 'VIDEO' ||
     (typeof mediaSrc === 'string' && (mediaSrc.startsWith('data:video') || /\.(mp4|webm|ogg)(\?.*)?$/i.test(mediaSrc)));
@@ -32,6 +24,18 @@ const PinCard = ({ publication, onSelect }) => {
         )}`;
   const mainCategoryLabel = categories.length ? formatCategoryLabel(categories[0]) : null;
   const displayPrice = formattedPrice || 'Sin precio';
+  const visitsValue = publication.visitas ?? publication.visits ?? publication.visitCount;
+  const visitsNumber = visitsValue === null || visitsValue === undefined ? 0 : Number(visitsValue);
+  const formattedVisits = Number.isFinite(visitsNumber)
+    ? new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(visitsNumber)
+    : '0';
+  const normalize = (val) => (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const promoKeywords = ['EN_PROMOCION', 'PROMOCION', 'PROMO'];
+  const isPromoCategory = categories.some((cat) => {
+    const label = normalize(cat?.slug || cat?.type || cat?.name || cat);
+    return promoKeywords.some((keyword) => label.includes(keyword));
+  });
+  const showOfferBadge = isPromoCategory && publication.estado !== 'AVISO_GENERAL';
 
   return (
     <div
@@ -61,26 +65,12 @@ const PinCard = ({ publication, onSelect }) => {
 
         <div
           className={`absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent transition-opacity duration-300 ${
-            isHovered ? 'opacity-100' : 'opacity-0'
+            isHovered ? 'opacity-100' : 'opacity-90'
           }`}
         >
-          <div className="absolute left-3 top-3 flex items-center gap-2">
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass}`}>{publication.estado}</span>
-            {publication.business?.type && (
-              <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800">
-                {publication.business.type}
-              </span>
-            )}
-            {mainCategoryLabel && (
-              <span className="rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-800">
-                {mainCategoryLabel}
-              </span>
-            )}
-          </div>
-
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
             <div className="text-white">
-              <h3 className="line-clamp-1 text-sm font-semibold">{publication.titulo}</h3>
+              <h3 className="line-clamp-1 text-sm font-semibold">{formattedVisits} visitas</h3>
               <p className="text-xs opacity-90">{publication.business?.name || publication.authorName || 'GastroHub'}</p>
             </div>
             <div className="flex gap-2">
@@ -103,6 +93,20 @@ const PinCard = ({ publication, onSelect }) => {
             </div>
           </div>
         </div>
+
+        <div className="pointer-events-none absolute left-3 top-3 z-20 flex flex-wrap items-center gap-2">
+          {showOfferBadge && (
+            <span className="rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white">Oferta</span>
+          )}
+        </div>
+
+        {publication.business?.type && (
+          <div className="pointer-events-none absolute right-3 top-3 z-20">
+            <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800">
+              {publication.business.type}
+            </span>
+          </div>
+        )}
       </div>
       <div className="flex flex-col items-center justify-center bg-red-600 px-4 py-3 text-center text-white">
         <p className="text-sm font-semibold">{publication.titulo}</p>

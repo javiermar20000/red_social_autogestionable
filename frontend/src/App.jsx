@@ -301,6 +301,19 @@ function App() {
     }
   };
 
+  const handleHome = () => {
+    const defaultFilters = { search: '', categoryId: '', businessId: '' };
+    const isDefault =
+      filters.search === defaultFilters.search &&
+      filters.categoryId === defaultFilters.categoryId &&
+      filters.businessId === defaultFilters.businessId;
+    if (!isDefault) {
+      setFilters(defaultFilters);
+    } else {
+      loadFeed();
+    }
+  };
+
   const loadMyPublications = async () => {
     if (!isOferente) {
       setMyPublications([]);
@@ -796,6 +809,7 @@ function App() {
         onSearchChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
         onExplore={() => setExploreOpen(true)}
         onCreate={openCreateDialog}
+        onHome={handleHome}
         onAuth={() => setAuthOpen(true)}
         onLogout={handleLogout}
         currentUser={currentUser}

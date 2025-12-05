@@ -4,7 +4,7 @@ import { Button } from './ui/Button.jsx';
 import { Input } from './ui/Input.jsx';
 import logo from '../assets/logo_gastrohub.png';
 
-const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout, currentUser }) => {
+const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout, onHome, currentUser }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleAndClose = (action) => {
@@ -20,7 +20,17 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
         <div className="flex items-center gap-4">
           <img src={logo} alt="GastroHub" className="h-10 w-auto" />
           <nav className="hidden items-center gap-2 md:flex">
-            <Button variant="ghost" className="text-sm font-medium" onClick={() => onSearchChange('')}>
+            <Button
+              variant="ghost"
+              className="text-sm font-medium"
+              onClick={() => {
+                if (onHome) {
+                  onHome();
+                } else {
+                  onSearchChange('');
+                }
+              }}
+            >
               Inicio
             </Button>
             <Button variant="ghost" className="text-sm font-medium" onClick={onExplore}>
@@ -98,6 +108,9 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
                   )}
                 </div>
                 <div className="flex flex-col gap-1 p-2">
+                  <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onHome)}>
+                    Inicio
+                  </Button>
                   <Button
                     variant="ghost"
                     className="justify-start"

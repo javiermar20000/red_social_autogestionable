@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Heart, Share2, Download, MoreHorizontal } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/Dialog.jsx';
 import { Button } from './ui/Button.jsx';
@@ -12,11 +12,19 @@ const formatCategoryLabel = (cat) => {
 };
 
 const PinDetailDialog = ({ open, onOpenChange, publication, onRegisterVisit, onEdit, onDelete, currentUser }) => {
+  const lastVisitedId = useRef(null);
+  const publicationId = publication?.id ? String(publication.id) : null;
+
   useEffect(() => {
-    if (open && publication?.id && onRegisterVisit) {
-      onRegisterVisit(publication);
+    if (!open) {
+      lastVisitedId.current = null;
+      return;
     }
-  }, [open, publication, onRegisterVisit]);
+    if (!publicationId || !onRegisterVisit) return;
+    if (lastVisitedId.current === publicationId) return;
+    lastVisitedId.current = publicationId;
+    onRegisterVisit(publication);
+  }, [open, publication, publicationId, onRegisterVisit]);
 
   if (!publication) return null;
   const {

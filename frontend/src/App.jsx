@@ -431,9 +431,11 @@ function App() {
   useEffect(() => {
     const allowed = new Set((allowedCategoryTypesForBusiness || []).map((t) => String(t)));
     setPublicationForm((prev) => {
-      const filteredTypes = (prev.categoryTypes || []).filter((t) => allowed.has(String(t)));
-      if (filteredTypes.length === (prev.categoryTypes || []).length) return prev;
-      return { ...prev, categoryTypes: filteredTypes, categoryIds: filteredTypes.length ? prev.categoryIds : [] };
+      const current = (prev.categoryTypes || []).filter(Boolean);
+      const filteredTypes = current.filter((t) => allowed.has(String(t))).slice(0, 1);
+      const changed = filteredTypes[0] !== current[0] || filteredTypes.length !== current.length;
+      if (!changed) return prev;
+      return { ...prev, categoryTypes: filteredTypes, categoryIds: filteredTypes.length ? (prev.categoryIds || []).slice(0, 1) : [] };
     });
   }, [allowedCategoryTypesForBusiness]);
 
@@ -582,20 +584,18 @@ function App() {
 
   const handleEditPublication = (publication) => {
     setEditingPublicationId(publication.id);
+    const firstCategoryId =
+      (publication.categoryIds && publication.categoryIds.length ? publication.categoryIds[0] : null) ||
+      (publication.categories || []).map((c) => c?.id || c).find(Boolean) ||
+      '';
+    const firstCategoryType = (publication.categories || []).map((c) => c?.type).find(Boolean) || '';
     setPublicationForm({
       titulo: publication.titulo || '',
       contenido: publication.contenido || '',
       tipo: publication.tipo || 'AVISO_GENERAL',
       fechaFinVigencia: publication.fechaFinVigencia ? String(publication.fechaFinVigencia).slice(0, 10) : '',
-      categoryIds:
-        publication.categoryIds ||
-        (publication.categories || []).map((c) => (c?.id ? String(c.id) : String(c))).filter(Boolean) ||
-        [],
-      categoryTypes:
-        (publication.categories || [])
-          .map((c) => c?.type)
-          .filter(Boolean) ||
-        [],
+      categoryIds: firstCategoryId ? [String(firstCategoryId)] : [],
+      categoryTypes: firstCategoryType ? [firstCategoryType] : [],
       businessId: publication.businessId || publication.business?.id || '',
       mediaUrl: publication.coverUrl || '',
       mediaType: publication.coverType || detectMediaTypeFromUrl(publication.coverUrl || ''),
@@ -626,37 +626,38 @@ function App() {
       businesses.find((b) => String(b.id) === String(businessId)) || selectedBusinessForPublication;
     const tenantForCategories =
       businessForPublication?.tenantId || selectedTenantId || tenantInfo?.id || currentUser?.tenantId || null;
-    const selectedCategoryTypes = publicationForm.categoryTypes || [];
-    let categoryIdsToSend = publicationForm.categoryIds || [];
-    if (selectedCategoryTypes.length) {
+    const selectedCategoryType = (publicationForm.categoryTypes || [])[0] || '';
+    let categoryIdsToSend = (publicationForm.categoryIds || []).slice(0, 1);
+    if (!selectedCategoryType && !categoryIdsToSend.length) {
+      return notify('danger', 'Selecciona una categoría para esta publicación');
+    }
+    if (selectedCategoryType) {
       if (!tenantForCategories) return notify('danger', 'No se pudo determinar el tenant para las categorías');
       try {
-        const createdIds = await Promise.all(
-          selectedCategoryTypes.map(async (type) => {
-            const existing = categories.find(
-              (c) => c.type === type && String(c.tenantId) === String(tenantForCategories)
-            );
-            if (existing) return String(existing.id);
-            const name = humanizeCategoryType(type);
-            try {
-              const created = await fetchJson('/categories', {
-                method: 'POST',
-                headers: authHeaders,
-                body: JSON.stringify({ name, type, tenantId: tenantForCategories }),
-              });
-              return String(created.id);
-            } catch (err) {
-              // Si ya existe, recarga y busca de nuevo
-              const refreshed = await loadCategories(tenantForCategories);
-              const found = refreshed.find(
-                (c) => c.type === type && String(c.tenantId) === String(tenantForCategories)
-              );
-              if (found) return String(found.id);
-              throw err;
-            }
-          })
+        const existing = categories.find(
+          (c) => c.type === selectedCategoryType && String(c.tenantId) === String(tenantForCategories)
         );
-        categoryIdsToSend = createdIds.filter(Boolean);
+        if (existing) {
+          categoryIdsToSend = [String(existing.id)];
+        } else {
+          const name = humanizeCategoryType(selectedCategoryType);
+          try {
+            const created = await fetchJson('/categories', {
+              method: 'POST',
+              headers: authHeaders,
+              body: JSON.stringify({ name, type: selectedCategoryType, tenantId: tenantForCategories }),
+            });
+            categoryIdsToSend = [String(created.id)];
+          } catch (err) {
+            // Si ya existe, recarga y busca de nuevo
+            const refreshed = await loadCategories(tenantForCategories);
+            const found = refreshed.find(
+              (c) => c.type === selectedCategoryType && String(c.tenantId) === String(tenantForCategories)
+            );
+            if (found) categoryIdsToSend = [String(found.id)];
+            else throw err;
+          }
+        }
         await loadCategories(tenantForCategories);
       } catch (err) {
         notify('danger', err.message);
@@ -801,6 +802,8 @@ function App() {
     });
     return Array.from(map.values());
   }, [feedWithDecorations]);
+
+  const selectedCategoryType = (publicationForm.categoryTypes || [])[0] || '';
 
   return (
     <div className="min-h-screen bg-background">
@@ -1193,39 +1196,45 @@ function App() {
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <Label>Categorías</Label>
+                    <Label>Categoría</Label>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Selecciona las categorías permitidas para este negocio. Se crean automáticamente si aún no existen.
+                      Selecciona una única categoría permitida para este negocio.
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {allowedCategoryTypesForBusiness.map((type) => {
-                        const checked = (publicationForm.categoryTypes || []).includes(type);
-                        return (
-                          <button
-                            type="button"
-                            key={type}
-                            className={cn(
-                              'rounded-full border px-3 py-1 text-xs',
-                              checked ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-secondary-foreground'
-                            )}
-                            onClick={() =>
-                              setPublicationForm((prev) => ({
-                                ...prev,
-                                categoryTypes: checked
-                                  ? (prev.categoryTypes || []).filter((t) => t !== type)
-                                  : [...(prev.categoryTypes || []), type],
-                                categoryIds: [],
-                              }))
-                            }
-                          >
-                            {formatCategoryLabel({ type, name: humanizeCategoryType(type) })}
-                          </button>
-                        );
-                      })}
-                      {!allowedCategoryTypesForBusiness.length && (
-                        <p className="text-sm text-muted-foreground">Selecciona primero un negocio para ver sus categorías.</p>
-                      )}
-                    </div>
+                    {!selectedBusinessForPublication && (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Selecciona primero un negocio para ver sus categorías disponibles.
+                      </p>
+                    )}
+                    {selectedBusinessForPublication && allowedCategoryTypesForBusiness.length > 0 && (
+                      <select
+                        className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        value={selectedCategoryType}
+                        onChange={(e) =>
+                          setPublicationForm((prev) => ({
+                            ...prev,
+                            categoryTypes: e.target.value ? [e.target.value] : [],
+                            categoryIds: [],
+                          }))
+                        }
+                        required
+                      >
+                        <option value="">Elige una categoría</option>
+                        {allowedCategoryTypesForBusiness.map((type) => {
+                          const typeValue = typeof type === 'object' ? type.type || type.name || type.id : type;
+                          const optionValue = String(typeValue);
+                          return (
+                            <option key={optionValue} value={optionValue}>
+                              {formatCategoryLabel({ type: optionValue, name: humanizeCategoryType(optionValue) })}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                    {selectedBusinessForPublication && !allowedCategoryTypesForBusiness.length && (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Este negocio aún no tiene categorías configuradas.
+                      </p>
+                    )}
                   </div>
                   <div className="md:col-span-2">
                     <div className="flex flex-wrap gap-2">

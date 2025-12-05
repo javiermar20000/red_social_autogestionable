@@ -165,6 +165,26 @@ function App() {
   const [myPublications, setMyPublications] = useState([]);
   const [loadingMyPublications, setLoadingMyPublications] = useState(false);
   const [editingPublicationId, setEditingPublicationId] = useState(null);
+  const [adminPanelTab, setAdminPanelTab] = useState('perfil');
+  const [profileBusinessId, setProfileBusinessId] = useState('');
+  const [businessProfileForm, setBusinessProfileForm] = useState({
+    name: '',
+    description: '',
+    address: '',
+    city: '',
+    region: '',
+    priceRange: '',
+    latitude: '',
+    longitude: '',
+    imageUrl: '',
+  });
+  const [businessLogos, setBusinessLogos] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('businessLogos') || '{}');
+    } catch {
+      return {};
+    }
+  });
 
   const resetPublicationForm = () => {
     setPublicationForm({
@@ -340,6 +360,7 @@ function App() {
           coverType,
           categories: normalizedCategories,
           categoryIds: item.categoryIds || categoryIds,
+          business: item.business || businesses.find((b) => String(b.id) === String(item.businessId)) || null,
         };
       });
       setMyPublications(decorated);
@@ -438,6 +459,37 @@ function App() {
       return { ...prev, categoryTypes: filteredTypes, categoryIds: filteredTypes.length ? (prev.categoryIds || []).slice(0, 1) : [] };
     });
   }, [allowedCategoryTypesForBusiness]);
+
+  useEffect(() => {
+    localStorage.setItem('businessLogos', JSON.stringify(businessLogos));
+  }, [businessLogos]);
+
+  useEffect(() => {
+    if (!businesses.length) {
+      setProfileBusinessId('');
+      return;
+    }
+    if (!profileBusinessId || !businesses.some((b) => String(b.id) === String(profileBusinessId))) {
+      setProfileBusinessId(String(businesses[0].id));
+    }
+  }, [businesses, profileBusinessId]);
+
+  useEffect(() => {
+    const selected = businesses.find((b) => String(b.id) === String(profileBusinessId));
+    if (!selected) return;
+    setBusinessProfileForm((prev) => ({
+      ...prev,
+      name: selected.name || '',
+      description: selected.description || '',
+      address: selected.address || '',
+      city: selected.city || '',
+      region: selected.region || '',
+      priceRange: selected.priceRange || '',
+      latitude: selected.latitude ? String(selected.latitude) : '',
+      longitude: selected.longitude ? String(selected.longitude) : '',
+      imageUrl: businessLogos[selected.id] || '',
+    }));
+  }, [businesses, profileBusinessId, businessLogos]);
 
   const handleLogin = async (credentials) => {
     setAuthLoading(true);
@@ -691,6 +743,38 @@ function App() {
     }
   };
 
+  const handleSaveBusinessProfile = async (e) => {
+    e?.preventDefault?.();
+    if (!profileBusinessId) return notify('danger', 'Selecciona un negocio para editar su perfil');
+    const lat = businessProfileForm.latitude === '' ? null : Number(businessProfileForm.latitude);
+    const lng = businessProfileForm.longitude === '' ? null : Number(businessProfileForm.longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) {
+      return notify('danger', 'Latitud o longitud inválida');
+    }
+    try {
+      await fetchJson(`/businesses/${profileBusinessId}`, {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({
+          name: businessProfileForm.name,
+          description: businessProfileForm.description,
+          address: businessProfileForm.address,
+          city: businessProfileForm.city,
+          region: businessProfileForm.region,
+          priceRange: businessProfileForm.priceRange || null,
+          latitude: lat,
+          longitude: lng,
+        }),
+      });
+      setBusinessLogos((prev) => ({ ...prev, [profileBusinessId]: businessProfileForm.imageUrl || '' }));
+      notify('success', 'Perfil de negocio actualizado');
+      loadBusinesses();
+      loadFeed();
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
   const handleApproveTenant = async (id, action = 'approve') => {
     try {
       await fetchJson(`/admin/tenants/${id}/${action === 'approve' ? 'approve' : 'reject'}`, {
@@ -804,6 +888,11 @@ function App() {
   }, [feedWithDecorations]);
 
   const selectedCategoryType = (publicationForm.categoryTypes || [])[0] || '';
+  const panelPublications = useMemo(() => {
+    if (isAdmin) return feedWithDecorations;
+    if (currentUser?.rol === 'OFERENTE') return myPublications;
+    return [];
+  }, [isAdmin, feedWithDecorations, myPublications, currentUser]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -830,96 +919,239 @@ function App() {
                 <PinCard key={pub.id} publication={pub} onSelect={setSelectedPublication} />
               ))}
             </MasonryGrid>
-          ) : (
+        ) : (
             <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
               Aún no hay publicaciones publicadas.
             </div>
           )}
         </section>
-
-        {isOferente && (
-          <section className="rounded-2xl bg-card p-5 shadow-soft">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Tus publicaciones</p>
-                <h4 className="text-xl font-semibold">Gestiona y edita lo que ya publicaste</h4>
-              </div>
-              <Button variant="outline" onClick={openCreateDialog}>
-                Nueva publicación
-              </Button>
-            </div>
-            <div className="mt-4 space-y-3">
-              {loadingMyPublications && <p className="text-sm text-muted-foreground">Cargando tus publicaciones...</p>}
-              {!loadingMyPublications && !myPublications.length && (
-                <p className="text-sm text-muted-foreground">Aún no tienes publicaciones creadas.</p>
-              )}
-              {myPublications.map((pub) => (
-                <div
-                  key={pub.id}
-                  className="flex flex-col gap-3 rounded-xl border border-border bg-muted/40 p-4 md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">
-                      {pub.estado} · {pub.business?.name || 'Negocio'}
-                    </p>
-                    <h5 className="text-lg font-semibold">{pub.titulo}</h5>
-                    <div className="flex flex-wrap gap-2">
-                      {(pub.categories || []).map((cat) => (
-                        <span key={cat.id || cat} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
-                          {formatCategoryLabel(cat)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleEditPublication(pub)}>
-                      Editar
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleDeletePublication(pub.id)}>
-                      Eliminar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
         {(isOferente || isAdmin) && (
           <section className="rounded-2xl bg-card p-5 shadow-soft">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Gestión rápida</p>
-                <h4 className="text-xl font-semibold">Negocios y categorías</h4>
+                <p className="text-sm text-muted-foreground">{isAdmin ? 'Panel del administrador' : 'Panel del oferente'}</p>
+                <h4 className="text-xl font-semibold">Gestiona tu perfil y publicaciones</h4>
               </div>
               <Button variant="outline" onClick={openCreateDialog}>
                 Abrir panel de creación
               </Button>
             </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-border p-4">
-                <h5 className="font-semibold">Categorias activas</h5>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {categories.map((c) => (
-                    <span key={c.id} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
-                      {c.name} · {c.type}
-                    </span>
-                  ))}
-                  {!categories.length && <p className="text-sm text-muted-foreground">Sin categorías</p>}
+            <Tabs value={adminPanelTab} onValueChange={setAdminPanelTab} className="mt-4">
+              <TabsList className="grid w-full md:w-auto md:grid-cols-3">
+                <TabsTrigger value="perfil">Perfil</TabsTrigger>
+                <TabsTrigger value="gestion">Gestión publicaciones</TabsTrigger>
+                <TabsTrigger value="feed">Publicaciones</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="perfil" className="mt-4">
+                {businesses.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    Aún no tienes negocios activos en este tenant.
+                  </div>
+                ) : (
+                  <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSaveBusinessProfile}>
+                    <div className="md:col-span-2">
+                      <Label>Negocio</Label>
+                      <select
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        value={profileBusinessId}
+                        onChange={(e) => setProfileBusinessId(e.target.value)}
+                        required
+                      >
+                        {businesses.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} · {b.type}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Nombre del restaurante</Label>
+                      <Input
+                        value={businessProfileForm.name}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, name: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label>Imagen de perfil (URL)</Label>
+                      <Input
+                        placeholder="https://..."
+                        value={businessProfileForm.imageUrl}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Guardado localmente para referencia visual. No se envía al servidor.
+                      </p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Descripción</Label>
+                      <textarea
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        rows={3}
+                        value={businessProfileForm.description}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, description: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Dirección</Label>
+                      <Input
+                        value={businessProfileForm.address}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, address: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Ciudad</Label>
+                      <Input
+                        value={businessProfileForm.city}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, city: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Región</Label>
+                      <Input
+                        value={businessProfileForm.region}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, region: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Rango de precio</Label>
+                      <select
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        value={businessProfileForm.priceRange || ''}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, priceRange: e.target.value }))}
+                      >
+                        <option value="">Sin rango</option>
+                        <option value="BAJO">Bajo</option>
+                        <option value="MEDIO">Medio</option>
+                        <option value="ALTO">Alto</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Latitud</Label>
+                      <Input
+                        type="number"
+                        step="0.000001"
+                        value={businessProfileForm.latitude}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, latitude: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Longitud</Label>
+                      <Input
+                        type="number"
+                        step="0.000001"
+                        value={businessProfileForm.longitude}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, longitude: e.target.value }))}
+                      />
+                    </div>
+                    <div className="md:col-span-2 flex flex-wrap gap-2">
+                      <Button type="submit">Guardar perfil</Button>
+                    </div>
+                  </form>
+                )}
+              </TabsContent>
+
+              <TabsContent value="gestion" className="mt-4 space-y-6">
+                {isOferente && (
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Tus publicaciones</p>
+                        <h4 className="text-lg font-semibold">Gestiona y edita lo que ya publicaste</h4>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={openCreateDialog}>
+                        Nueva publicación
+                      </Button>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {loadingMyPublications && <p className="text-sm text-muted-foreground">Cargando tus publicaciones...</p>}
+                      {!loadingMyPublications && !myPublications.length && (
+                        <p className="text-sm text-muted-foreground">Aún no tienes publicaciones creadas.</p>
+                      )}
+                      {myPublications.map((pub) => (
+                        <div
+                          key={pub.id}
+                          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between"
+                        >
+                          <div className="space-y-1">
+                            <p className="text-sm text-muted-foreground">
+                              {pub.estado} · {pub.business?.name || 'Negocio'}
+                            </p>
+                            <h5 className="text-lg font-semibold">{pub.titulo}</h5>
+                            <div className="flex flex-wrap gap-2">
+                              {(pub.categories || []).map((cat) => (
+                                <span key={cat.id || cat} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
+                                  {formatCategoryLabel(cat)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleEditPublication(pub)}>
+                              Editar
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeletePublication(pub.id)}>
+                              Eliminar
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Gestión rápida</p>
+                      <h4 className="text-lg font-semibold">Negocios y categorías</h4>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={openCreateDialog}>
+                      Abrir panel de creación
+                    </Button>
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div className="rounded-xl border border-border p-4">
+                      <h5 className="font-semibold">Categorias activas</h5>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {categories.map((c) => (
+                          <span key={c.id} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
+                            {c.name} · {c.type}
+                          </span>
+                        ))}
+                        {!categories.length && <p className="text-sm text-muted-foreground">Sin categorías</p>}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border p-4">
+                      <h5 className="font-semibold">Negocios activos ({businesses.length})</h5>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {businesses.map((b) => (
+                          <span key={b.id} className="rounded-full border px-3 py-1 text-xs">
+                            {b.name} · {b.type}
+                          </span>
+                        ))}
+                        {!businesses.length && <p className="text-sm text-muted-foreground">Sin negocios activos</p>}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-xl border border-border p-4">
-                <h5 className="font-semibold">Negocios activos ({businesses.length})</h5>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {businesses.map((b) => (
-                    <span key={b.id} className="rounded-full border px-3 py-1 text-xs">
-                      {b.name} · {b.type}
-                    </span>
-                  ))}
-                  {!businesses.length && <p className="text-sm text-muted-foreground">Sin negocios activos</p>}
-                </div>
-              </div>
-            </div>
+              </TabsContent>
+
+              <TabsContent value="feed" className="mt-4">
+                {panelPublications.length ? (
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {panelPublications.map((pub) => (
+                      <PinCard key={pub.id} publication={pub} onSelect={setSelectedPublication} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border p-6 text-center text-muted-foreground">
+                    No hay publicaciones para mostrar.
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           </section>
         )}
 

@@ -407,6 +407,44 @@ router.post(
   })
 );
 
+router.put(
+  '/businesses/:id',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE, 'admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const businessId = req.params.id;
+    const requester = req.auth!;
+    const isAdmin = Boolean(requester.admin);
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== requester.user!.id) {
+      return res.status(403).json({ message: 'No tienes permiso para editar este negocio' });
+    }
+
+    const { name, description, address, city, region, priceRange, latitude, longitude } = req.body;
+    const updates: Partial<Business> = {};
+    if (name !== undefined) updates.name = String(name).slice(0, 255);
+    if (description !== undefined) updates.description = description || null;
+    if (address !== undefined) updates.address = address || null;
+    if (city !== undefined) updates.city = city || null;
+    if (region !== undefined) updates.region = region || null;
+    if (priceRange && Object.values(NegocioRangoPrecio).includes(priceRange)) updates.priceRange = priceRange;
+    if (latitude !== undefined) updates.latitude = latitude ?? null;
+    if (longitude !== undefined) updates.longitude = longitude ?? null;
+
+    await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
+      manager.getRepository(Business).update({ id: businessId }, updates)
+    );
+
+    const updated = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: businessId } })
+    );
+    res.json(updated);
+  })
+);
+
 router.get(
   '/admin/businesses/pending',
   authMiddleware,

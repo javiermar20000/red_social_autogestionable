@@ -210,6 +210,7 @@ function App() {
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
   const isAdmin = currentUser?.role === 'admin';
   const isOferente = currentUser?.rol === 'OFERENTE';
+  const shouldShowPublicFeed = !isAdmin && !isOferente;
 
   const notify = (variant, message) => {
     setAlerts((prev) => [...prev, { id: crypto.randomUUID(), variant, message }]);
@@ -908,23 +909,25 @@ function App() {
       />
 
       <main className="container px-4 py-6 space-y-6">
-        <section>
-          {loadingFeed ? (
-            <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
-              Cargando feed...
-            </div>
-          ) : feedWithDecorations.length ? (
-            <MasonryGrid>
-              {feedWithDecorations.map((pub) => (
-                <PinCard key={pub.id} publication={pub} onSelect={setSelectedPublication} />
-              ))}
-            </MasonryGrid>
-        ) : (
-            <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
-              Aún no hay publicaciones publicadas.
-            </div>
-          )}
-        </section>
+        {shouldShowPublicFeed && (
+          <section>
+            {loadingFeed ? (
+              <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
+                Cargando feed...
+              </div>
+            ) : feedWithDecorations.length ? (
+              <MasonryGrid>
+                {feedWithDecorations.map((pub) => (
+                  <PinCard key={pub.id} publication={pub} onSelect={setSelectedPublication} />
+                ))}
+              </MasonryGrid>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
+                Aún no hay publicaciones publicadas.
+              </div>
+            )}
+          </section>
+        )}
         {(isOferente || isAdmin) && (
           <section className="rounded-2xl bg-card p-5 shadow-soft">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

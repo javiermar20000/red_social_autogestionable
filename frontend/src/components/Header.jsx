@@ -108,9 +108,6 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
                   )}
                 </div>
                 <div className="flex flex-col gap-1 p-2">
-                  <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onHome)}>
-                    Inicio
-                  </Button>
                   <Button
                     variant="ghost"
                     className="justify-start"

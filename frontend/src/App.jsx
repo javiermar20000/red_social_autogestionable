@@ -131,7 +131,15 @@ function App() {
 
   const [feed, setFeed] = useState([]);
   const [loadingFeed, setLoadingFeed] = useState(false);
-  const [filters, setFilters] = useState({ search: '', categoryId: '', businessId: '' });
+  const [filters, setFilters] = useState({
+    search: '',
+    categoryId: '',
+    businessId: '',
+    businessType: '',
+    priceRange: '',
+    sortBy: '',
+    sortDir: 'desc',
+  });
 
   const [selectedPublication, setSelectedPublication] = useState(null);
 
@@ -323,11 +331,15 @@ function App() {
   };
 
   const handleHome = () => {
-    const defaultFilters = { search: '', categoryId: '', businessId: '' };
+    const defaultFilters = { search: '', categoryId: '', businessId: '', businessType: '', priceRange: '', sortBy: '', sortDir: 'desc' };
     const isDefault =
       filters.search === defaultFilters.search &&
       filters.categoryId === defaultFilters.categoryId &&
-      filters.businessId === defaultFilters.businessId;
+      filters.businessId === defaultFilters.businessId &&
+      filters.businessType === defaultFilters.businessType &&
+      filters.priceRange === defaultFilters.priceRange &&
+      filters.sortBy === defaultFilters.sortBy &&
+      filters.sortDir === defaultFilters.sortDir;
     if (!isDefault) {
       setFilters(defaultFilters);
     } else {
@@ -875,6 +887,83 @@ function App() {
     [feed, categories, businesses]
   );
 
+  const getVisitsValue = (pub) => {
+    const value = pub?.visitas ?? pub?.visits ?? pub?.visitCount ?? 0;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const getHeartsValue = (pub) => {
+    const value =
+      pub?.corazones ??
+      pub?.hearts ??
+      pub?.likes ??
+      pub?.likesCount ??
+      pub?.meGusta ??
+      pub?.favoritos ??
+      pub?.favorites ??
+      pub?.reactions ??
+      0;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const businessTypeOptions = useMemo(() => {
+    const types = new Set();
+    feedWithDecorations.forEach((pub) => {
+      if (pub.business?.type) types.add(String(pub.business.type));
+    });
+    businesses.forEach((b) => {
+      if (b.type) types.add(String(b.type));
+    });
+    return Array.from(types);
+  }, [feedWithDecorations, businesses]);
+
+  const priceRangeOptions = useMemo(() => {
+    const ranges = new Set();
+    businesses.forEach((b) => {
+      if (b.priceRange) ranges.add(String(b.priceRange));
+    });
+    feedWithDecorations.forEach((pub) => {
+      if (pub.business?.priceRange) ranges.add(String(pub.business.priceRange));
+    });
+    return Array.from(ranges);
+  }, [businesses, feedWithDecorations]);
+
+  const filteredPublicFeed = useMemo(() => {
+    let list = feedWithDecorations;
+    if (filters.categoryId) {
+      const target = String(filters.categoryId);
+      list = list.filter((pub) => {
+        const catIds = (pub.categoryIds || []).map(String);
+        const inIds = catIds.includes(target);
+        const inCats = (pub.categories || []).some((cat) => String(cat?.id || cat) === target);
+        return inIds || inCats;
+      });
+    }
+    if (filters.businessType) {
+      const target = String(filters.businessType).toUpperCase();
+      list = list.filter((pub) => String(pub.business?.type || '').toUpperCase() === target);
+    }
+    if (filters.priceRange) {
+      const target = String(filters.priceRange).toUpperCase();
+      list = list.filter((pub) => String(pub.business?.priceRange || '').toUpperCase() === target);
+    }
+    const sorted = [...list];
+    if (filters.sortBy === 'visits') {
+      sorted.sort((a, b) => {
+        const diff = getVisitsValue(b) - getVisitsValue(a);
+        return filters.sortDir === 'asc' ? -diff : diff;
+      });
+    } else if (filters.sortBy === 'hearts') {
+      sorted.sort((a, b) => {
+        const diff = getHeartsValue(b) - getHeartsValue(a);
+        return filters.sortDir === 'asc' ? -diff : diff;
+      });
+    }
+    return sorted;
+  }, [feedWithDecorations, filters]);
+
   const derivedCategories = useMemo(() => {
     const map = new Map();
     feedWithDecorations.forEach((pub) => {
@@ -915,15 +1004,15 @@ function App() {
               <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
                 Cargando feed...
               </div>
-            ) : feedWithDecorations.length ? (
+            ) : filteredPublicFeed.length ? (
               <MasonryGrid>
-                {feedWithDecorations.map((pub) => (
+                {filteredPublicFeed.map((pub) => (
                   <PinCard key={pub.id} publication={pub} onSelect={setSelectedPublication} />
                 ))}
               </MasonryGrid>
             ) : (
               <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
-                Aún no hay publicaciones publicadas.
+                No hay publicaciones que coincidan con los filtros.
               </div>
             )}
           </section>
@@ -1301,9 +1390,20 @@ function App() {
         open={exploreOpen}
         onOpenChange={setExploreOpen}
         categories={derivedCategories}
-        selectedCategoryId={filters.categoryId}
-        onSelect={(id) => setFilters((prev) => ({ ...prev, categoryId: id }))}
-        onClear={() => setFilters((prev) => ({ ...prev, categoryId: '' }))}
+        businessTypes={businessTypeOptions}
+        priceRanges={priceRangeOptions}
+        filters={filters}
+        onChange={(partial) => setFilters((prev) => ({ ...prev, ...partial }))}
+        onClear={() =>
+          setFilters((prev) => ({
+            ...prev,
+            categoryId: '',
+            businessType: '',
+            priceRange: '',
+            sortBy: '',
+            sortDir: 'desc',
+          }))
+        }
       />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

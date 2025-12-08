@@ -2,9 +2,22 @@ import { useState } from 'react';
 import { Search, Heart, Bell, User, LogOut, PlusCircle, Menu, X } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
 import { Input } from './ui/Input.jsx';
+import { cn } from '../lib/cn.js';
 import logo from '../assets/logo_gastrohub.png';
 
-const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout, onHome, currentUser }) => {
+const Header = ({
+  search,
+  onSearchChange,
+  onExplore,
+  onNotifications,
+  hasNotifications = false,
+  notificationsCount = 0,
+  onCreate,
+  onAuth,
+  onLogout,
+  onHome,
+  currentUser,
+}) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleAndClose = (action) => {
@@ -57,8 +70,19 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
             <Button variant="ghost" size="icon" onClick={onCreate} title="Crear publicación o negocio">
               <PlusCircle className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={onExplore} title="Explorar categorías">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onNotifications}
+              title="Notificaciones"
+              className={cn('relative', hasNotifications && 'bg-rose-100 text-rose-600 hover:bg-rose-200')}
+            >
               <Bell className="h-5 w-5" />
+              {notificationsCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold leading-none text-white">
+                  {notificationsCount > 9 ? '9+' : notificationsCount}
+                </span>
+              )}
             </Button>
             <Button variant="ghost" size="icon" onClick={onExplore} title="Explorar">
               <Heart className="h-5 w-5" />
@@ -117,9 +141,18 @@ const Header = ({ search, onSearchChange, onExplore, onCreate, onAuth, onLogout,
                     <PlusCircle className="h-5 w-5" />
                     Crear
                   </Button>
-                  <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onExplore)}>
+                  <Button
+                    variant="ghost"
+                    className={cn('justify-start', hasNotifications && 'text-rose-600')}
+                    onClick={() => handleAndClose(onNotifications)}
+                  >
                     <Bell className="h-5 w-5" />
-                    Notificaciones
+                    <span className="flex-1 text-left">Notificaciones</span>
+                    {notificationsCount > 0 && (
+                      <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-xs font-semibold text-white">
+                        {notificationsCount > 9 ? '9+' : notificationsCount}
+                      </span>
+                    )}
                   </Button>
                   <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onExplore)}>
                     <Heart className="h-5 w-5" />

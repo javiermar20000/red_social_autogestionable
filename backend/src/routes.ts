@@ -26,6 +26,38 @@ const getTenantIdFromRequest = (req: AuthRequest) => {
   return fromQuery || (typeof fromHeader === 'string' ? fromHeader : undefined) || req.auth?.tenantId || null;
 };
 
+const resolveTenantScope = (
+  req: AuthRequest,
+  options: { allowPublic?: boolean; optional?: boolean; allowAdminAll?: boolean } = {}
+) => {
+  const { allowPublic = false, optional = false, allowAdminAll = true } = options;
+  const requested = getTenantIdFromRequest(req);
+  const authTenant = req.auth?.tenantId ?? null;
+  const isAdmin = !!req.auth?.isAdminGlobal;
+
+  if (isAdmin) {
+    if (requested) return requested;
+    if (allowAdminAll) return null; // admin puede ver todo sin aislar por tenant
+    if (!optional) throw new Error('tenantId es requerido');
+    return null;
+  }
+
+  if (authTenant) {
+    if (requested && requested !== authTenant) {
+      throw new Error('No puedes operar sobre otro tenant');
+    }
+    return authTenant;
+  }
+
+  if (allowPublic) {
+    if (requested) return requested;
+    if (!optional) throw new Error('tenantId es requerido');
+    return null;
+  }
+
+  throw new Error('tenantId es requerido');
+};
+
 const ensureTenantIsActive = async (tenantId: string, options: { allowAutoActivate?: boolean } = {}) => {
   const { allowAutoActivate = false } = options;
   const tenant = await runWithContext({ isAdmin: true }, (manager) =>
@@ -297,8 +329,12 @@ router.post(
 router.get(
   '/categories',
   asyncHandler(async (req: AuthRequest, res) => {
-    const tenantId = getTenantIdFromRequest(req);
-    if (!tenantId) return res.status(400).json({ message: 'tenantId es requerido' });
+    let tenantId: string;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
     const categories = await runWithContext({ tenantId }, (manager) =>
       manager.getRepository(Category).find({ where: { tenantId } })
     );
@@ -339,15 +375,35 @@ router.post(
 
 router.get(
   '/businesses',
+  optionalAuthMiddleware,
   asyncHandler(async (req: AuthRequest, res) => {
-    const tenantId = getTenantIdFromRequest(req);
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
     if (!tenantId) return res.status(400).json({ message: 'tenantId es requerido' });
+
+    const requester = req.auth;
+    const isAdmin = !!requester?.isAdminGlobal;
+    const owner = requester?.user;
+    const mine = typeof req.query.mine === 'string' && req.query.mine === 'true' && !!owner;
+
     const tenant = await runWithContext({ isAdmin: true }, (manager) =>
       manager.getRepository(Tenant).findOne({ where: { id: tenantId, estado: TenantEstado.ACTIVO } })
     );
     if (!tenant) return res.json([]);
-    const businesses = await runWithContext({ tenantId }, (manager) =>
-      manager.getRepository(Business).find({ where: { tenantId, status: NegocioEstado.ACTIVO } })
+
+    const businesses = await runWithContext({ tenantId, isAdmin }, (manager) =>
+      manager.getRepository(Business).find({
+        where: {
+          tenantId,
+          ...(mine ? { ownerId: owner!.id } : {}),
+          ...(mine || isAdmin ? {} : { status: NegocioEstado.ACTIVO }),
+        },
+        order: { createdAt: 'DESC' },
+      })
     );
     res.json(businesses);
   })
@@ -640,13 +696,25 @@ router.get(
   '/businesses/:id/publications',
   optionalAuthMiddleware,
   asyncHandler(async (req: AuthRequest, res) => {
-    const tenantId = getTenantIdFromRequest(req);
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
     if (!tenantId) return res.status(400).json({ message: 'tenantId es requerido' });
-    const includeAll = req.auth?.isAdminGlobal || req.auth?.user?.rol === RolUsuario.OFERENTE;
-    const statusFilter = includeAll ? undefined : PublicacionEstado.PUBLICADA;
+    const requester = req.auth;
+    const user = requester?.user;
+    const isAdmin = !!requester?.isAdminGlobal;
     const businessId = req.params.id;
 
-    const publications = await runWithContext({ tenantId, isAdmin: req.auth?.isAdminGlobal }, async (manager) => {
+    const publications = await runWithContext({ tenantId, isAdmin }, async (manager) => {
+      const business = await manager.getRepository(Business).findOne({ where: { id: businessId } });
+      if (!business || business.tenantId !== tenantId) return [];
+      const isOwner = user && business.ownerId === user.id;
+      const includeAll = isAdmin || isOwner;
+      const statusFilter = includeAll ? undefined : PublicacionEstado.PUBLICADA;
+
       const repo = manager.getRepository(Publication);
       const rows = await repo.find({
         where: {
@@ -700,18 +768,27 @@ router.get(
   '/feed/publications',
   optionalAuthMiddleware,
   asyncHandler(async (req: AuthRequest, res) => {
-    const tenantId = getTenantIdFromRequest(req);
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: true, optional: true, allowAdminAll: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
     const statusFilter = PublicacionEstado.PUBLICADA;
     const mine =
       typeof req.query.mine === 'string' && req.query.mine === 'true' && req.auth?.user?.rol === RolUsuario.OFERENTE;
     const authorIdFilter = mine ? req.auth!.user!.id : null;
     const effectiveTenantId = mine ? req.auth?.user?.tenantId || tenantId : tenantId;
+    if (mine && !effectiveTenantId && !req.auth?.isAdminGlobal) {
+      return res.status(400).json({ message: 'tenantId es requerido' });
+    }
+    const ctxIsAdmin = !!req.auth?.isAdminGlobal;
     const searchTerm = typeof req.query.search === 'string' ? req.query.search.toLowerCase() : '';
     const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : null;
     const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : null;
 
     const fetchPublications = async (ctxTenantId: string | null, authorId?: string | null) =>
-      runWithContext({ tenantId: ctxTenantId ?? undefined, isAdmin: ctxTenantId ? req.auth?.isAdminGlobal : true }, async (manager) => {
+      runWithContext({ tenantId: ctxTenantId ?? undefined, isAdmin: ctxTenantId ? ctxIsAdmin : true }, async (manager) => {
         const businessRepo = manager.getRepository(Business);
         const businesses = await businessRepo.find({
           where: {
@@ -798,7 +875,12 @@ router.put(
     const publicationId = req.params.id;
     const isAdmin = !!req.auth?.isAdminGlobal;
     const user = req.auth?.user;
-    const tenantId = getTenantIdFromRequest(req) || user?.tenantId;
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: false, optional: true, allowAdminAll: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
     if (!tenantId && !isAdmin) return res.status(400).json({ message: 'tenantId es requerido' });
     if (!isAdmin && user) ensureUserReady(user);
 
@@ -903,7 +985,12 @@ router.delete(
     const publicationId = req.params.id;
     const isAdmin = !!req.auth?.isAdminGlobal;
     const user = req.auth?.user;
-    const tenantId = getTenantIdFromRequest(req) || user?.tenantId;
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: false, optional: true, allowAdminAll: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
     if (!tenantId && !isAdmin) return res.status(400).json({ message: 'tenantId es requerido' });
     if (!isAdmin && user) ensureUserReady(user);
 
@@ -989,7 +1076,12 @@ router.post(
   '/publications/:id/visit',
   asyncHandler(async (req: AuthRequest, res) => {
     const publicationId = req.params.id;
-    const tenantId = getTenantIdFromRequest(req);
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
     if (!tenantId) return res.status(400).json({ message: 'tenantId es requerido' });
     await runWithContext({ tenantId }, async (manager) => {
       const repo = manager.getRepository(Publication);

@@ -142,6 +142,10 @@ function App() {
   });
 
   const [selectedPublication, setSelectedPublication] = useState(null);
+  const [similarItems, setSimilarItems] = useState([]);
+  const [similarSource, setSimilarSource] = useState(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [hasNewSimilar, setHasNewSimilar] = useState(false);
 
   const [tenantForm, setTenantForm] = useState({ nombre: '', dominio: '' });
   const [categoryForm, setCategoryForm] = useState({ name: '', type: '', tenantId: '' });
@@ -301,7 +305,11 @@ function App() {
       return;
     }
     try {
-      const data = await fetchJson(`/businesses?tenantId=${selectedTenantId}`);
+      const params = new URLSearchParams();
+      params.set('tenantId', selectedTenantId);
+      if (isOferente) params.set('mine', 'true');
+      const query = params.toString();
+      const data = await fetchJson(`/businesses${query ? `?${query}` : ''}`, { headers: authHeaders });
       setBusinesses(data);
     } catch (err) {
       notify('danger', err.message);
@@ -317,7 +325,7 @@ function App() {
       if (filters.categoryId) params.set('categoryId', filters.categoryId);
       if (filters.businessId) params.set('businessId', filters.businessId);
       if (currentUser?.rol === 'OFERENTE') params.set('mine', 'true');
-      const tenantParam = selectedTenantId || currentUser?.tenantId;
+      const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : '';
       if (tenantParam) params.set('tenantId', tenantParam);
       const query = params.toString();
       const data = await fetchJson(`/feed/publications${query ? `?${query}` : ''}`, { headers: authHeaders });
@@ -415,6 +423,12 @@ function App() {
   }, [token, currentUser]);
 
   useEffect(() => {
+    if (!currentUser) {
+      setSelectedTenantId('');
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
     if (selectedTenantId) {
       loadCategories();
       loadBusinesses();
@@ -438,15 +452,21 @@ function App() {
     }
   }, [isOferente, selectedTenantId]);
 
-  const activePublicationBusinessId = useMemo(
-    () => publicationForm.businessId || filters.businessId || businesses[0]?.id || '',
-    [publicationForm.businessId, filters.businessId, businesses]
-  );
+  const myBusinesses = useMemo(() => {
+    if (isAdmin) return businesses;
+    if (!currentUser) return [];
+    return businesses.filter((b) => String(b.ownerId) === String(currentUser.id));
+  }, [businesses, isAdmin, currentUser]);
 
-  const selectedBusinessForPublication = useMemo(
-    () => businesses.find((b) => String(b.id) === String(activePublicationBusinessId)) || null,
-    [businesses, activePublicationBusinessId]
-  );
+  const businessListForForms = isAdmin ? businesses : myBusinesses;
+
+  const activePublicationBusinessId = useMemo(() => {
+    return publicationForm.businessId || filters.businessId || businessListForForms[0]?.id || '';
+  }, [publicationForm.businessId, filters.businessId, businessListForForms]);
+
+  const selectedBusinessForPublication = useMemo(() => {
+    return businessListForForms.find((b) => String(b.id) === String(activePublicationBusinessId)) || null;
+  }, [businessListForForms, activePublicationBusinessId]);
 
   const allowedCategoryTypesForBusiness = useMemo(() => {
     const businessType = selectedBusinessForPublication?.type;
@@ -457,10 +477,10 @@ function App() {
   }, [selectedBusinessForPublication, categoryTypes]);
 
   useEffect(() => {
-    if (!publicationForm.businessId && businesses.length) {
-      setPublicationForm((prev) => ({ ...prev, businessId: businesses[0].id }));
+    if (!publicationForm.businessId && businessListForForms.length) {
+      setPublicationForm((prev) => ({ ...prev, businessId: businessListForForms[0].id }));
     }
-  }, [businesses, publicationForm.businessId]);
+  }, [businessListForForms, publicationForm.businessId]);
 
   useEffect(() => {
     const allowed = new Set((allowedCategoryTypesForBusiness || []).map((t) => String(t)));
@@ -478,17 +498,17 @@ function App() {
   }, [businessLogos]);
 
   useEffect(() => {
-    if (!businesses.length) {
+    if (!businessListForForms.length) {
       setProfileBusinessId('');
       return;
     }
-    if (!profileBusinessId || !businesses.some((b) => String(b.id) === String(profileBusinessId))) {
-      setProfileBusinessId(String(businesses[0].id));
+    if (!profileBusinessId || !businessListForForms.some((b) => String(b.id) === String(profileBusinessId))) {
+      setProfileBusinessId(String(businessListForForms[0].id));
     }
-  }, [businesses, profileBusinessId]);
+  }, [businessListForForms, profileBusinessId]);
 
   useEffect(() => {
-    const selected = businesses.find((b) => String(b.id) === String(profileBusinessId));
+    const selected = businessListForForms.find((b) => String(b.id) === String(profileBusinessId));
     if (!selected) return;
     setBusinessProfileForm((prev) => ({
       ...prev,
@@ -502,7 +522,7 @@ function App() {
       longitude: selected.longitude ? String(selected.longitude) : '',
       imageUrl: businessLogos[selected.id] || '',
     }));
-  }, [businesses, profileBusinessId, businessLogos]);
+  }, [businessListForForms, profileBusinessId, businessLogos]);
 
   const handleLogin = async (credentials) => {
     setAuthLoading(true);
@@ -552,10 +572,12 @@ function App() {
     setCurrentUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('tenantId');
     setMyPublications([]);
     setEditingPublicationId(null);
     resetPublicationForm();
     setTenantInfo(null);
+    setSelectedTenantId('');
     notify('info', 'Sesión cerrada');
   };
 
@@ -688,7 +710,7 @@ function App() {
     if (!businessId) return notify('danger', 'Selecciona un negocio para publicar');
     const isEditing = Boolean(editingPublicationId);
     const businessForPublication =
-      businesses.find((b) => String(b.id) === String(businessId)) || selectedBusinessForPublication;
+      businessListForForms.find((b) => String(b.id) === String(businessId)) || selectedBusinessForPublication;
     const tenantForCategories =
       businessForPublication?.tenantId || selectedTenantId || tenantInfo?.id || currentUser?.tenantId || null;
     const selectedCategoryType = (publicationForm.categoryTypes || [])[0] || '';
@@ -855,6 +877,26 @@ function App() {
     }
   };
 
+  const handleSelectPublication = (publication) => {
+    if (!publication) return;
+    setSelectedPublication(publication);
+    setSimilarSource(publication);
+    const similarList = findSimilarPublications(publication);
+    setSimilarItems(similarList);
+    setHasNewSimilar(similarList.length > 0);
+  };
+
+  const handleOpenNotifications = () => {
+    setNotificationsOpen(true);
+    setHasNewSimilar(false);
+  };
+
+  const handleSelectFromNotifications = (publication) => {
+    if (!publication) return;
+    setNotificationsOpen(false);
+    handleSelectPublication(publication);
+  };
+
   const feedWithDecorations = useMemo(
     () =>
       feed.map((item, idx) => {
@@ -906,6 +948,32 @@ function App() {
       0;
     const num = Number(value);
     return Number.isFinite(num) ? num : 0;
+  };
+
+  const findSimilarPublications = (publication) => {
+    if (!publication) return [];
+    const targetCategoryIds =
+      (publication.categoryIds && publication.categoryIds.length
+        ? publication.categoryIds
+        : (publication.categories || []).map((cat) => cat?.id || cat)
+      )
+        .map(String)
+        .filter(Boolean);
+    if (!targetCategoryIds.length) return [];
+    return feedWithDecorations
+      .filter((item) => String(item.id) !== String(publication.id))
+      .filter((item) => {
+        const itemCategoryIds =
+          (item.categoryIds && item.categoryIds.length
+            ? item.categoryIds
+            : (item.categories || []).map((cat) => cat?.id || cat)
+          )
+            .map(String)
+            .filter(Boolean);
+        return itemCategoryIds.some((id) => targetCategoryIds.includes(id));
+      })
+      .sort((a, b) => getVisitsValue(b) - getVisitsValue(a))
+      .slice(0, 6);
   };
 
   const businessTypeOptions = useMemo(() => {
@@ -964,6 +1032,15 @@ function App() {
     return sorted;
   }, [feedWithDecorations, filters]);
 
+  useEffect(() => {
+    if (!similarSource) return;
+    const updated = findSimilarPublications(similarSource);
+    setSimilarItems(updated);
+    if (!updated.length) {
+      setHasNewSimilar(false);
+    }
+  }, [feedWithDecorations, similarSource]);
+
   const derivedCategories = useMemo(() => {
     const map = new Map();
     feedWithDecorations.forEach((pub) => {
@@ -990,6 +1067,9 @@ function App() {
         search={filters.search}
         onSearchChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
         onExplore={() => setExploreOpen(true)}
+        onNotifications={handleOpenNotifications}
+        hasNotifications={hasNewSimilar}
+        notificationsCount={similarItems.length}
         onCreate={openCreateDialog}
         onHome={handleHome}
         onAuth={() => setAuthOpen(true)}
@@ -1007,7 +1087,7 @@ function App() {
             ) : filteredPublicFeed.length ? (
               <MasonryGrid>
                 {filteredPublicFeed.map((pub) => (
-                  <PinCard key={pub.id} publication={pub} onSelect={setSelectedPublication} />
+                  <PinCard key={pub.id} publication={pub} onSelect={handleSelectPublication} />
                 ))}
               </MasonryGrid>
             ) : (
@@ -1036,7 +1116,7 @@ function App() {
               </TabsList>
 
               <TabsContent value="perfil" className="mt-4">
-                {businesses.length === 0 ? (
+                {businessListForForms.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
                     Aún no tienes negocios activos en este tenant.
                   </div>
@@ -1050,7 +1130,7 @@ function App() {
                         onChange={(e) => setProfileBusinessId(e.target.value)}
                         required
                       >
-                        {businesses.map((b) => (
+                        {businessListForForms.map((b) => (
                           <option key={b.id} value={b.id}>
                             {b.name} · {b.type}
                           </option>
@@ -1216,14 +1296,14 @@ function App() {
                       </div>
                     </div>
                     <div className="rounded-xl border border-border p-4">
-                      <h5 className="font-semibold">Negocios activos ({businesses.length})</h5>
+                      <h5 className="font-semibold">Negocios activos ({businessListForForms.length})</h5>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {businesses.map((b) => (
+                        {businessListForForms.map((b) => (
                           <span key={b.id} className="rounded-full border px-3 py-1 text-xs">
                             {b.name} · {b.type}
                           </span>
                         ))}
-                        {!businesses.length && <p className="text-sm text-muted-foreground">Sin negocios activos</p>}
+                        {!businessListForForms.length && <p className="text-sm text-muted-foreground">Sin negocios activos</p>}
                       </div>
                     </div>
                   </div>
@@ -1234,7 +1314,7 @@ function App() {
                 {panelPublications.length ? (
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {panelPublications.map((pub) => (
-                      <PinCard key={pub.id} publication={pub} onSelect={setSelectedPublication} />
+                      <PinCard key={pub.id} publication={pub} onSelect={handleSelectPublication} />
                     ))}
                   </div>
                 ) : (
@@ -1406,6 +1486,63 @@ function App() {
         }
       />
 
+      <Dialog
+        open={notificationsOpen}
+        onOpenChange={(open) => {
+          setNotificationsOpen(open);
+          if (open) setHasNewSimilar(false);
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader className="text-left">
+            <DialogTitle>Productos similares</DialogTitle>
+            <DialogDescription>
+              {similarSource ? `Inspirados en ${similarSource.titulo}` : 'Selecciona una publicación para ver sugerencias.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {similarItems.length ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {similarItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSelectFromNotifications(item)}
+                  className="group overflow-hidden rounded-xl border border-border bg-card text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover"
+                >
+                  <div className="relative h-36 w-full overflow-hidden">
+                    <img
+                      src={item.coverUrl || placeholderImages[0]}
+                      alt={item.titulo}
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
+                    <span className="absolute left-2 bottom-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-800">
+                      {getVisitsValue(item)} visitas
+                    </span>
+                  </div>
+                  <div className="p-3 space-y-1">
+                    <p className="line-clamp-1 text-sm font-semibold">{item.titulo}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatCategoryLabel((item.categories || [])[0]) || 'Sin categoría'}
+                    </p>
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {item.business?.name ? `${item.business.name} · ${item.business.type}` : 'Descubre más detalles'}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {similarSource
+                ? 'No encontramos otras publicaciones en esta categoría.'
+                : 'Explora una publicación para ver recomendaciones aquí.'}
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader className="text-left">
@@ -1462,7 +1599,7 @@ function App() {
                       required
                     >
                       <option value="">Selecciona negocio</option>
-                      {businesses.map((b) => (
+                      {businessListForForms.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.name}
                         </option>

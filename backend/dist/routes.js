@@ -4,7 +4,7 @@ import { authMiddleware, optionalAuthMiddleware, requireRole } from './middlewar
 import { EstadoRegistroUsuario, RolUsuario, User } from './entities/User.js';
 import { Tenant, TenantEstado } from './entities/Tenant.js';
 import { Category, CategoriaTipo } from './entities/Category.js';
-import { Business, NegocioEstado, NegocioTipo } from './entities/Business.js';
+import { Business, NegocioEstado, NegocioRangoPrecio, NegocioTipo } from './entities/Business.js';
 import { Publication, PublicacionEstado, PublicacionTipo } from './entities/Publication.js';
 import { Media, MediaTipo } from './entities/Media.js';
 import { PublicationCategory } from './entities/PublicationCategory.js';
@@ -18,6 +18,35 @@ const getTenantIdFromRequest = (req) => {
     const header = req.headers['x-tenant-id'];
     const fromHeader = Array.isArray(header) ? header[0] : header;
     return fromQuery || (typeof fromHeader === 'string' ? fromHeader : undefined) || req.auth?.tenantId || null;
+};
+const resolveTenantScope = (req, options = {}) => {
+    const { allowPublic = false, optional = false, allowAdminAll = true } = options;
+    const requested = getTenantIdFromRequest(req);
+    const authTenant = req.auth?.tenantId ?? null;
+    const isAdmin = !!req.auth?.isAdminGlobal;
+    if (isAdmin) {
+        if (requested)
+            return requested;
+        if (allowAdminAll)
+            return null; // admin puede ver todo sin aislar por tenant
+        if (!optional)
+            throw new Error('tenantId es requerido');
+        return null;
+    }
+    if (authTenant) {
+        if (requested && requested !== authTenant) {
+            throw new Error('No puedes operar sobre otro tenant');
+        }
+        return authTenant;
+    }
+    if (allowPublic) {
+        if (requested)
+            return requested;
+        if (!optional)
+            throw new Error('tenantId es requerido');
+        return null;
+    }
+    throw new Error('tenantId es requerido');
 };
 const ensureTenantIsActive = async (tenantId, options = {}) => {
     const { allowAutoActivate = false } = options;
@@ -200,9 +229,13 @@ router.post('/admin/users/:id/reject', authMiddleware, requireRole(['admin']), a
 // CATEGORIES
 // ========================
 router.get('/categories', asyncHandler(async (req, res) => {
-    const tenantId = getTenantIdFromRequest(req);
-    if (!tenantId)
-        return res.status(400).json({ message: 'tenantId es requerido' });
+    let tenantId;
+    try {
+        tenantId = resolveTenantScope(req, { allowPublic: true });
+    }
+    catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
     const categories = await runWithContext({ tenantId }, (manager) => manager.getRepository(Category).find({ where: { tenantId } }));
     res.json(categories);
 }));
@@ -225,14 +258,31 @@ router.post('/categories', authMiddleware, requireRole(['admin', RolUsuario.OFER
 // ========================
 // BUSINESSES
 // ========================
-router.get('/businesses', asyncHandler(async (req, res) => {
-    const tenantId = getTenantIdFromRequest(req);
+router.get('/businesses', optionalAuthMiddleware, asyncHandler(async (req, res) => {
+    let tenantId;
+    try {
+        tenantId = resolveTenantScope(req, { allowPublic: true });
+    }
+    catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
     if (!tenantId)
         return res.status(400).json({ message: 'tenantId es requerido' });
+    const requester = req.auth;
+    const isAdmin = !!requester?.isAdminGlobal;
+    const owner = requester?.user;
+    const mine = typeof req.query.mine === 'string' && req.query.mine === 'true' && !!owner;
     const tenant = await runWithContext({ isAdmin: true }, (manager) => manager.getRepository(Tenant).findOne({ where: { id: tenantId, estado: TenantEstado.ACTIVO } }));
     if (!tenant)
         return res.json([]);
-    const businesses = await runWithContext({ tenantId }, (manager) => manager.getRepository(Business).find({ where: { tenantId, status: NegocioEstado.ACTIVO } }));
+    const businesses = await runWithContext({ tenantId, isAdmin }, (manager) => manager.getRepository(Business).find({
+        where: {
+            tenantId,
+            ...(mine ? { ownerId: owner.id } : {}),
+            ...(mine || isAdmin ? {} : { status: NegocioEstado.ACTIVO }),
+        },
+        order: { createdAt: 'DESC' },
+    }));
     res.json(businesses);
 }));
 router.post('/businesses', authMiddleware, requireRole([RolUsuario.OFERENTE]), asyncHandler(async (req, res) => {
@@ -280,6 +330,38 @@ router.post('/businesses', authMiddleware, requireRole([RolUsuario.OFERENTE]), a
         status: NegocioEstado.INACTIVO,
     }));
     res.json({ business, tenant });
+}));
+router.put('/businesses/:id', authMiddleware, requireRole([RolUsuario.OFERENTE, 'admin']), asyncHandler(async (req, res) => {
+    const businessId = req.params.id;
+    const requester = req.auth;
+    const isAdmin = Boolean(requester.admin);
+    const business = await runWithContext({ isAdmin: true }, (manager) => manager.getRepository(Business).findOne({ where: { id: businessId } }));
+    if (!business)
+        return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== requester.user.id) {
+        return res.status(403).json({ message: 'No tienes permiso para editar este negocio' });
+    }
+    const { name, description, address, city, region, priceRange, latitude, longitude } = req.body;
+    const updates = {};
+    if (name !== undefined)
+        updates.name = String(name).slice(0, 255);
+    if (description !== undefined)
+        updates.description = description || null;
+    if (address !== undefined)
+        updates.address = address || null;
+    if (city !== undefined)
+        updates.city = city || null;
+    if (region !== undefined)
+        updates.region = region || null;
+    if (priceRange && Object.values(NegocioRangoPrecio).includes(priceRange))
+        updates.priceRange = priceRange;
+    if (latitude !== undefined)
+        updates.latitude = latitude ?? null;
+    if (longitude !== undefined)
+        updates.longitude = longitude ?? null;
+    await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) => manager.getRepository(Business).update({ id: businessId }, updates));
+    const updated = await runWithContext({ isAdmin: true }, (manager) => manager.getRepository(Business).findOne({ where: { id: businessId } }));
+    res.json(updated);
 }));
 router.get('/admin/businesses/pending', authMiddleware, requireRole(['admin']), asyncHandler(async (_req, res) => {
     const businesses = await runWithContext({ isAdmin: true }, (manager) => manager.getRepository(Business).find({ where: { status: NegocioEstado.INACTIVO } }));
@@ -375,14 +457,81 @@ router.post('/businesses/:id/publications', authMiddleware, requireRole([RolUsua
     });
     res.json({ publication });
 }));
-router.get('/businesses/:id/publications', optionalAuthMiddleware, asyncHandler(async (req, res) => {
-    const tenantId = getTenantIdFromRequest(req);
+router.get('/publications/mine', authMiddleware, requireRole([RolUsuario.OFERENTE]), asyncHandler(async (req, res) => {
+    const user = req.auth.user;
+    ensureUserReady(user);
+    const tenantId = user.tenantId;
     if (!tenantId)
         return res.status(400).json({ message: 'tenantId es requerido' });
-    const includeAll = req.auth?.isAdminGlobal || req.auth?.user?.rol === RolUsuario.OFERENTE;
-    const statusFilter = includeAll ? undefined : PublicacionEstado.PUBLICADA;
+    const publications = await runWithContext({ tenantId }, async (manager) => {
+        const businessRepo = manager.getRepository(Business);
+        const businesses = await businessRepo.find({ where: { tenantId, ownerId: user.id } });
+        const businessIds = businesses.map((b) => b.id);
+        if (!businessIds.length)
+            return [];
+        const qb = manager.getRepository(Publication).createQueryBuilder('p');
+        qb.where('p.businessId IN (:...bizIds)', { bizIds: businessIds });
+        qb.orderBy('p.fechaCreacion', 'DESC').addOrderBy('p.fechaPublicacion', 'DESC');
+        const rows = await qb.getMany();
+        if (!rows.length)
+            return [];
+        const publicationIds = rows.map((p) => p.id);
+        const linkRepo = manager.getRepository(PublicationCategory);
+        const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
+        const mediaRepo = manager.getRepository(Media);
+        const medias = await mediaRepo.find({ where: { publicationId: In(publicationIds) } });
+        const categoryRepo = manager.getRepository(Category);
+        const categoryIds = [...new Set(links.map((l) => l.categoryId))];
+        const categoryEntities = categoryIds.length ? await categoryRepo.find({ where: { id: In(categoryIds) } }) : [];
+        const categoriesByPublication = links.reduce((acc, link) => {
+            const found = categoryEntities.find((c) => c.id === link.categoryId);
+            if (found) {
+                acc[link.publicationId] = acc[link.publicationId] || [];
+                acc[link.publicationId].push(found);
+            }
+            return acc;
+        }, {});
+        const mediaByPublication = medias.reduce((acc, media) => {
+            acc[media.publicationId] = acc[media.publicationId] || [];
+            acc[media.publicationId].push(media);
+            return acc;
+        }, {});
+        const businessMap = businesses.reduce((acc, biz) => {
+            acc[biz.id] = biz;
+            return acc;
+        }, {});
+        return rows.map((p) => ({
+            ...p,
+            categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
+            categories: categoriesByPublication[p.id] || [],
+            business: businessMap[p.businessId],
+            coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
+            coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+        }));
+    });
+    res.json(publications);
+}));
+router.get('/businesses/:id/publications', optionalAuthMiddleware, asyncHandler(async (req, res) => {
+    let tenantId;
+    try {
+        tenantId = resolveTenantScope(req, { allowPublic: true });
+    }
+    catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
+    if (!tenantId)
+        return res.status(400).json({ message: 'tenantId es requerido' });
+    const requester = req.auth;
+    const user = requester?.user;
+    const isAdmin = !!requester?.isAdminGlobal;
     const businessId = req.params.id;
-    const publications = await runWithContext({ tenantId, isAdmin: req.auth?.isAdminGlobal }, async (manager) => {
+    const publications = await runWithContext({ tenantId, isAdmin }, async (manager) => {
+        const business = await manager.getRepository(Business).findOne({ where: { id: businessId } });
+        if (!business || business.tenantId !== tenantId)
+            return [];
+        const isOwner = user && business.ownerId === user.id;
+        const includeAll = isAdmin || isOwner;
+        const statusFilter = includeAll ? undefined : PublicacionEstado.PUBLICADA;
         const repo = manager.getRepository(Publication);
         const rows = await repo.find({
             where: {
@@ -398,9 +547,20 @@ router.get('/businesses/:id/publications', optionalAuthMiddleware, asyncHandler(
         const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
         const mediaRepo = manager.getRepository(Media);
         const medias = await mediaRepo.find({ where: { publicationId: In(publicationIds) } });
+        const categoryRepo = manager.getRepository(Category);
+        const categoryIds = [...new Set(links.map((l) => l.categoryId))];
+        const categoryEntities = categoryIds.length ? await categoryRepo.find({ where: { id: In(categoryIds) } }) : [];
         const grouped = links.reduce((acc, link) => {
             acc[link.publicationId] = acc[link.publicationId] || [];
             acc[link.publicationId].push(link.categoryId);
+            return acc;
+        }, {});
+        const categoriesByPublication = links.reduce((acc, link) => {
+            const found = categoryEntities.find((c) => c.id === link.categoryId);
+            if (found) {
+                acc[link.publicationId] = acc[link.publicationId] || [];
+                acc[link.publicationId].push(found);
+            }
             return acc;
         }, {});
         const mediaGrouped = medias.reduce((acc, item) => {
@@ -411,6 +571,7 @@ router.get('/businesses/:id/publications', optionalAuthMiddleware, asyncHandler(
         return rows.map((p) => ({
             ...p,
             categoryIds: grouped[p.id] || [],
+            categories: categoriesByPublication[p.id] || [],
             coverUrl: mediaGrouped[p.id]?.[0]?.url || null,
             coverType: mediaGrouped[p.id]?.[0]?.tipo || null,
         }));
@@ -418,12 +579,25 @@ router.get('/businesses/:id/publications', optionalAuthMiddleware, asyncHandler(
     res.json(publications);
 }));
 router.get('/feed/publications', optionalAuthMiddleware, asyncHandler(async (req, res) => {
-    const tenantId = getTenantIdFromRequest(req);
+    let tenantId;
+    try {
+        tenantId = resolveTenantScope(req, { allowPublic: true, optional: true, allowAdminAll: true });
+    }
+    catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
     const statusFilter = PublicacionEstado.PUBLICADA;
+    const mine = typeof req.query.mine === 'string' && req.query.mine === 'true' && req.auth?.user?.rol === RolUsuario.OFERENTE;
+    const authorIdFilter = mine ? req.auth.user.id : null;
+    const effectiveTenantId = mine ? req.auth?.user?.tenantId || tenantId : tenantId;
+    if (mine && !effectiveTenantId && !req.auth?.isAdminGlobal) {
+        return res.status(400).json({ message: 'tenantId es requerido' });
+    }
+    const ctxIsAdmin = !!req.auth?.isAdminGlobal;
     const searchTerm = typeof req.query.search === 'string' ? req.query.search.toLowerCase() : '';
     const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : null;
     const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : null;
-    const fetchPublications = async (ctxTenantId) => runWithContext({ tenantId: ctxTenantId ?? undefined, isAdmin: ctxTenantId ? req.auth?.isAdminGlobal : true }, async (manager) => {
+    const fetchPublications = async (ctxTenantId, authorId) => runWithContext({ tenantId: ctxTenantId ?? undefined, isAdmin: ctxTenantId ? ctxIsAdmin : true }, async (manager) => {
         const businessRepo = manager.getRepository(Business);
         const businesses = await businessRepo.find({
             where: {
@@ -439,6 +613,8 @@ router.get('/feed/publications', optionalAuthMiddleware, asyncHandler(async (req
         qb.andWhere('p.estado = :estado', { estado: statusFilter });
         if (businessId)
             qb.andWhere('p.businessId = :businessId', { businessId });
+        if (authorId)
+            qb.andWhere('p.authorId = :authorId', { authorId });
         if (categoryId) {
             qb.andWhere('p.id IN (SELECT pc.publicacion_id FROM publicacion_categoria pc WHERE pc.categoria_id = :categoryId)', { categoryId });
         }
@@ -483,8 +659,141 @@ router.get('/feed/publications', optionalAuthMiddleware, asyncHandler(async (req
             coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
         }));
     });
-    const publications = tenantId ? await fetchPublications(tenantId) : await fetchPublications(null);
+    if (mine && !authorIdFilter) {
+        return res.status(400).json({ message: 'No se pudo determinar el autor' });
+    }
+    const publications = effectiveTenantId
+        ? await fetchPublications(effectiveTenantId, authorIdFilter)
+        : await fetchPublications(null, authorIdFilter);
     res.json(publications);
+}));
+router.put('/publications/:id', authMiddleware, requireRole([RolUsuario.OFERENTE, 'admin']), asyncHandler(async (req, res) => {
+    const publicationId = req.params.id;
+    const isAdmin = !!req.auth?.isAdminGlobal;
+    const user = req.auth?.user;
+    let tenantId;
+    try {
+        tenantId = resolveTenantScope(req, { allowPublic: false, optional: true, allowAdminAll: true });
+    }
+    catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
+    if (!tenantId && !isAdmin)
+        return res.status(400).json({ message: 'tenantId es requerido' });
+    if (!isAdmin && user)
+        ensureUserReady(user);
+    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio } = req.body;
+    if (!titulo || !contenido)
+        return res.status(400).json({ message: 'Título y contenido son obligatorios' });
+    const precioNormalizado = precio === undefined || precio === null || precio === '' ? null : Number.parseFloat(precio);
+    if (precioNormalizado !== null && (!Number.isFinite(precioNormalizado) || precioNormalizado < 0)) {
+        return res.status(400).json({ message: 'Precio inválido' });
+    }
+    const updated = await runWithContext({ tenantId: tenantId ?? undefined, isAdmin }, async (manager) => {
+        const publicationRepo = manager.getRepository(Publication);
+        const publication = await publicationRepo.findOne({ where: { id: publicationId } });
+        if (!publication)
+            throw new Error('Publicación no encontrada');
+        const business = await manager.getRepository(Business).findOne({ where: { id: publication.businessId } });
+        if (!business)
+            throw new Error('Negocio no encontrado');
+        if (!isAdmin && business.ownerId !== user?.id) {
+            throw new Error('No puedes editar esta publicación');
+        }
+        const validCategoryIds = [];
+        if (categoryIds.length) {
+            const categories = await manager
+                .getRepository(Category)
+                .find({ where: { id: In(categoryIds), tenantId: business.tenantId } });
+            if (categories.length !== categoryIds.length) {
+                throw new Error('Alguna categoría no existe en este tenant');
+            }
+            const allowedTypes = categoriasPermitidasPorNegocio[business.type];
+            if (allowedTypes) {
+                const allowedSet = new Set(allowedTypes);
+                const invalidCategories = categories.filter((c) => !allowedSet.has(c.type));
+                if (invalidCategories.length) {
+                    throw new Error('Alguna categoría no es válida para el tipo de negocio');
+                }
+            }
+            validCategoryIds.push(...categories.map((c) => c.id));
+        }
+        await publicationRepo.update({ id: publicationId }, {
+            titulo,
+            contenido,
+            tipo: tipo || PublicacionTipo.AVISO_GENERAL,
+            fechaFinVigencia: fechaFinVigencia ? new Date(fechaFinVigencia) : null,
+            precio: precioNormalizado,
+            estado: PublicacionEstado.PENDIENTE_VALIDACION,
+            fechaPublicacion: null,
+        });
+        const linkRepo = manager.getRepository(PublicationCategory);
+        await linkRepo.delete({ publicationId });
+        if (validCategoryIds.length) {
+            const links = validCategoryIds.map((cid) => ({ publicationId, categoryId: cid }));
+            await linkRepo.save(links);
+        }
+        const mediaRepo = manager.getRepository(Media);
+        const { mediaUrl, mediaUrls: mediaUrlsBody, mediaItems: mediaItemsBody, mediaType } = req.body;
+        const mediaEntries = [];
+        if (mediaUrl)
+            mediaEntries.push({ url: mediaUrl, tipo: mediaType });
+        if (Array.isArray(mediaUrlsBody))
+            mediaUrlsBody.filter(Boolean).forEach((url) => mediaEntries.push({ url }));
+        if (Array.isArray(mediaItemsBody)) {
+            mediaItemsBody.forEach((item) => {
+                if (!item?.url)
+                    return;
+                mediaEntries.push({ url: item.url, tipo: item.tipo });
+            });
+        }
+        if (mediaEntries.length) {
+            await mediaRepo.delete({ publicationId });
+            const records = mediaEntries.map((entry, index) => ({
+                publicationId,
+                url: entry.url,
+                tipo: entry.tipo === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN,
+                orden: index,
+                descripcion: null,
+            }));
+            await mediaRepo.save(records);
+        }
+        return publicationRepo.findOne({ where: { id: publicationId } });
+    });
+    res.json({ message: 'Publicación actualizada y enviada a validación', publication: updated });
+}));
+router.delete('/publications/:id', authMiddleware, requireRole([RolUsuario.OFERENTE, 'admin']), asyncHandler(async (req, res) => {
+    const publicationId = req.params.id;
+    const isAdmin = !!req.auth?.isAdminGlobal;
+    const user = req.auth?.user;
+    let tenantId;
+    try {
+        tenantId = resolveTenantScope(req, { allowPublic: false, optional: true, allowAdminAll: true });
+    }
+    catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
+    if (!tenantId && !isAdmin)
+        return res.status(400).json({ message: 'tenantId es requerido' });
+    if (!isAdmin && user)
+        ensureUserReady(user);
+    await runWithContext({ tenantId: tenantId ?? undefined, isAdmin }, async (manager) => {
+        const publicationRepo = manager.getRepository(Publication);
+        const publication = await publicationRepo.findOne({ where: { id: publicationId } });
+        if (!publication)
+            return;
+        const business = await manager.getRepository(Business).findOne({ where: { id: publication.businessId } });
+        if (!business)
+            throw new Error('Negocio no encontrado');
+        if (!isAdmin && business.ownerId !== user?.id) {
+            throw new Error('No puedes eliminar esta publicación');
+        }
+        await manager.getRepository(PublicationCategory).delete({ publicationId });
+        await manager.getRepository(Media).delete({ publicationId });
+        await manager.getRepository(PublicationReview).delete({ publicationId });
+        await publicationRepo.delete({ id: publicationId });
+    });
+    res.json({ message: 'Publicación eliminada' });
 }));
 router.get('/admin/publications/pending', authMiddleware, requireRole(['admin']), asyncHandler(async (_req, res) => {
     const pending = await runWithContext({ isAdmin: true }, (manager) => manager.getRepository(Publication).find({ where: { estado: PublicacionEstado.PENDIENTE_VALIDACION } }));
@@ -529,7 +838,13 @@ router.post('/admin/publications/:id/reject', authMiddleware, requireRole(['admi
 }));
 router.post('/publications/:id/visit', asyncHandler(async (req, res) => {
     const publicationId = req.params.id;
-    const tenantId = getTenantIdFromRequest(req);
+    let tenantId;
+    try {
+        tenantId = resolveTenantScope(req, { allowPublic: true });
+    }
+    catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
     if (!tenantId)
         return res.status(400).json({ message: 'tenantId es requerido' });
     await runWithContext({ tenantId }, async (manager) => {

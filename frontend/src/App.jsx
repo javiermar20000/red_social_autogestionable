@@ -1589,7 +1589,13 @@ function App() {
           {!currentUser ? (
             <div className="rounded-xl border border-dashed border-border p-4 text-center">
               <p className="text-muted-foreground">Inicia sesión para crear contenido.</p>
-              <Button className="mt-3" onClick={() => setAuthOpen(true)}>
+              <Button
+                className="mt-3"
+                onClick={() => {
+                  setCreateOpen(false);
+                  setAuthOpen(true);
+                }}
+              >
                 Abrir login
               </Button>
             </div>

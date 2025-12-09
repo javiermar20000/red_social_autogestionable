@@ -321,8 +321,11 @@ function App() {
     setLoadingFeed(true);
     try {
       const params = new URLSearchParams();
+      const categoryIdsForFilter = resolveCategoryIdsForFilter(filters.categoryId);
       if (filters.search) params.set('search', filters.search);
-      if (filters.categoryId) params.set('categoryId', filters.categoryId);
+      if (categoryIdsForFilter.length === 1 && categoryIdsForFilter[0]) {
+        params.set('categoryId', categoryIdsForFilter[0]);
+      }
       if (filters.businessId) params.set('businessId', filters.businessId);
       if (currentUser?.rol === 'OFERENTE') params.set('mine', 'true');
       const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : '';
@@ -929,6 +932,51 @@ function App() {
     [feed, categories, businesses]
   );
 
+  const derivedCategories = useMemo(() => {
+    const map = new Map();
+    feedWithDecorations.forEach((pub) => {
+      (pub.categories || []).forEach((cat) => {
+        const normalized = normalizeCategory(cat, categories);
+        if (!normalized) return;
+        const labelKey = String(normalized.name || normalized.type || normalized.id || '').trim().toLowerCase();
+        if (!labelKey) return;
+        const existing = map.get(labelKey) || { ...normalized, id: normalized.id, ids: new Set() };
+        if (normalized.id) existing.ids.add(String(normalized.id));
+        map.set(labelKey, existing);
+      });
+    });
+    return Array.from(map.values()).map((entry) => ({
+      ...entry,
+      ids: Array.from(entry.ids || []),
+    }));
+  }, [feedWithDecorations, categories]);
+
+  const resolveCategoryIdsForFilter = (selectedId) => {
+    const target = String(selectedId || '').trim();
+    if (!target) return [];
+    const normalizeKey = (cat) => String(cat?.name || cat?.type || cat?.id || '').trim().toLowerCase();
+    const sources = [
+      ...categories,
+      ...derivedCategories.map((c) => ({
+        ...c,
+        ids: Array.isArray(c.ids) ? c.ids : [],
+      })),
+    ];
+    const matched = sources.find((cat) => String(cat.id) === target || (cat.ids || []).some((id) => String(id) === target));
+    const key = matched ? normalizeKey(matched) : normalizeKey({ id: target });
+    const ids = sources
+      .filter((cat) => normalizeKey(cat) === key)
+      .flatMap((cat) => {
+        const collected = [];
+        if (cat.id) collected.push(cat.id);
+        if (Array.isArray(cat.ids)) collected.push(...cat.ids);
+        return collected;
+      })
+      .filter(Boolean)
+      .map(String);
+    return Array.from(new Set(ids.length ? ids : [target]));
+  };
+
   const getVisitsValue = (pub) => {
     const value = pub?.visitas ?? pub?.visits ?? pub?.visitCount ?? 0;
     const num = Number(value);
@@ -1000,13 +1048,12 @@ function App() {
 
   const filteredPublicFeed = useMemo(() => {
     let list = feedWithDecorations;
-    if (filters.categoryId) {
-      const target = String(filters.categoryId);
+    const categoryIdsToMatch = resolveCategoryIdsForFilter(filters.categoryId);
+    if (categoryIdsToMatch.length) {
+      const targets = categoryIdsToMatch.map(String);
       list = list.filter((pub) => {
         const catIds = (pub.categoryIds || []).map(String);
-        const inIds = catIds.includes(target);
-        const inCats = (pub.categories || []).some((cat) => String(cat?.id || cat) === target);
-        return inIds || inCats;
+        return catIds.some((id) => targets.includes(id));
       });
     }
     if (filters.businessType) {
@@ -1030,7 +1077,7 @@ function App() {
       });
     }
     return sorted;
-  }, [feedWithDecorations, filters]);
+  }, [feedWithDecorations, filters, derivedCategories, categories]);
 
   useEffect(() => {
     if (!similarSource) return;
@@ -1040,19 +1087,6 @@ function App() {
       setHasNewSimilar(false);
     }
   }, [feedWithDecorations, similarSource]);
-
-  const derivedCategories = useMemo(() => {
-    const map = new Map();
-    feedWithDecorations.forEach((pub) => {
-      (pub.categories || []).forEach((cat) => {
-        const id = cat.id || cat;
-        const name = cat.name || cat;
-        const type = cat.type || cat.name || cat;
-        if (!map.has(id)) map.set(id, { id, name, type });
-      });
-    });
-    return Array.from(map.values());
-  }, [feedWithDecorations]);
 
   const selectedCategoryType = (publicationForm.categoryTypes || [])[0] || '';
   const panelPublications = useMemo(() => {

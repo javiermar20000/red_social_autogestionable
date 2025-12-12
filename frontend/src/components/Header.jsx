@@ -19,6 +19,7 @@ const Header = ({
   currentUser,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const hasNotificationBadge = notificationsCount > 0;
 
   const handleAndClose = (action) => {
     if (action) {
@@ -78,7 +79,7 @@ const Header = ({
               className={cn('relative', hasNotifications && 'bg-rose-100 text-rose-600 hover:bg-rose-200')}
             >
               <Bell className="h-5 w-5" />
-              {notificationsCount > 0 && (
+              {hasNotificationBadge && (
                 <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold leading-none text-white">
                   {notificationsCount > 9 ? '9+' : notificationsCount}
                 </span>
@@ -143,12 +144,18 @@ const Header = ({
                   </Button>
                   <Button
                     variant="ghost"
-                    className={cn('justify-start', hasNotifications && 'text-rose-600')}
+                    className={cn(
+                      'w-full',
+                      hasNotificationBadge ? 'justify-between' : 'justify-center',
+                      hasNotifications && 'text-rose-600'
+                    )}
                     onClick={() => handleAndClose(onNotifications)}
                   >
-                    <Bell className="h-5 w-5" />
-                    <span className="flex-1 text-left">Notificaciones</span>
-                    {notificationsCount > 0 && (
+                    <span className="flex items-center gap-2">
+                      <Bell className="h-5 w-5" />
+                      <span className={hasNotificationBadge ? 'text-left' : 'text-center'}>Notificaciones</span>
+                    </span>
+                    {hasNotificationBadge && (
                       <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-xs font-semibold text-white">
                         {notificationsCount > 9 ? '9+' : notificationsCount}
                       </span>

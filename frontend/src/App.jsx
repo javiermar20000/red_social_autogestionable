@@ -998,27 +998,43 @@ function App() {
     return Number.isFinite(num) ? num : 0;
   };
 
+  const extractCategoryKeys = (pub) => {
+    if (!pub) return [];
+    const keys = new Set();
+    const baseCategories =
+      (pub.categories && pub.categories.length
+        ? pub.categories
+        : (pub.categoryIds || []).map((cid) => ({ id: cid }))
+      ) || [];
+    const categoriesWithTypes =
+      Array.isArray(pub.categoryTypes) && pub.categoryTypes.length
+        ? [...baseCategories, ...pub.categoryTypes.map((type) => ({ id: type, type, name: type, slug: type }))]
+        : baseCategories;
+    categoriesWithTypes.forEach((cat) => {
+      const normalized = normalizeCategory(cat, categories);
+      if (!normalized) return;
+      [normalized.id, normalized.slug, normalized.type, normalized.name].forEach((val) => {
+        const key = String(val || '').trim().toLowerCase();
+        if (key) keys.add(key);
+      });
+    });
+    (pub.categoryIds || []).forEach((cid) => {
+      const key = String(cid || '').trim().toLowerCase();
+      if (key) keys.add(key);
+    });
+    return Array.from(keys);
+  };
+
   const findSimilarPublications = (publication) => {
     if (!publication) return [];
-    const targetCategoryIds =
-      (publication.categoryIds && publication.categoryIds.length
-        ? publication.categoryIds
-        : (publication.categories || []).map((cat) => cat?.id || cat)
-      )
-        .map(String)
-        .filter(Boolean);
-    if (!targetCategoryIds.length) return [];
+    const targetKeys = extractCategoryKeys(publication);
+    if (!targetKeys.length) return [];
+    const targetSet = new Set(targetKeys);
     return feedWithDecorations
       .filter((item) => String(item.id) !== String(publication.id))
       .filter((item) => {
-        const itemCategoryIds =
-          (item.categoryIds && item.categoryIds.length
-            ? item.categoryIds
-            : (item.categories || []).map((cat) => cat?.id || cat)
-          )
-            .map(String)
-            .filter(Boolean);
-        return itemCategoryIds.some((id) => targetCategoryIds.includes(id));
+        const itemKeys = extractCategoryKeys(item);
+        return itemKeys.some((key) => targetSet.has(key));
       })
       .sort((a, b) => getVisitsValue(b) - getVisitsValue(a))
       .slice(0, 6);

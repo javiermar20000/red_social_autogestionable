@@ -64,9 +64,33 @@ const foodCategoryTypes = [
   'ENSALADAS',
 ];
 
+const barCategoryTypes = [
+  'CERVEZAS',
+  'VINOS',
+  'COCTELES',
+  'DESTILADOS',
+  'BEBIDAS_SIN_ALCOHOL',
+  'TAPAS',
+  'PICOTEO',
+];
+
+const foodtruckCategoryTypes = [
+  'HOT_DOGS',
+  'TACOS',
+  'BURRITOS',
+  'AREPAS',
+  'EMPANADAS',
+  'PAPAS_FRITAS',
+  'WRAPS',
+  'BROCHETAS',
+  'HELADOS',
+];
+
 const categoriesByBusinessType = {
   CAFETERIA: cafeCategoryTypes,
   RESTAURANTE: foodCategoryTypes,
+  BAR: barCategoryTypes,
+  FOODTRUCK: foodtruckCategoryTypes,
 };
 
 const normalizeCategory = (cat, fallbackList = []) => {

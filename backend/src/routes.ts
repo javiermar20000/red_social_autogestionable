@@ -111,9 +111,33 @@ const categoriaTiposComida: CategoriaTipo[] = [
   CategoriaTipo.ENSALADAS,
 ];
 
+const categoriaTiposBar: CategoriaTipo[] = [
+  CategoriaTipo.CERVEZAS,
+  CategoriaTipo.VINOS,
+  CategoriaTipo.COCTELES,
+  CategoriaTipo.DESTILADOS,
+  CategoriaTipo.BEBIDAS_SIN_ALCOHOL,
+  CategoriaTipo.TAPAS,
+  CategoriaTipo.PICOTEO,
+];
+
+const categoriaTiposFoodtruck: CategoriaTipo[] = [
+  CategoriaTipo.HOT_DOGS,
+  CategoriaTipo.TACOS,
+  CategoriaTipo.BURRITOS,
+  CategoriaTipo.AREPAS,
+  CategoriaTipo.EMPANADAS,
+  CategoriaTipo.PAPAS_FRITAS,
+  CategoriaTipo.WRAPS,
+  CategoriaTipo.BROCHETAS,
+  CategoriaTipo.HELADOS,
+];
+
 const categoriasPermitidasPorNegocio: Partial<Record<NegocioTipo, CategoriaTipo[]>> = {
   [NegocioTipo.CAFETERIA]: categoriaTiposCafe,
   [NegocioTipo.RESTAURANTE]: categoriaTiposComida,
+  [NegocioTipo.BAR]: categoriaTiposBar,
+  [NegocioTipo.FOODTRUCK]: categoriaTiposFoodtruck,
 };
 
 // ========================

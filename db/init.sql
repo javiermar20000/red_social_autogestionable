@@ -121,7 +121,25 @@ CREATE TYPE categoria_tipo_enum AS ENUM (
   'COMIDA_INDIAN',
   'POSTRES',
   'SANDWICHES',
-  'ENSALADAS'
+  'ENSALADAS',
+  -- Tipos de bar
+  'CERVEZAS',
+  'VINOS',
+  'COCTELES',
+  'DESTILADOS',
+  'BEBIDAS_SIN_ALCOHOL',
+  'TAPAS',
+  'PICOTEO',
+  -- Tipos de foodtruck
+  'HOT_DOGS',
+  'TACOS',
+  'BURRITOS',
+  'AREPAS',
+  'EMPANADAS',
+  'PAPAS_FRITAS',
+  'WRAPS',
+  'BROCHETAS',
+  'HELADOS'
 );
 
 CREATE TYPE comentario_estado_enum AS ENUM (

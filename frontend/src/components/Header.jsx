@@ -101,7 +101,7 @@ const Header = ({
                 </Button>
               </div>
             ) : (
-              <Button variant="secondary" size="sm" onClick={onAuth} className="hidden md:inline-flex">
+              <Button variant="danger" size="sm" onClick={onAuth} className="hidden md:inline-flex">
                 <User className="mr-2 h-4 w-4" />
                 Entrar
               </Button>
@@ -175,7 +175,7 @@ const Header = ({
                       Cerrar sesión
                     </Button>
                   ) : (
-                    <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onAuth)}>
+                    <Button variant="danger" className="justify-start" onClick={() => handleAndClose(onAuth)}>
                       <User className="h-5 w-5" />
                       Entrar
                     </Button>

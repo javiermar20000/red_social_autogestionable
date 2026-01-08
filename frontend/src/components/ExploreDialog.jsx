@@ -18,13 +18,7 @@ const ExploreDialog = ({
   onClear,
 }) => {
   const { categoryId = '', businessType = '', priceRange = '', sortBy = '', sortDir = 'desc' } = filters || {};
-  const categoryList = categories.length
-    ? categories
-    : [
-        { id: 'CAFETERIA', name: 'Cafeterías', type: 'CAFETERIA' },
-        { id: 'RESTAURANTE', name: 'Restaurantes', type: 'RESTAURANTE' },
-        { id: 'TIENDA', name: 'Filtrar', type: 'TIENDA' },
-      ];
+  const categoryList = categories;
   const priceRangeList = priceRanges.length ? priceRanges : ['BAJO', 'MEDIO', 'ALTO'];
   const sortValue = sortBy ? `${sortBy}-${sortDir}` : '';
 
@@ -37,8 +31,8 @@ const ExploreDialog = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
-        <DialogHeader className="text-left">
-          <DialogTitle className="mb-2 flex items-center gap-2 text-2xl font-bold">
+        <DialogHeader className="text-center">
+          <DialogTitle className="mb-2 flex w-full items-center justify-center gap-2 text-2xl font-bold">
             <Filter className="h-5 w-5" />
             Explorar y filtrar
           </DialogTitle>
@@ -112,7 +106,7 @@ const ExploreDialog = ({
 
           <div className="flex items-center justify-between pt-2">
             <Button
-              variant="ghost"
+              variant="danger"
               onClick={() => {
                 onClear?.();
               }}
@@ -120,10 +114,10 @@ const ExploreDialog = ({
               Limpiar filtros
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="danger" onClick={() => onOpenChange(false)}>
                 Cerrar
               </Button>
-              <Button onClick={() => onOpenChange(false)}>Aplicar</Button>
+              <Button variant="danger" onClick={() => onOpenChange(false)}>Aplicar</Button>
             </div>
           </div>
         </div>

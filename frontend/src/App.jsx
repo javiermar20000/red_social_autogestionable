@@ -93,6 +93,9 @@ const categoriesByBusinessType = {
   FOODTRUCK: foodtruckCategoryTypes,
 };
 
+const defaultBusinessTypes = ['RESTAURANTE', 'CAFETERIA', 'FOODTRUCK', 'BAR'];
+const defaultCategoryTypes = defaultBusinessTypes.flatMap((type) => categoriesByBusinessType[type] || []);
+
 const normalizeCategory = (cat, fallbackList = []) => {
   if (!cat) return null;
   if (typeof cat === 'string') {
@@ -346,9 +349,10 @@ function App() {
     try {
       const params = new URLSearchParams();
       const categoryIdsForFilter = resolveCategoryIdsForFilter(filters.categoryId);
+      const numericCategoryIds = categoryIdsForFilter.filter((id) => /^\d+$/.test(String(id)));
       if (filters.search) params.set('search', filters.search);
-      if (categoryIdsForFilter.length === 1 && categoryIdsForFilter[0]) {
-        params.set('categoryId', categoryIdsForFilter[0]);
+      if (numericCategoryIds.length === 1) {
+        params.set('categoryId', numericCategoryIds[0]);
       }
       if (filters.businessId) params.set('businessId', filters.businessId);
       if (currentUser?.rol === 'OFERENTE') params.set('mine', 'true');
@@ -1065,12 +1069,12 @@ function App() {
   };
 
   const businessTypeOptions = useMemo(() => {
-    const types = new Set();
+    const types = new Set(defaultBusinessTypes);
     feedWithDecorations.forEach((pub) => {
-      if (pub.business?.type) types.add(String(pub.business.type));
+      if (pub.business?.type) types.add(String(pub.business.type).toUpperCase());
     });
     businesses.forEach((b) => {
-      if (b.type) types.add(String(b.type));
+      if (b.type) types.add(String(b.type).toUpperCase());
     });
     return Array.from(types);
   }, [feedWithDecorations, businesses]);
@@ -1085,6 +1089,61 @@ function App() {
     });
     return Array.from(ranges);
   }, [businesses, feedWithDecorations]);
+
+  const categoryFilterOptions = useMemo(() => {
+    const normalizeKey = (value) => String(value || '').trim().toLowerCase();
+    const readTypeValue = (entry) => {
+      if (!entry) return '';
+      if (typeof entry === 'object') {
+        return entry.type || entry.name || entry.id || '';
+      }
+      return entry;
+    };
+
+    const businessTypeKey = String(filters.businessType || '').trim().toUpperCase();
+    const mappedTypes = businessTypeKey && categoriesByBusinessType[businessTypeKey]
+      ? categoriesByBusinessType[businessTypeKey]
+      : null;
+    const baseTypes = mappedTypes?.length ? mappedTypes : categoryTypes.length ? categoryTypes : defaultCategoryTypes;
+
+    let typeValues = baseTypes
+      .map((entry) => readTypeValue(entry))
+      .filter(Boolean)
+      .map((value) => String(value));
+
+    if (!typeValues.length && categories.length) {
+      typeValues = categories
+        .map((cat) => cat?.type || cat?.name || cat?.id)
+        .filter(Boolean)
+        .map((value) => String(value));
+    }
+
+    const categoriesByKey = new Map();
+    categories.forEach((cat) => {
+      const key = normalizeKey(cat?.type || cat?.name || cat?.id);
+      if (!key || categoriesByKey.has(key)) return;
+      categoriesByKey.set(key, cat);
+    });
+
+    const seen = new Set();
+    return typeValues
+      .filter((value) => {
+        const key = normalizeKey(value);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((value) => {
+        const key = normalizeKey(value);
+        const existing = categoriesByKey.get(key) || null;
+        return {
+          ...(existing || {}),
+          id: String(value),
+          name: existing?.name || humanizeCategoryType(value),
+          type: existing?.type || String(value),
+        };
+      });
+  }, [filters.businessType, categoryTypes, categories]);
 
   const filteredPublicFeed = useMemo(() => {
     let list = feedWithDecorations;
@@ -1543,7 +1602,7 @@ function App() {
       <ExploreDialog
         open={exploreOpen}
         onOpenChange={setExploreOpen}
-        categories={derivedCategories}
+        categories={categoryFilterOptions}
         businessTypes={businessTypeOptions}
         priceRanges={priceRangeOptions}
         filters={filters}

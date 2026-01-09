@@ -9,7 +9,7 @@ const formatCategoryLabel = (cat) => {
   return type && name && type !== name ? `${type} · ${name}` : name;
 };
 
-const PinCard = ({ publication, onSelect }) => {
+const PinCard = ({ publication, likesCount = 0, onLike, onSelect }) => {
   const [isHovered, setIsHovered] = useState(false);
   const mediaSrc = publication.coverUrl || publication.placeholder || placeholderImg;
   const categories = publication.categories || [];
@@ -29,6 +29,11 @@ const PinCard = ({ publication, onSelect }) => {
   const formattedVisits = Number.isFinite(visitsNumber)
     ? new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(visitsNumber)
     : '0';
+  const likesNumber = Number(likesCount);
+  const safeLikesNumber = Number.isFinite(likesNumber) ? likesNumber : 0;
+  const formattedLikes = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
+    safeLikesNumber
+  );
   const normalize = (val) => (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   const promoKeywords = ['EN_PROMOCION', 'PROMOCION', 'PROMO'];
   const isPromoCategory = categories.some((cat) => {
@@ -71,6 +76,7 @@ const PinCard = ({ publication, onSelect }) => {
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
             <div className="text-white">
               <h3 className="line-clamp-1 text-sm font-semibold">{formattedVisits} visitas</h3>
+              <p className="text-xs opacity-90">aprox. {formattedLikes} me gusta</p>
               <p className="text-xs opacity-90">{publication.business?.name || publication.authorName || 'GastroHub'}</p>
             </div>
             <div className="flex gap-2">
@@ -78,7 +84,10 @@ const PinCard = ({ publication, onSelect }) => {
                 size="icon"
                 variant="ghost"
                 className="h-8 w-8 rounded-full text-white hover:bg-white/20"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLike?.(publication);
+                }}
               >
                 <Heart className="h-4 w-4" />
               </Button>

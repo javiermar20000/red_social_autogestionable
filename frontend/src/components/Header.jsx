@@ -9,6 +9,7 @@ const Header = ({
   search,
   onSearchChange,
   onExplore,
+  onTopHearts,
   onNotifications,
   hasNotifications = false,
   notificationsCount = 0,
@@ -85,7 +86,7 @@ const Header = ({
                 </span>
               )}
             </Button>
-            <Button variant="ghost" size="icon" onClick={onExplore} title="Explorar">
+            <Button variant="ghost" size="icon" onClick={onTopHearts} title="Me gusta">
               <Heart className="h-5 w-5" />
             </Button>
             {currentUser ? (
@@ -161,7 +162,7 @@ const Header = ({
                       </span>
                     )}
                   </Button>
-                  <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onExplore)}>
+                  <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onTopHearts)}>
                     <Heart className="h-5 w-5" />
                     Me gusta
                   </Button>

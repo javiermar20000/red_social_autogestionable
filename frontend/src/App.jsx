@@ -22,6 +22,7 @@ import pin8 from './assets/pin8.jpg';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
+const LIKES_STORAGE_KEY = 'publicationLikes';
 
 const fetchJson = async (path, options = {}) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -95,6 +96,36 @@ const categoriesByBusinessType = {
 
 const defaultBusinessTypes = ['RESTAURANTE', 'CAFETERIA', 'FOODTRUCK', 'BAR'];
 const defaultCategoryTypes = defaultBusinessTypes.flatMap((type) => categoriesByBusinessType[type] || []);
+const defaultFilters = {
+  search: '',
+  categoryId: '',
+  businessId: '',
+  businessType: '',
+  priceRange: '',
+  sortBy: '',
+  sortDir: 'desc',
+};
+
+const sanitizeLikesMap = (raw) => {
+  if (!raw || typeof raw !== 'object') return {};
+  return Object.entries(raw).reduce((acc, [key, value]) => {
+    const num = Number(value);
+    if (Number.isFinite(num) && num >= 0) {
+      acc[key] = Math.floor(num);
+    }
+    return acc;
+  }, {});
+};
+
+const readStoredLikes = () => {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const stored = JSON.parse(localStorage.getItem(LIKES_STORAGE_KEY) || '{}');
+    return sanitizeLikesMap(stored);
+  } catch {
+    return {};
+  }
+};
 
 const normalizeCategory = (cat, fallbackList = []) => {
   if (!cat) return null;
@@ -158,15 +189,9 @@ function App() {
 
   const [feed, setFeed] = useState([]);
   const [loadingFeed, setLoadingFeed] = useState(false);
-  const [filters, setFilters] = useState({
-    search: '',
-    categoryId: '',
-    businessId: '',
-    businessType: '',
-    priceRange: '',
-    sortBy: '',
-    sortDir: 'desc',
-  });
+  const [filters, setFilters] = useState({ ...defaultFilters });
+  const [topHeartsMode, setTopHeartsMode] = useState(false);
+  const [likesById, setLikesById] = useState(() => readStoredLikes());
 
   const [selectedPublication, setSelectedPublication] = useState(null);
   const [similarItems, setSimilarItems] = useState([]);
@@ -370,7 +395,7 @@ function App() {
   };
 
   const handleHome = () => {
-    const defaultFilters = { search: '', categoryId: '', businessId: '', businessType: '', priceRange: '', sortBy: '', sortDir: 'desc' };
+    setTopHeartsMode(false);
     const isDefault =
       filters.search === defaultFilters.search &&
       filters.categoryId === defaultFilters.categoryId &&
@@ -380,10 +405,15 @@ function App() {
       filters.sortBy === defaultFilters.sortBy &&
       filters.sortDir === defaultFilters.sortDir;
     if (!isDefault) {
-      setFilters(defaultFilters);
+      setFilters({ ...defaultFilters });
     } else {
       loadFeed();
     }
+  };
+
+  const handleTopHearts = () => {
+    setTopHeartsMode(true);
+    setFilters({ ...defaultFilters, sortBy: 'hearts', sortDir: 'desc' });
   };
 
   const loadMyPublications = async () => {
@@ -527,6 +557,15 @@ function App() {
   useEffect(() => {
     localStorage.setItem('businessLogos', JSON.stringify(businessLogos));
   }, [businessLogos]);
+
+  useEffect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(LIKES_STORAGE_KEY, JSON.stringify(likesById));
+    } catch {
+      // no-op
+    }
+  }, [likesById]);
 
   useEffect(() => {
     if (!businessListForForms.length) {
@@ -1011,7 +1050,7 @@ function App() {
     return Number.isFinite(num) ? num : 0;
   };
 
-  const getHeartsValue = (pub) => {
+  const getBaseHeartsValue = (pub) => {
     const value =
       pub?.corazones ??
       pub?.hearts ??
@@ -1024,6 +1063,34 @@ function App() {
       0;
     const num = Number(value);
     return Number.isFinite(num) ? num : 0;
+  };
+
+  const getEstimatedHeartsValue = (pub) => {
+    const base = getBaseHeartsValue(pub);
+    const visits = getVisitsValue(pub);
+    const estimated = visits ? Math.round(visits * 0.1) : 0;
+    return Math.max(base, estimated);
+  };
+
+  const getHeartsValue = (pub) => {
+    if (!pub) return 0;
+    const key = pub?.id ? String(pub.id) : '';
+    if (key && Object.prototype.hasOwnProperty.call(likesById, key)) {
+      const stored = Number(likesById[key]);
+      return Number.isFinite(stored) ? stored : 0;
+    }
+    return getEstimatedHeartsValue(pub);
+  };
+
+  const handleLike = (publication) => {
+    const id = publication?.id;
+    if (!id) return;
+    const key = String(id);
+    setLikesById((prev) => {
+      const stored = Number(prev[key]);
+      const current = Number.isFinite(stored) ? stored : getEstimatedHeartsValue(publication);
+      return { ...prev, [key]: Math.max(0, Math.floor(current) + 1) };
+    });
   };
 
   const extractCategoryKeys = (pub) => {
@@ -1163,20 +1230,38 @@ function App() {
       const target = String(filters.priceRange).toUpperCase();
       list = list.filter((pub) => String(pub.business?.priceRange || '').toUpperCase() === target);
     }
+    const sortBy = topHeartsMode ? 'hearts' : filters.sortBy;
+    const sortDir = topHeartsMode ? 'desc' : filters.sortDir;
     const sorted = [...list];
-    if (filters.sortBy === 'visits') {
+    if (sortBy === 'visits') {
       sorted.sort((a, b) => {
         const diff = getVisitsValue(b) - getVisitsValue(a);
-        return filters.sortDir === 'asc' ? -diff : diff;
+        return sortDir === 'asc' ? -diff : diff;
       });
-    } else if (filters.sortBy === 'hearts') {
+    } else if (sortBy === 'hearts') {
       sorted.sort((a, b) => {
         const diff = getHeartsValue(b) - getHeartsValue(a);
-        return filters.sortDir === 'asc' ? -diff : diff;
+        return sortDir === 'asc' ? -diff : diff;
       });
     }
-    return sorted;
-  }, [feedWithDecorations, filters, derivedCategories, categories]);
+    return topHeartsMode ? sorted.slice(0, 100) : sorted;
+  }, [feedWithDecorations, filters, derivedCategories, categories, likesById, topHeartsMode]);
+
+  useEffect(() => {
+    const sources = [...feed, ...myPublications];
+    if (!sources.length) return;
+    setLikesById((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      sources.forEach((pub) => {
+        const id = pub?.id ? String(pub.id) : '';
+        if (!id || Object.prototype.hasOwnProperty.call(next, id)) return;
+        next[id] = getEstimatedHeartsValue(pub);
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [feed, myPublications]);
 
   useEffect(() => {
     if (!similarSource) return;
@@ -1200,6 +1285,7 @@ function App() {
         search={filters.search}
         onSearchChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
         onExplore={() => setExploreOpen(true)}
+        onTopHearts={handleTopHearts}
         onNotifications={handleOpenNotifications}
         hasNotifications={hasNewSimilar}
         notificationsCount={similarItems.length}
@@ -1220,7 +1306,13 @@ function App() {
             ) : filteredPublicFeed.length ? (
               <MasonryGrid>
                 {filteredPublicFeed.map((pub) => (
-                  <PinCard key={pub.id} publication={pub} onSelect={handleSelectPublication} />
+                  <PinCard
+                    key={pub.id}
+                    publication={pub}
+                    likesCount={getHeartsValue(pub)}
+                    onLike={handleLike}
+                    onSelect={handleSelectPublication}
+                  />
                 ))}
               </MasonryGrid>
             ) : (
@@ -1447,7 +1539,13 @@ function App() {
                 {panelPublications.length ? (
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {panelPublications.map((pub) => (
-                      <PinCard key={pub.id} publication={pub} onSelect={handleSelectPublication} />
+                      <PinCard
+                        key={pub.id}
+                        publication={pub}
+                        likesCount={getHeartsValue(pub)}
+                        onLike={handleLike}
+                        onSelect={handleSelectPublication}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -1606,8 +1704,12 @@ function App() {
         businessTypes={businessTypeOptions}
         priceRanges={priceRangeOptions}
         filters={filters}
-        onChange={(partial) => setFilters((prev) => ({ ...prev, ...partial }))}
-        onClear={() =>
+        onChange={(partial) => {
+          setTopHeartsMode(false);
+          setFilters((prev) => ({ ...prev, ...partial }));
+        }}
+        onClear={() => {
+          setTopHeartsMode(false);
           setFilters((prev) => ({
             ...prev,
             categoryId: '',
@@ -1615,8 +1717,8 @@ function App() {
             priceRange: '',
             sortBy: '',
             sortDir: 'desc',
-          }))
-        }
+          }));
+        }}
       />
 
       <Dialog

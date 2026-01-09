@@ -66,7 +66,7 @@ const AuthDialog = ({ open, onOpenChange, onLogin, onRegister, loading = false }
                   required
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full" variant="danger" disabled={loading}>
                 Entrar
               </Button>
             </form>
@@ -120,7 +120,7 @@ const AuthDialog = ({ open, onOpenChange, onLogin, onRegister, loading = false }
                   <option value="admin">Admin global</option>
                 </select>
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full" variant="danger" disabled={loading}>
                 Registrarme
               </Button>
             </form>

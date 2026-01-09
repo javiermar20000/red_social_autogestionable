@@ -26,7 +26,7 @@ export const Dialog = ({ open, onOpenChange, children }) => {
 export const DialogContent = ({ children, className = '' }) => {
   const { onClose } = useContext(DialogContext);
   return (
-    <div className={cn('relative w-full rounded-2xl bg-card text-card-foreground shadow-hover p-6', className)}>
+    <div className={cn('relative mx-auto w-full rounded-2xl bg-card text-card-foreground shadow-hover p-6', className)}>
       <button
         className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
         onClick={onClose}

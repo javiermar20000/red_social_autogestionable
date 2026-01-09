@@ -1667,7 +1667,7 @@ function App() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground text-center">
               {similarSource
                 ? 'No encontramos otras publicaciones en esta categoría.'
                 : 'Explora una publicación para ver recomendaciones aquí.'}
@@ -1690,6 +1690,7 @@ function App() {
               <p className="text-muted-foreground">Inicia sesión para crear contenido.</p>
               <Button
                 className="mt-3"
+                variant="danger"
                 onClick={() => {
                   setCreateOpen(false);
                   setAuthOpen(true);

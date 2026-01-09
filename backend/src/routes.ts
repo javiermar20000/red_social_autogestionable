@@ -807,7 +807,7 @@ router.get(
       return res.status(400).json({ message: 'tenantId es requerido' });
     }
     const ctxIsAdmin = !!req.auth?.isAdminGlobal;
-    const searchTerm = typeof req.query.search === 'string' ? req.query.search.toLowerCase() : '';
+    const searchTerm = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
     const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : null;
     const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : null;
 
@@ -835,7 +835,17 @@ router.get(
           );
         }
         if (searchTerm) {
-          qb.andWhere('(LOWER(p.titulo) LIKE :term OR LOWER(p.contenido) LIKE :term)', { term: `%${searchTerm}%` });
+          const matchingBusinessIds = businesses
+            .filter((biz) => biz.name && biz.name.toLowerCase().includes(searchTerm))
+            .map((biz) => biz.id);
+          if (matchingBusinessIds.length) {
+            qb.andWhere(
+              '(LOWER(p.titulo) LIKE :term OR LOWER(p.contenido) LIKE :term OR p.businessId IN (:...bizIds))',
+              { term: `%${searchTerm}%`, bizIds: matchingBusinessIds }
+            );
+          } else {
+            qb.andWhere('(LOWER(p.titulo) LIKE :term OR LOWER(p.contenido) LIKE :term)', { term: `%${searchTerm}%` });
+          }
         }
         qb.orderBy('p.fechaPublicacion', 'DESC').addOrderBy('p.fechaCreacion', 'DESC');
         const rows = await qb.getMany();

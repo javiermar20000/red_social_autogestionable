@@ -9,7 +9,26 @@ const formatCategoryLabel = (cat) => {
   return type && name && type !== name ? `${type} · ${name}` : name;
 };
 
-const PinCard = ({ publication, likesCount = 0, onLike, onSelect }) => {
+const formatCompactLikes = (value) => {
+  const safeValue = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  if (safeValue <= 999) return String(safeValue);
+  if (safeValue < 1000000) {
+    const compact = safeValue / 1000;
+    const decimals = compact < 10 ? 1 : 0;
+    const formatted = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: decimals }).format(
+      compact
+    );
+    return `${formatted} mil`;
+  }
+  const compact = safeValue / 1000000;
+  const decimals = compact < 10 ? 1 : 0;
+  const formatted = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: decimals }).format(
+    compact
+  );
+  return `${formatted} mill`;
+};
+
+const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect }) => {
   const [isHovered, setIsHovered] = useState(false);
   const mediaSrc = publication.coverUrl || publication.placeholder || placeholderImg;
   const categories = publication.categories || [];
@@ -31,9 +50,7 @@ const PinCard = ({ publication, likesCount = 0, onLike, onSelect }) => {
     : '0';
   const likesNumber = Number(likesCount);
   const safeLikesNumber = Number.isFinite(likesNumber) ? likesNumber : 0;
-  const formattedLikes = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
-    safeLikesNumber
-  );
+  const formattedLikes = formatCompactLikes(safeLikesNumber);
   const normalize = (val) => (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   const promoKeywords = ['EN_PROMOCION', 'PROMOCION', 'PROMO'];
   const isPromoCategory = categories.some((cat) => {
@@ -41,6 +58,10 @@ const PinCard = ({ publication, likesCount = 0, onLike, onSelect }) => {
     return promoKeywords.some((keyword) => label.includes(keyword));
   });
   const showOfferBadge = isPromoCategory && publication.estado !== 'AVISO_GENERAL';
+  const likeButtonClassName = liked
+    ? 'h-8 w-8 rounded-full bg-red-500 text-white hover:bg-red-600'
+    : 'h-8 w-8 rounded-full text-white hover:bg-white/20';
+  const likeButtonLabel = liked ? 'Me gusta marcado' : 'Dar me gusta';
 
   return (
     <div
@@ -76,21 +97,27 @@ const PinCard = ({ publication, likesCount = 0, onLike, onSelect }) => {
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
             <div className="text-white">
               <h3 className="line-clamp-1 text-sm font-semibold">{formattedVisits} visitas</h3>
-              <p className="text-xs opacity-90">aprox. {formattedLikes} me gusta</p>
               <p className="text-xs opacity-90">{publication.business?.name || publication.authorName || 'GastroHub'}</p>
             </div>
             <div className="flex gap-2">
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 rounded-full text-white hover:bg-white/20"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onLike?.(publication);
-                }}
-              >
-                <Heart className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={likeButtonClassName}
+                  aria-pressed={liked}
+                  aria-label={likeButtonLabel}
+                  title={likeButtonLabel}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (liked) return;
+                    onLike?.(publication);
+                  }}
+                >
+                  <Heart className="h-4 w-4" fill={liked ? 'currentColor' : 'none'} />
+                </Button>
+                <span className="text-xs font-semibold text-white tabular-nums">{formattedLikes}</span>
+              </div>
               <Button
                 size="icon"
                 variant="ghost"

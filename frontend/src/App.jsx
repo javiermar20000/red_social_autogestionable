@@ -23,6 +23,7 @@ import pin8 from './assets/pin8.jpg';
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 const LIKES_STORAGE_KEY = 'publicationLikes';
+const SESSION_LIKES_STORAGE_KEY = 'publicationLikesSession';
 
 const fetchJson = async (path, options = {}) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -117,11 +118,31 @@ const sanitizeLikesMap = (raw) => {
   }, {});
 };
 
+const sanitizeSessionLikes = (raw) => {
+  if (!raw || typeof raw !== 'object') return {};
+  return Object.entries(raw).reduce((acc, [key, value]) => {
+    if (value) {
+      acc[key] = true;
+    }
+    return acc;
+  }, {});
+};
+
 const readStoredLikes = () => {
   if (typeof localStorage === 'undefined') return {};
   try {
     const stored = JSON.parse(localStorage.getItem(LIKES_STORAGE_KEY) || '{}');
     return sanitizeLikesMap(stored);
+  } catch {
+    return {};
+  }
+};
+
+const readSessionLikes = () => {
+  if (typeof sessionStorage === 'undefined') return {};
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(SESSION_LIKES_STORAGE_KEY) || '{}');
+    return sanitizeSessionLikes(stored);
   } catch {
     return {};
   }
@@ -192,6 +213,7 @@ function App() {
   const [filters, setFilters] = useState({ ...defaultFilters });
   const [topHeartsMode, setTopHeartsMode] = useState(false);
   const [likesById, setLikesById] = useState(() => readStoredLikes());
+  const [likedById, setLikedById] = useState(() => readSessionLikes());
 
   const [selectedPublication, setSelectedPublication] = useState(null);
   const [similarItems, setSimilarItems] = useState([]);
@@ -566,6 +588,15 @@ function App() {
       // no-op
     }
   }, [likesById]);
+
+  useEffect(() => {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      sessionStorage.setItem(SESSION_LIKES_STORAGE_KEY, JSON.stringify(likedById));
+    } catch {
+      // no-op
+    }
+  }, [likedById]);
 
   useEffect(() => {
     if (!businessListForForms.length) {
@@ -1082,14 +1113,23 @@ function App() {
     return getEstimatedHeartsValue(pub);
   };
 
+  const hasLikedInSession = (pub) => {
+    const key = pub?.id ? String(pub.id) : '';
+    return key ? Boolean(likedById[key]) : false;
+  };
+
   const handleLike = (publication) => {
     const id = publication?.id;
     if (!id) return;
     const key = String(id);
-    setLikesById((prev) => {
-      const stored = Number(prev[key]);
-      const current = Number.isFinite(stored) ? stored : getEstimatedHeartsValue(publication);
-      return { ...prev, [key]: Math.max(0, Math.floor(current) + 1) };
+    setLikedById((prev) => {
+      if (prev[key]) return prev;
+      setLikesById((prevLikes) => {
+        const stored = Number(prevLikes[key]);
+        const current = Number.isFinite(stored) ? stored : getEstimatedHeartsValue(publication);
+        return { ...prevLikes, [key]: Math.max(0, Math.floor(current) + 1) };
+      });
+      return { ...prev, [key]: true };
     });
   };
 
@@ -1310,6 +1350,7 @@ function App() {
                     key={pub.id}
                     publication={pub}
                     likesCount={getHeartsValue(pub)}
+                    liked={hasLikedInSession(pub)}
                     onLike={handleLike}
                     onSelect={handleSelectPublication}
                   />
@@ -1543,6 +1584,7 @@ function App() {
                         key={pub.id}
                         publication={pub}
                         likesCount={getHeartsValue(pub)}
+                        liked={hasLikedInSession(pub)}
                         onLike={handleLike}
                         onSelect={handleSelectPublication}
                       />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Heart, Share2 } from 'lucide-react';
+import { Heart, Share2, Facebook, Instagram, Twitter, MessageCircle } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
 import placeholderImg from '../assets/pin2.jpg';
 
@@ -30,6 +30,7 @@ const formatCompactLikes = (value) => {
 
 const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const mediaSrc = publication.coverUrl || publication.placeholder || placeholderImg;
   const categories = publication.categories || [];
   const isVideo =
@@ -62,17 +63,64 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
     ? 'h-8 w-8 rounded-full bg-red-500 text-white hover:bg-red-600'
     : 'h-8 w-8 rounded-full text-white hover:bg-white/20';
   const likeButtonLabel = liked ? 'Me gusta marcado' : 'Dar me gusta';
+  const businessName = publication.business?.name || publication.authorName || 'GastroHub';
+  const locationParts = [publication.business?.address, publication.business?.city, publication.business?.region].filter(Boolean);
+  const locationLabel = locationParts.length ? locationParts.join(', ') : '';
+  const shareTitle = publication.titulo || 'Oferta para comer';
+  const sharePrice = displayPrice;
+  const shareTextBase = `Mira que buena oferta para comer. ${shareTitle} en ${businessName}${
+    locationLabel ? ` (${locationLabel})` : ''
+  }. Precio: ${sharePrice}.`;
+  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const shareTextWithUrl = shareUrl ? `${shareTextBase} ${shareUrl}` : shareTextBase;
+  const shareUrlEncoded = encodeURIComponent(shareUrl || '');
+  const shareTextEncoded = encodeURIComponent(shareTextBase);
+  const shareTextWithUrlEncoded = encodeURIComponent(shareTextWithUrl);
+  const whatsappHref = `https://wa.me/?text=${shareTextWithUrlEncoded}`;
+  const facebookHref = `https://www.facebook.com/sharer/sharer.php?u=${shareUrlEncoded}&quote=${shareTextEncoded}`;
+  const twitterHref = `https://twitter.com/intent/tweet?text=${shareTextEncoded}${
+    shareUrl ? `&url=${shareUrlEncoded}` : ''
+  }`;
+  const handleShareToggle = (event) => {
+    event.stopPropagation();
+    setIsShareOpen((prev) => !prev);
+  };
+  const handleShareLinkClick = (event) => {
+    event.stopPropagation();
+    setIsShareOpen(false);
+  };
+  const handleInstagramShare = (event) => {
+    event.stopPropagation();
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(shareTextWithUrl).catch(() => {});
+    }
+    setIsShareOpen(false);
+  };
 
   return (
     <div
       className="group relative mb-4 break-inside-avoid overflow-hidden rounded-2xl bg-card shadow-soft transition duration-300 hover:scale-[1.02]"
       style={{ boxShadow: isHovered ? 'var(--shadow-hover)' : 'var(--shadow-soft)' }}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={() => onSelect?.(publication)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setIsShareOpen(false);
+      }}
+      onClick={() => {
+        setIsShareOpen(false);
+        onSelect?.(publication);
+      }}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && onSelect?.(publication)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          setIsShareOpen(false);
+          return;
+        }
+        if (e.key === 'Enter' && e.currentTarget === e.target) {
+          onSelect?.(publication);
+        }
+      }}
     >
       <div className="relative">
         {isVideo ? (
@@ -118,14 +166,69 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
                 </Button>
                 <span className="text-xs font-semibold text-white tabular-nums">{formattedLikes}</span>
               </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 rounded-full text-white hover:bg-white/20"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Share2 className="h-4 w-4" />
-              </Button>
+              <div className="relative">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 rounded-full text-white hover:bg-white/20"
+                  aria-label="Compartir"
+                  aria-expanded={isShareOpen}
+                  onClick={handleShareToggle}
+                >
+                  <Share2 className="h-4 w-4" />
+                </Button>
+                {isShareOpen && (
+                  <div
+                    className="absolute right-0 top-full z-30 mt-2 flex items-center gap-2 rounded-full bg-white/95 p-2 shadow-soft backdrop-blur"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <a
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      href={whatsappHref}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      aria-label="Compartir en WhatsApp"
+                      title="Compartir en WhatsApp"
+                      onClick={handleShareLinkClick}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </a>
+                    <a
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1877F2] text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      href={facebookHref}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      aria-label="Compartir en Facebook"
+                      title="Compartir en Facebook"
+                      onClick={handleShareLinkClick}
+                    >
+                      <Facebook className="h-4 w-4" />
+                    </a>
+                    <a
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#515bd4] text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      href="https://www.instagram.com/"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      aria-label="Compartir en Instagram (copia el mensaje)"
+                      title="Compartir en Instagram (copia el mensaje)"
+                      onClick={handleInstagramShare}
+                    >
+                      <Instagram className="h-4 w-4" />
+                    </a>
+                    <a
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-black text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      href={twitterHref}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      aria-label="Compartir en X"
+                      title="Compartir en X"
+                      onClick={handleShareLinkClick}
+                    >
+                      <Twitter className="h-4 w-4" />
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

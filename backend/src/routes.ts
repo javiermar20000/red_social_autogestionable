@@ -1127,6 +1127,30 @@ router.post(
   })
 );
 
+router.post(
+  '/publications/:id/like',
+  asyncHandler(async (req: AuthRequest, res) => {
+    const publicationId = req.params.id;
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
+    if (!tenantId) return res.status(400).json({ message: 'tenantId es requerido' });
+    let nextLikes = 0;
+    await runWithContext({ tenantId }, async (manager) => {
+      const repo = manager.getRepository(Publication);
+      const publication = await repo.findOne({ where: { id: publicationId, estado: PublicacionEstado.PUBLICADA } });
+      if (!publication) throw new Error('Publicación no encontrada o no publicada');
+      const currentLikes = Number.isFinite(publication.likes) ? publication.likes : 0;
+      nextLikes = currentLikes + 1;
+      await repo.update({ id: publicationId }, { likes: nextLikes });
+    });
+    res.json({ message: 'Me gusta registrado', likes: nextLikes });
+  })
+);
+
 // Manejo de errores por defecto para evitar que el proceso caiga por excepciones no capturadas
 router.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Unhandled error in route', err);

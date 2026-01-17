@@ -22,7 +22,6 @@ import pin8 from './assets/pin8.jpg';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
-const LIKES_STORAGE_KEY = 'publicationLikes';
 const SESSION_LIKES_STORAGE_KEY = 'publicationLikesSession';
 
 const fetchJson = async (path, options = {}) => {
@@ -107,17 +106,6 @@ const defaultFilters = {
   sortDir: 'desc',
 };
 
-const sanitizeLikesMap = (raw) => {
-  if (!raw || typeof raw !== 'object') return {};
-  return Object.entries(raw).reduce((acc, [key, value]) => {
-    const num = Number(value);
-    if (Number.isFinite(num) && num >= 0) {
-      acc[key] = Math.floor(num);
-    }
-    return acc;
-  }, {});
-};
-
 const sanitizeSessionLikes = (raw) => {
   if (!raw || typeof raw !== 'object') return {};
   return Object.entries(raw).reduce((acc, [key, value]) => {
@@ -126,16 +114,6 @@ const sanitizeSessionLikes = (raw) => {
     }
     return acc;
   }, {});
-};
-
-const readStoredLikes = () => {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const stored = JSON.parse(localStorage.getItem(LIKES_STORAGE_KEY) || '{}');
-    return sanitizeLikesMap(stored);
-  } catch {
-    return {};
-  }
 };
 
 const readSessionLikes = () => {
@@ -212,7 +190,6 @@ function App() {
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [filters, setFilters] = useState({ ...defaultFilters });
   const [topHeartsMode, setTopHeartsMode] = useState(false);
-  const [likesById, setLikesById] = useState(() => readStoredLikes());
   const [likedById, setLikedById] = useState(() => readSessionLikes());
 
   const [selectedPublication, setSelectedPublication] = useState(null);
@@ -579,15 +556,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem('businessLogos', JSON.stringify(businessLogos));
   }, [businessLogos]);
-
-  useEffect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      localStorage.setItem(LIKES_STORAGE_KEY, JSON.stringify(likesById));
-    } catch {
-      // no-op
-    }
-  }, [likesById]);
 
   useEffect(() => {
     if (typeof sessionStorage === 'undefined') return;
@@ -1096,21 +1064,9 @@ function App() {
     return Number.isFinite(num) ? num : 0;
   };
 
-  const getEstimatedHeartsValue = (pub) => {
-    const base = getBaseHeartsValue(pub);
-    const visits = getVisitsValue(pub);
-    const estimated = visits ? Math.round(visits * 0.1) : 0;
-    return Math.max(base, estimated);
-  };
-
   const getHeartsValue = (pub) => {
     if (!pub) return 0;
-    const key = pub?.id ? String(pub.id) : '';
-    if (key && Object.prototype.hasOwnProperty.call(likesById, key)) {
-      const stored = Number(likesById[key]);
-      return Number.isFinite(stored) ? stored : 0;
-    }
-    return getEstimatedHeartsValue(pub);
+    return getBaseHeartsValue(pub);
   };
 
   const hasLikedInSession = (pub) => {
@@ -1118,19 +1074,57 @@ function App() {
     return key ? Boolean(likedById[key]) : false;
   };
 
-  const handleLike = (publication) => {
-    const id = publication?.id;
-    if (!id) return;
-    const key = String(id);
-    setLikedById((prev) => {
-      if (prev[key]) return prev;
-      setLikesById((prevLikes) => {
-        const stored = Number(prevLikes[key]);
-        const current = Number.isFinite(stored) ? stored : getEstimatedHeartsValue(publication);
-        return { ...prevLikes, [key]: Math.max(0, Math.floor(current) + 1) };
-      });
-      return { ...prev, [key]: true };
+  const updatePublicationLikes = (items, publicationId, nextLikes) => {
+    if (!Array.isArray(items) || !items.length) return items;
+    const normalized = Math.max(0, Math.floor(Number(nextLikes) || 0));
+    let changed = false;
+    const updated = items.map((item) => {
+      if (String(item.id) !== publicationId) return item;
+      const current = getBaseHeartsValue(item);
+      if (current === normalized) return item;
+      changed = true;
+      return { ...item, likes: normalized };
     });
+    return changed ? updated : items;
+  };
+
+  const applyLikesUpdate = (publicationId, nextLikes) => {
+    const normalized = Math.max(0, Math.floor(Number(nextLikes) || 0));
+    setFeed((prev) => updatePublicationLikes(prev, publicationId, normalized));
+    setMyPublications((prev) => updatePublicationLikes(prev, publicationId, normalized));
+    setSelectedPublication((prev) => {
+      if (!prev || String(prev.id) !== publicationId) return prev;
+      return { ...prev, likes: normalized };
+    });
+  };
+
+  const handleLike = async (publication) => {
+    const id = publication?.id;
+    const tenantForLike = publication?.business?.tenantId || selectedTenantId;
+    if (!id || !tenantForLike || publication.estado !== 'PUBLICADA') return;
+    const key = String(id);
+    if (likedById[key]) return;
+    const currentLikes = getHeartsValue(publication);
+    const optimisticLikes = currentLikes + 1;
+    setLikedById((prev) => ({ ...prev, [key]: true }));
+    applyLikesUpdate(key, optimisticLikes);
+    try {
+      const data = await fetchJson(`/publications/${id}/like?tenantId=${tenantForLike}`, { method: 'POST' });
+      const serverLikes = Number(data?.likes);
+      if (Number.isFinite(serverLikes)) {
+        applyLikesUpdate(key, serverLikes);
+      } else {
+        loadFeed();
+      }
+    } catch (err) {
+      setLikedById((prev) => {
+        if (!prev[key]) return prev;
+        const { [key]: _removed, ...rest } = prev;
+        return rest;
+      });
+      applyLikesUpdate(key, currentLikes);
+      notify('danger', err.message);
+    }
   };
 
   const extractCategoryKeys = (pub) => {
@@ -1285,23 +1279,7 @@ function App() {
       });
     }
     return topHeartsMode ? sorted.slice(0, 100) : sorted;
-  }, [feedWithDecorations, filters, derivedCategories, categories, likesById, topHeartsMode]);
-
-  useEffect(() => {
-    const sources = [...feed, ...myPublications];
-    if (!sources.length) return;
-    setLikesById((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      sources.forEach((pub) => {
-        const id = pub?.id ? String(pub.id) : '';
-        if (!id || Object.prototype.hasOwnProperty.call(next, id)) return;
-        next[id] = getEstimatedHeartsValue(pub);
-        changed = true;
-      });
-      return changed ? next : prev;
-    });
-  }, [feed, myPublications]);
+  }, [feedWithDecorations, filters, derivedCategories, categories, topHeartsMode]);
 
   useEffect(() => {
     if (!similarSource) return;

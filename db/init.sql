@@ -248,6 +248,7 @@ CREATE TABLE publicacion (
   fecha_publicacion    TIMESTAMP WITH TIME ZONE,
   fecha_fin_vigencia   TIMESTAMP WITH TIME ZONE,
   visitas              INTEGER NOT NULL DEFAULT 0,
+  likes                INTEGER NOT NULL DEFAULT 0,
   precio               NUMERIC(10, 2),
   CONSTRAINT fk_publicacion_negocio
     FOREIGN KEY (negocio_id) REFERENCES negocio(id)

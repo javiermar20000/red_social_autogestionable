@@ -72,4 +72,7 @@ export class Publication {
 
   @Column({ default: 0 })
   visitas!: number;
+
+  @Column({ default: 0 })
+  likes!: number;
 }

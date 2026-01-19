@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Heart, Share2, Download, MoreHorizontal, Facebook, Instagram, Twitter, MessageCircle } from 'lucide-react';
+import { Heart, Share2, Download, MoreHorizontal, Facebook, Instagram, Twitter, MessageCircle, MapPin } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/Dialog.jsx';
 import { Button } from './ui/Button.jsx';
 import { Avatar, AvatarFallback } from './ui/Avatar.jsx';
@@ -82,6 +82,8 @@ const PinDetailDialog = ({
   const twitterHref = `https://twitter.com/intent/tweet?text=${shareTextEncoded}${
     shareUrl ? `&url=${shareUrlEncoded}` : ''
   }`;
+  const mapQuery = locationLabel || business?.address || business?.city || business?.region || '';
+  const mapUrl = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : '';
   const likeButtonClassName = liked
     ? 'rounded-full bg-red-500 text-white hover:bg-red-600'
     : 'rounded-full text-muted-foreground';
@@ -128,6 +130,12 @@ const PinDetailDialog = ({
     document.body.appendChild(link);
     link.click();
     link.remove();
+  };
+  const handleOpenMap = (event) => {
+    event.stopPropagation();
+    setIsShareOpen(false);
+    if (typeof window === 'undefined' || !mapUrl) return;
+    window.open(mapUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -297,6 +305,17 @@ const PinDetailDialog = ({
                 onClick={handleDownload}
               >
                 <Download className="h-5 w-5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="rounded-full"
+                aria-label="Abrir en Google Maps"
+                title={mapUrl ? 'Abrir en Google Maps' : 'Dirección no disponible'}
+                onClick={handleOpenMap}
+                disabled={!mapUrl}
+              >
+                <MapPin className="h-5 w-5" />
               </Button>
             </div>
           </div>

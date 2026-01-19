@@ -2144,6 +2144,8 @@ function App() {
         onOpenChange={(open) => !open && setSelectedPublication(null)}
         publication={selectedPublication}
         onRegisterVisit={handleRegisterVisit}
+        onLike={handleLike}
+        liked={hasLikedInSession(selectedPublication)}
         onEdit={(pub) => {
           if (pub) {
             handleEditPublication(pub);

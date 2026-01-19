@@ -10,6 +10,7 @@ import { Input } from './components/ui/Input.jsx';
 import { Label } from './components/ui/Label.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/Tabs.jsx';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/Dialog.jsx';
+import { Avatar, AvatarFallback } from './components/ui/Avatar.jsx';
 import { cn } from './lib/cn.js';
 import pin1 from './assets/pin1.jpg';
 import pin2 from './assets/pin2.jpg';
@@ -23,6 +24,7 @@ import pin8 from './assets/pin8.jpg';
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 const SESSION_LIKES_STORAGE_KEY = 'publicationLikesSession';
+const MAX_BUSINESS_LOGO_BYTES = 1024 * 1024;
 
 const fetchJson = async (path, options = {}) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -241,13 +243,6 @@ function App() {
     longitude: '',
     imageUrl: '',
   });
-  const [businessLogos, setBusinessLogos] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('businessLogos') || '{}');
-    } catch {
-      return {};
-    }
-  });
 
   const resetPublicationForm = () => {
     setPublicationForm({
@@ -300,6 +295,33 @@ function App() {
     };
     reader.onerror = () => notify('danger', 'No se pudo leer el archivo de portada');
     reader.readAsDataURL(file);
+  };
+
+  const handleBusinessLogoUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      notify('danger', 'Selecciona una imagen válida');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > MAX_BUSINESS_LOGO_BYTES) {
+      notify('danger', 'La imagen supera el máximo de 1 MB');
+      event.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!result) {
+        notify('danger', 'No se pudo leer la imagen');
+        return;
+      }
+      setBusinessProfileForm((prev) => ({ ...prev, imageUrl: result }));
+    };
+    reader.onerror = () => notify('danger', 'No se pudo leer la imagen');
+    reader.readAsDataURL(file);
+    event.target.value = '';
   };
 
   const loadPublicTenants = async () => {
@@ -554,10 +576,6 @@ function App() {
   }, [allowedCategoryTypesForBusiness]);
 
   useEffect(() => {
-    localStorage.setItem('businessLogos', JSON.stringify(businessLogos));
-  }, [businessLogos]);
-
-  useEffect(() => {
     if (typeof sessionStorage === 'undefined') return;
     try {
       sessionStorage.setItem(SESSION_LIKES_STORAGE_KEY, JSON.stringify(likedById));
@@ -589,9 +607,9 @@ function App() {
       priceRange: selected.priceRange || '',
       latitude: selected.latitude ? String(selected.latitude) : '',
       longitude: selected.longitude ? String(selected.longitude) : '',
-      imageUrl: businessLogos[selected.id] || '',
+      imageUrl: selected.imageUrl || '',
     }));
-  }, [businessListForForms, profileBusinessId, businessLogos]);
+  }, [businessListForForms, profileBusinessId]);
 
   const handleLogin = async (credentials) => {
     setAuthLoading(true);
@@ -862,6 +880,7 @@ function App() {
         body: JSON.stringify({
           name: businessProfileForm.name,
           description: businessProfileForm.description,
+          imageUrl: businessProfileForm.imageUrl || null,
           address: businessProfileForm.address,
           city: businessProfileForm.city,
           region: businessProfileForm.region,
@@ -870,7 +889,6 @@ function App() {
           longitude: lng,
         }),
       });
-      setBusinessLogos((prev) => ({ ...prev, [profileBusinessId]: businessProfileForm.imageUrl || '' }));
       notify('success', 'Perfil de negocio actualizado');
       loadBusinesses();
       loadFeed();
@@ -1296,6 +1314,17 @@ function App() {
     if (currentUser?.rol === 'OFERENTE') return myPublications;
     return [];
   }, [isAdmin, feedWithDecorations, myPublications, currentUser]);
+  const businessLogoValue = typeof businessProfileForm.imageUrl === 'string' ? businessProfileForm.imageUrl : '';
+  const isBusinessLogoDataUrl = businessLogoValue.startsWith('data:');
+  const businessLogoInputValue = isBusinessLogoDataUrl ? '' : businessLogoValue;
+  const hasBusinessLogo = Boolean(businessLogoValue);
+  const selectedBusinessLogoUrl = (() => {
+    const businessId = selectedPublication?.business?.id ?? selectedPublication?.businessId;
+    if (!businessId) return '';
+    if (selectedPublication?.business?.imageUrl) return selectedPublication.business.imageUrl;
+    const match = businesses.find((b) => String(b.id) === String(businessId));
+    return match?.imageUrl || '';
+  })();
 
   return (
     <div className="min-h-screen bg-background">
@@ -1390,15 +1419,41 @@ function App() {
                       />
                     </div>
                     <div>
-                      <Label>Imagen de perfil (URL)</Label>
+                      <Label>Imagen de perfil</Label>
                       <Input
                         placeholder="https://..."
-                        value={businessProfileForm.imageUrl}
+                        value={businessLogoInputValue}
                         onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
                       />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Guardado localmente para referencia visual. No se envía al servidor.
-                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-input bg-muted/60 px-3 py-2 text-sm font-medium hover:bg-muted">
+                          <input type="file" accept="image/*" className="sr-only" onChange={handleBusinessLogoUpload} />
+                          Subir imagen
+                        </label>
+                        {hasBusinessLogo && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setBusinessProfileForm((prev) => ({ ...prev, imageUrl: '' }))}
+                          >
+                            Quitar
+                          </Button>
+                        )}
+                        <p className="text-xs text-muted-foreground">Máx 1 MB. Se guarda en el servidor.</p>
+                      </div>
+                      {hasBusinessLogo && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <Avatar src={businessLogoValue} alt={`Logo de ${businessProfileForm.name || 'negocio'}`}>
+                            <AvatarFallback className="bg-primary text-primary-foreground">
+                              {(businessProfileForm.name || 'N')[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <p className="text-xs text-muted-foreground">
+                            {isBusinessLogoDataUrl ? 'Imagen cargada desde archivo.' : 'Imagen desde URL.'}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div className="md:col-span-2">
                       <Label>Descripción</Label>
@@ -2146,6 +2201,7 @@ function App() {
         onRegisterVisit={handleRegisterVisit}
         onLike={handleLike}
         liked={hasLikedInSession(selectedPublication)}
+        businessLogoUrl={selectedBusinessLogoUrl}
         onEdit={(pub) => {
           if (pub) {
             handleEditPublication(pub);

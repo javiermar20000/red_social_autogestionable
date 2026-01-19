@@ -38,6 +38,9 @@ export class Business {
   @Column({ name: 'descripcion', type: 'text', nullable: true })
   description!: string | null;
 
+  @Column({ name: 'imagen_url', type: 'text', nullable: true })
+  imageUrl!: string | null;
+
   @Column({ name: 'direccion', length: 255, nullable: true })
   address!: string | null;
 

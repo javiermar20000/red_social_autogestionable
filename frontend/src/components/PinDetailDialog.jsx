@@ -21,6 +21,7 @@ const PinDetailDialog = ({
   currentUser,
   onLike,
   liked = false,
+  businessLogoUrl = '',
 }) => {
   const lastVisitedId = useRef(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
@@ -82,6 +83,7 @@ const PinDetailDialog = ({
   const twitterHref = `https://twitter.com/intent/tweet?text=${shareTextEncoded}${
     shareUrl ? `&url=${shareUrlEncoded}` : ''
   }`;
+  const businessAvatarSrc = businessLogoUrl || business?.imageUrl || business?.logoUrl || '';
   const mapQuery = locationLabel || business?.address || business?.city || business?.region || '';
   const mapUrl = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : '';
   const likeButtonClassName = liked
@@ -206,13 +208,13 @@ const PinDetailDialog = ({
             )}
 
             <div className="mt-6 flex items-center gap-3">
-              <Avatar>
+              <Avatar src={businessAvatarSrc} alt={`Logo de ${businessName}`}>
                 <AvatarFallback className="bg-primary text-primary-foreground">
-                  {(authorName || business?.name || 'G')[0]}
+                  {businessName[0]}
                 </AvatarFallback>
               </Avatar>
               <div>
-                <p className="font-semibold">{authorName || business?.name || 'GastroHub'}</p>
+                <p className="font-semibold">{businessName}</p>
                 <p className="text-sm text-muted-foreground">{visitas} visitas</p>
               </div>
             </div>

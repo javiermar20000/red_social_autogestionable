@@ -440,7 +440,7 @@ router.post(
   asyncHandler(async (req: AuthRequest, res) => {
     const user = req.auth!.user!;
     ensureUserReady(user, { requireTenant: false });
-    const { name, type, description, address, city, region, priceRange, latitude, longitude } = req.body;
+    const { name, type, description, address, city, region, priceRange, latitude, longitude, imageUrl } = req.body;
     if (!name) return res.status(400).json({ message: 'Nombre es obligatorio' });
 
     let tenant = null as Tenant | null;
@@ -474,6 +474,7 @@ router.post(
         name,
         type: (type as NegocioTipo) || NegocioTipo.RESTAURANTE,
         description: description || null,
+        imageUrl: imageUrl || null,
         address: address || null,
         city: city || null,
         region: region || null,
@@ -503,10 +504,11 @@ router.put(
       return res.status(403).json({ message: 'No tienes permiso para editar este negocio' });
     }
 
-    const { name, description, address, city, region, priceRange, latitude, longitude } = req.body;
+    const { name, description, address, city, region, priceRange, latitude, longitude, imageUrl } = req.body;
     const updates: Partial<Business> = {};
     if (name !== undefined) updates.name = String(name).slice(0, 255);
     if (description !== undefined) updates.description = description || null;
+    if (imageUrl !== undefined) updates.imageUrl = imageUrl || null;
     if (address !== undefined) updates.address = address || null;
     if (city !== undefined) updates.city = city || null;
     if (region !== undefined) updates.region = region || null;

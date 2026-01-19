@@ -79,7 +79,7 @@ const ensureTenantIsActive = async (tenantId: string, options: { allowAutoActiva
 const ensureUserReady = (user: User, options: { requireTenant?: boolean } = {}) => {
   const { requireTenant = true } = options;
   if (user.estadoRegistro !== EstadoRegistroUsuario.ACTIVO) {
-    throw new Error('Tu cuenta debe ser validada por un admin');
+    throw new Error('Tu cuenta aún no está activa');
   }
   if (requireTenant && !user.tenantId) {
     throw new Error('Debes tener un tenant asignado');
@@ -227,7 +227,7 @@ router.post(
     const user = req.auth!.user!;
     if (user.tenantId) return res.status(400).json({ message: 'Ya tienes un tenant asignado' });
     if (user.estadoRegistro !== EstadoRegistroUsuario.ACTIVO) {
-      return res.status(400).json({ message: 'Tu cuenta aún no está validada' });
+      return res.status(400).json({ message: 'Tu cuenta aún no está activa' });
     }
     const { nombre, dominio } = req.body;
     if (!nombre) return res.status(400).json({ message: 'Nombre es obligatorio' });
@@ -236,6 +236,7 @@ router.post(
       const created = repo.create({
         nombre,
         dominio: dominio || null,
+        estado: TenantEstado.ACTIVO,
         creadorOferenteId: user.id,
         validadorAdminId: null,
       });
@@ -440,7 +441,7 @@ router.post(
   asyncHandler(async (req: AuthRequest, res) => {
     const user = req.auth!.user!;
     ensureUserReady(user, { requireTenant: false });
-    const { name, type, description, address, city, region, priceRange, latitude, longitude, imageUrl } = req.body;
+    const { name, type, description, address, city, region, priceRange, imageUrl } = req.body;
     if (!name) return res.status(400).json({ message: 'Nombre es obligatorio' });
 
     let tenant = null as Tenant | null;
@@ -479,9 +480,7 @@ router.post(
         city: city || null,
         region: region || null,
         priceRange: (priceRange as NegocioRangoPrecio) || null,
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
-        status: NegocioEstado.INACTIVO,
+        status: NegocioEstado.ACTIVO,
       })
     );
     res.json({ business, tenant });
@@ -504,7 +503,7 @@ router.put(
       return res.status(403).json({ message: 'No tienes permiso para editar este negocio' });
     }
 
-    const { name, description, address, city, region, priceRange, latitude, longitude, imageUrl } = req.body;
+    const { name, description, address, city, region, priceRange, imageUrl } = req.body;
     const updates: Partial<Business> = {};
     if (name !== undefined) updates.name = String(name).slice(0, 255);
     if (description !== undefined) updates.description = description || null;
@@ -513,8 +512,6 @@ router.put(
     if (city !== undefined) updates.city = city || null;
     if (region !== undefined) updates.region = region || null;
     if (priceRange && Object.values(NegocioRangoPrecio).includes(priceRange)) updates.priceRange = priceRange;
-    if (latitude !== undefined) updates.latitude = latitude ?? null;
-    if (longitude !== undefined) updates.longitude = longitude ?? null;
 
     await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
       manager.getRepository(Business).update({ id: businessId }, updates)

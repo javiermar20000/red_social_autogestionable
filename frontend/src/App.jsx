@@ -107,6 +107,24 @@ const defaultFilters = {
   sortBy: '',
   sortDir: 'desc',
 };
+const chileRegions = [
+  'Arica y Parinacota',
+  'Tarapacá',
+  'Antofagasta',
+  'Atacama',
+  'Coquimbo',
+  'Valparaíso',
+  'Metropolitana de Santiago',
+  "Libertador General Bernardo O'Higgins",
+  'Maule',
+  'Ñuble',
+  'Biobío',
+  'La Araucanía',
+  'Los Ríos',
+  'Los Lagos',
+  'Aysén del General Carlos Ibáñez del Campo',
+  'Magallanes y de la Antártica Chilena',
+];
 
 const sanitizeSessionLikes = (raw) => {
   if (!raw || typeof raw !== 'object') return {};
@@ -210,8 +228,6 @@ function App() {
     city: '',
     region: '',
     priceRange: '',
-    latitude: '',
-    longitude: '',
   });
   const [publicationForm, setPublicationForm] = useState({
     titulo: '',
@@ -226,7 +242,7 @@ function App() {
     precio: '',
   });
 
-  const [adminQueues, setAdminQueues] = useState({ tenants: [], users: [], businesses: [], publications: [] });
+  const [adminQueues, setAdminQueues] = useState({ publications: [] });
   const [myPublications, setMyPublications] = useState([]);
   const [loadingMyPublications, setLoadingMyPublications] = useState(false);
   const [editingPublicationId, setEditingPublicationId] = useState(null);
@@ -239,8 +255,6 @@ function App() {
     city: '',
     region: '',
     priceRange: '',
-    latitude: '',
-    longitude: '',
     imageUrl: '',
   });
 
@@ -478,18 +492,8 @@ function App() {
   const loadAdminQueues = async () => {
     if (!isAdmin) return;
     try {
-      const [tenantsPending, usersPending, businessesPending, publicationsPending] = await Promise.all([
-        fetchJson('/admin/tenants/pending', { headers: authHeaders }),
-        fetchJson('/admin/users/pending', { headers: authHeaders }),
-        fetchJson('/admin/businesses/pending', { headers: authHeaders }),
-        fetchJson('/admin/publications/pending', { headers: authHeaders }),
-      ]);
-      setAdminQueues({
-        tenants: tenantsPending,
-        users: usersPending,
-        businesses: businessesPending,
-        publications: publicationsPending,
-      });
+      const publicationsPending = await fetchJson('/admin/publications/pending', { headers: authHeaders });
+      setAdminQueues({ publications: publicationsPending });
     } catch (err) {
       notify('danger', err.message);
     }
@@ -605,8 +609,6 @@ function App() {
       city: selected.city || '',
       region: selected.region || '',
       priceRange: selected.priceRange || '',
-      latitude: selected.latitude ? String(selected.latitude) : '',
-      longitude: selected.longitude ? String(selected.longitude) : '',
       imageUrl: selected.imageUrl || '',
     }));
   }, [businessListForForms, profileBusinessId]);
@@ -680,7 +682,7 @@ function App() {
       setSelectedTenantId(String(data.tenant.id));
       localStorage.setItem('tenantId', String(data.tenant.id));
       setTenantForm({ nombre: '', dominio: '' });
-      notify('success', 'Tenant solicitado, espera aprobación del admin');
+      notify('success', 'Tenant creado');
       setCreateOpen(false);
       loadPublicTenants();
     } catch (err) {
@@ -716,8 +718,6 @@ function App() {
         city: businessForm.city || null,
         region: businessForm.region || null,
         priceRange: businessForm.priceRange || null,
-        latitude: businessForm.latitude || null,
-        longitude: businessForm.longitude || null,
       };
       const data = await fetchJson('/businesses', {
         method: 'POST',
@@ -735,7 +735,7 @@ function App() {
           localStorage.setItem('user', JSON.stringify(updatedUser));
         }
       }
-      notify('success', 'Negocio enviado a validación del admin');
+      notify('success', 'Negocio creado');
       setBusinessForm({
         name: '',
         type: 'RESTAURANTE',
@@ -744,8 +744,6 @@ function App() {
         city: '',
         region: '',
         priceRange: '',
-        latitude: '',
-        longitude: '',
       });
       if (!tenantIdFromResponse || tenantIdFromResponse === selectedTenantId) {
         loadBusinesses();
@@ -868,11 +866,6 @@ function App() {
   const handleSaveBusinessProfile = async (e) => {
     e?.preventDefault?.();
     if (!profileBusinessId) return notify('danger', 'Selecciona un negocio para editar su perfil');
-    const lat = businessProfileForm.latitude === '' ? null : Number(businessProfileForm.latitude);
-    const lng = businessProfileForm.longitude === '' ? null : Number(businessProfileForm.longitude);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      return notify('danger', 'Latitud o longitud inválida');
-    }
     try {
       await fetchJson(`/businesses/${profileBusinessId}`, {
         method: 'PUT',
@@ -885,50 +878,9 @@ function App() {
           city: businessProfileForm.city,
           region: businessProfileForm.region,
           priceRange: businessProfileForm.priceRange || null,
-          latitude: lat,
-          longitude: lng,
         }),
       });
       notify('success', 'Perfil de negocio actualizado');
-      loadBusinesses();
-      loadFeed();
-    } catch (err) {
-      notify('danger', err.message);
-    }
-  };
-
-  const handleApproveTenant = async (id, action = 'approve') => {
-    try {
-      await fetchJson(`/admin/tenants/${id}/${action === 'approve' ? 'approve' : 'reject'}`, {
-        method: 'POST',
-        headers: authHeaders,
-      });
-      notify('success', `Tenant ${action === 'approve' ? 'aprobado' : 'rechazado'}`);
-      loadAdminQueues();
-      loadPublicTenants();
-    } catch (err) {
-      notify('danger', err.message);
-    }
-  };
-
-  const handleApproveUser = async (id, action = 'approve') => {
-    try {
-      await fetchJson(`/admin/users/${id}/${action === 'approve' ? 'approve' : 'reject'}`, {
-        method: 'POST',
-        headers: authHeaders,
-      });
-      notify('success', `Usuario ${action === 'approve' ? 'aprobado' : 'rechazado'}`);
-      loadAdminQueues();
-    } catch (err) {
-      notify('danger', err.message);
-    }
-  };
-
-  const handleApproveBusiness = async (id) => {
-    try {
-      await fetchJson(`/admin/businesses/${id}/approve`, { method: 'POST', headers: authHeaders });
-      notify('success', 'Negocio aprobado');
-      loadAdminQueues();
       loadBusinesses();
       loadFeed();
     } catch (err) {
@@ -1480,10 +1432,18 @@ function App() {
                     </div>
                     <div>
                       <Label>Región</Label>
-                      <Input
-                        value={businessProfileForm.region}
+                      <select
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        value={businessProfileForm.region || ''}
                         onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, region: e.target.value }))}
-                      />
+                      >
+                        <option value="">Selecciona región</option>
+                        {chileRegions.map((region) => (
+                          <option key={region} value={region}>
+                            {region}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <Label>Rango de precio</Label>
@@ -1497,24 +1457,6 @@ function App() {
                         <option value="MEDIO">Medio</option>
                         <option value="ALTO">Alto</option>
                       </select>
-                    </div>
-                    <div>
-                      <Label>Latitud</Label>
-                      <Input
-                        type="number"
-                        step="0.000001"
-                        value={businessProfileForm.latitude}
-                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, latitude: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label>Longitud</Label>
-                      <Input
-                        type="number"
-                        step="0.000001"
-                        value={businessProfileForm.longitude}
-                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, longitude: e.target.value }))}
-                      />
                     </div>
                     <div className="md:col-span-2 flex flex-wrap gap-2">
                       <Button type="submit">Guardar perfil</Button>
@@ -1638,86 +1580,13 @@ function App() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Panel de validación</p>
-                <h4 className="text-xl font-semibold">Pendientes de aprobación</h4>
+                <h4 className="text-xl font-semibold">Publicaciones pendientes</h4>
               </div>
               <Button variant="outline" onClick={loadAdminQueues}>
                 Recargar
               </Button>
             </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-border p-4">
-                <div className="flex items-center justify-between">
-                  <h6 className="font-semibold">Tenants</h6>
-                  <span className="text-xs text-muted-foreground">{adminQueues.tenants.length}</span>
-                </div>
-                <div className="mt-2 space-y-2">
-                  {adminQueues.tenants.map((t) => (
-                    <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
-                      <div>
-                        <p className="font-semibold">{t.nombre}</p>
-                        <p className="text-xs text-muted-foreground">#{t.id}</p>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" onClick={() => handleApproveTenant(t.id, 'approve')}>
-                          Aprobar
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleApproveTenant(t.id, 'reject')}>
-                          Rechazar
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  {!adminQueues.tenants.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border p-4">
-                <div className="flex items-center justify-between">
-                  <h6 className="font-semibold">Oferentes</h6>
-                  <span className="text-xs text-muted-foreground">{adminQueues.users.length}</span>
-                </div>
-                <div className="mt-2 space-y-2">
-                  {adminQueues.users.map((u) => (
-                    <div key={u.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
-                      <div>
-                        <p className="font-semibold">{u.email}</p>
-                        <p className="text-xs text-muted-foreground">#{u.id}</p>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" onClick={() => handleApproveUser(u.id, 'approve')}>
-                          Aprobar
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleApproveUser(u.id, 'reject')}>
-                          Rechazar
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  {!adminQueues.users.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border p-4">
-                <div className="flex items-center justify-between">
-                  <h6 className="font-semibold">Negocios</h6>
-                  <span className="text-xs text-muted-foreground">{adminQueues.businesses.length}</span>
-                </div>
-                <div className="mt-2 space-y-2">
-                  {adminQueues.businesses.map((b) => (
-                    <div key={b.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
-                      <div>
-                        <p className="font-semibold">{b.name}</p>
-                        <p className="text-xs text-muted-foreground">Tenant #{b.tenantId}</p>
-                      </div>
-                      <Button size="sm" variant="outline" onClick={() => handleApproveBusiness(b.id)}>
-                        Aprobar
-                      </Button>
-                    </div>
-                  ))}
-                  {!adminQueues.businesses.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
-                </div>
-              </div>
-
+            <div className="mt-4">
               <div className="rounded-xl border border-border p-4">
                 <div className="flex items-center justify-between">
                   <h6 className="font-semibold">Publicaciones</h6>
@@ -1858,7 +1727,7 @@ function App() {
           <DialogHeader className="text-left">
             <DialogTitle>Crear o gestionar contenido</DialogTitle>
             <DialogDescription>
-              Publica novedades, registra negocios, categorías o solicita tu tenant directamente desde aquí.
+              Publica novedades, registra negocios, categorías o crea tu tenant directamente desde aquí.
             </DialogDescription>
           </DialogHeader>
 
@@ -2074,15 +1943,26 @@ function App() {
                   </div>
                   <div>
                     <Label>Ciudad</Label>
-                    <Input value={businessForm.city} onChange={(e) => setBusinessForm((prev) => ({ ...prev, city: e.target.value }))} />
+                    <Input
+                      value={businessForm.city}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, city: e.target.value }))}
+                    />
                   </div>
-                    <div>
-                      <Label>Región</Label>
-                      <Input
-                        value={businessForm.region}
-                        onChange={(e) => setBusinessForm((prev) => ({ ...prev, region: e.target.value }))}
-                      />
-                    </div>
+                  <div>
+                    <Label>Región</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      value={businessForm.region || ''}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, region: e.target.value }))}
+                    >
+                      <option value="">Selecciona región</option>
+                      {chileRegions.map((region) => (
+                        <option key={region} value={region}>
+                          {region}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <Label>Dirección</Label>
                     <Input
@@ -2103,22 +1983,8 @@ function App() {
                       <option value="ALTO">Alto</option>
                     </select>
                   </div>
-                  <div>
-                    <Label>Latitud</Label>
-                    <Input
-                      value={businessForm.latitude}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, latitude: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label>Longitud</Label>
-                    <Input
-                      value={businessForm.longitude}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, longitude: e.target.value }))}
-                    />
-                  </div>
                   <div className="md:col-span-2">
-                    <Button type="submit">Enviar a validación</Button>
+                    <Button type="submit">Crear negocio</Button>
                   </div>
                 </form>
               </TabsContent>
@@ -2141,7 +2007,7 @@ function App() {
                         onChange={(e) => setTenantForm((prev) => ({ ...prev, dominio: e.target.value }))}
                       />
                     </div>
-                    <Button type="submit">Solicitar tenant</Button>
+                    <Button type="submit">Crear tenant</Button>
                   </form>
                 </TabsContent>
               )}

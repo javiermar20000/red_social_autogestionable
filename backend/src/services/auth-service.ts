@@ -27,8 +27,16 @@ export const registerUser = async (email: string, password: string, nombre: stri
     const repo = manager.getRepository(User);
     const existing = await repo.findOne({ where: { email } });
     if (existing) throw new Error('Correo ya registrado');
-    const estado = role === RolUsuario.VISITANTE ? EstadoRegistroUsuario.ACTIVO : EstadoRegistroUsuario.PENDIENTE_VALIDACION;
-    const record = repo.create({ email, passwordHash, nombre, rol: role, estadoRegistro: estado, tenantId: null });
+    const estado = EstadoRegistroUsuario.ACTIVO;
+    const record = repo.create({
+      email,
+      passwordHash,
+      nombre,
+      rol: role,
+      estadoRegistro: estado,
+      fechaValidacion: new Date(),
+      tenantId: null,
+    });
     return repo.save(record);
   });
   return { user };

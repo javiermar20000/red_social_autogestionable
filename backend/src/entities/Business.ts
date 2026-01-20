@@ -7,12 +7,6 @@ export enum NegocioTipo {
   FOODTRUCK = 'FOODTRUCK',
 }
 
-export enum NegocioRangoPrecio {
-  BAJO = 'BAJO',
-  MEDIO = 'MEDIO',
-  ALTO = 'ALTO',
-}
-
 export enum NegocioEstado {
   ACTIVO = 'ACTIVO',
   INACTIVO = 'INACTIVO',
@@ -50,14 +44,8 @@ export class Business {
   @Column({ name: 'region', length: 100, nullable: true })
   region!: string | null;
 
-  @Column({
-    name: 'rango_precios',
-    type: 'enum',
-    enum: NegocioRangoPrecio,
-    enumName: 'negocio_rango_precios_enum',
-    nullable: true,
-  })
-  priceRange!: NegocioRangoPrecio | null;
+  @Column({ name: 'amenidades', type: 'text', array: true, nullable: true })
+  amenities!: string[] | null;
 
   @Column({ name: 'latitud', type: 'decimal', precision: 9, scale: 6, nullable: true })
   latitude!: string | null;

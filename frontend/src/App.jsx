@@ -105,7 +105,9 @@ const defaultFilters = {
   categoryId: '',
   businessId: '',
   businessType: '',
-  priceRange: '',
+  region: '',
+  city: '',
+  amenities: [],
   sortBy: '',
   sortDir: 'desc',
 };
@@ -126,6 +128,381 @@ const chileRegions = [
   'Los Lagos',
   'Aysén del General Carlos Ibáñez del Campo',
   'Magallanes y de la Antártica Chilena',
+];
+const chileCitiesByRegion = {
+  'Arica y Parinacota': ['Arica', 'Camarones', 'Putre', 'General Lagos'],
+  Tarapacá: ['Iquique', 'Alto Hospicio', 'Pozo Almonte', 'Camiña', 'Colchane', 'Huara', 'Pica'],
+  Antofagasta: [
+    'Antofagasta',
+    'Mejillones',
+    'Sierra Gorda',
+    'Taltal',
+    'Calama',
+    'Ollagüe',
+    'San Pedro de Atacama',
+    'Tocopilla',
+    'María Elena',
+  ],
+  Atacama: [
+    'Copiapó',
+    'Caldera',
+    'Tierra Amarilla',
+    'Chañaral',
+    'Diego de Almagro',
+    'Vallenar',
+    'Freirina',
+    'Huasco',
+    'Alto del Carmen',
+  ],
+  Coquimbo: [
+    'La Serena',
+    'Coquimbo',
+    'Andacollo',
+    'La Higuera',
+    'Paihuano',
+    'Vicuña',
+    'Ovalle',
+    'Combarbalá',
+    'Monte Patria',
+    'Punitaqui',
+    'Río Hurtado',
+    'Illapel',
+    'Canela',
+    'Los Vilos',
+    'Salamanca',
+  ],
+  Valparaíso: [
+    'Valparaíso',
+    'Casablanca',
+    'Concón',
+    'Juan Fernández',
+    'Puchuncaví',
+    'Quintero',
+    'Viña del Mar',
+    'Isla de Pascua',
+    'Quilpué',
+    'Villa Alemana',
+    'Limache',
+    'Olmué',
+    'Quillota',
+    'La Calera',
+    'Hijuelas',
+    'La Cruz',
+    'Nogales',
+    'San Antonio',
+    'Algarrobo',
+    'Cartagena',
+    'El Quisco',
+    'El Tabo',
+    'Santo Domingo',
+    'La Ligua',
+    'Cabildo',
+    'Papudo',
+    'Petorca',
+    'Zapallar',
+    'Los Andes',
+    'Calle Larga',
+    'Rinconada',
+    'San Esteban',
+    'San Felipe',
+    'Catemu',
+    'Llay-Llay',
+    'Panquehue',
+    'Putaendo',
+    'Santa María',
+  ],
+  'Metropolitana de Santiago': [
+    'Cerrillos',
+    'Cerro Navia',
+    'Conchalí',
+    'El Bosque',
+    'Estación Central',
+    'Huechuraba',
+    'Independencia',
+    'La Cisterna',
+    'La Florida',
+    'La Granja',
+    'La Pintana',
+    'La Reina',
+    'Las Condes',
+    'Lo Barnechea',
+    'Lo Espejo',
+    'Lo Prado',
+    'Macul',
+    'Maipú',
+    'Ñuñoa',
+    'Pedro Aguirre Cerda',
+    'Peñalolén',
+    'Providencia',
+    'Pudahuel',
+    'Quilicura',
+    'Quinta Normal',
+    'Recoleta',
+    'Renca',
+    'San Joaquín',
+    'San Miguel',
+    'San Ramón',
+    'Santiago',
+    'Vitacura',
+    'Puente Alto',
+    'Pirque',
+    'San José de Maipo',
+    'Colina',
+    'Lampa',
+    'Tiltil',
+    'San Bernardo',
+    'Buin',
+    'Calera de Tango',
+    'Paine',
+    'Melipilla',
+    'Alhué',
+    'Curacaví',
+    'María Pinto',
+    'San Pedro',
+    'Talagante',
+    'El Monte',
+    'Isla de Maipo',
+    'Padre Hurtado',
+    'Peñaflor',
+  ],
+  "Libertador General Bernardo O'Higgins": [
+    'Rancagua',
+    'Codegua',
+    'Coinco',
+    'Coltauco',
+    'Doñihue',
+    'Graneros',
+    'Las Cabras',
+    'Machalí',
+    'Malloa',
+    'Mostazal',
+    'Olivar',
+    'Peumo',
+    'Pichidegua',
+    'Quinta de Tilcoco',
+    'Rengo',
+    'Requínoa',
+    'San Vicente',
+    'San Fernando',
+    'Chimbarongo',
+    'Chépica',
+    'Lolol',
+    'Nancagua',
+    'Palmilla',
+    'Peralillo',
+    'Placilla',
+    'Pumanque',
+    'Santa Cruz',
+    'Pichilemu',
+    'La Estrella',
+    'Litueche',
+    'Marchigüe',
+    'Navidad',
+    'Paredones',
+  ],
+  Maule: [
+    'Talca',
+    'Constitución',
+    'Curepto',
+    'Empedrado',
+    'Maule',
+    'Pelarco',
+    'Pencahue',
+    'Río Claro',
+    'San Clemente',
+    'San Rafael',
+    'Linares',
+    'Colbún',
+    'Longaví',
+    'Parral',
+    'Retiro',
+    'San Javier',
+    'Villa Alegre',
+    'Yerbas Buenas',
+    'Curicó',
+    'Hualañé',
+    'Licantén',
+    'Molina',
+    'Rauco',
+    'Romeral',
+    'Sagrada Familia',
+    'Teno',
+    'Vichuquén',
+    'Cauquenes',
+    'Chanco',
+    'Pelluhue',
+  ],
+  Ñuble: [
+    'Chillán',
+    'Chillán Viejo',
+    'Bulnes',
+    'El Carmen',
+    'Pemuco',
+    'Pinto',
+    'Quillón',
+    'San Ignacio',
+    'Yungay',
+    'Coelemu',
+    'Cobquecura',
+    'Ninhue',
+    'Portezuelo',
+    'Quirihue',
+    'Ránquil',
+    'Treguaco',
+    'San Carlos',
+    'Coihueco',
+    'Ñiquén',
+    'San Fabián',
+    'San Nicolás',
+  ],
+  Biobío: [
+    'Concepción',
+    'Coronel',
+    'Chiguayante',
+    'Florida',
+    'Hualqui',
+    'Lota',
+    'Penco',
+    'San Pedro de la Paz',
+    'Santa Juana',
+    'Talcahuano',
+    'Tomé',
+    'Hualpén',
+    'Arauco',
+    'Cañete',
+    'Contulmo',
+    'Curanilahue',
+    'Lebu',
+    'Los Álamos',
+    'Tirúa',
+    'Los Ángeles',
+    'Antuco',
+    'Cabrero',
+    'Laja',
+    'Mulchén',
+    'Nacimiento',
+    'Negrete',
+    'Quilaco',
+    'Quilleco',
+    'San Rosendo',
+    'Santa Bárbara',
+    'Tucapel',
+    'Yumbel',
+    'Alto Biobío',
+  ],
+  'La Araucanía': [
+    'Temuco',
+    'Carahue',
+    'Cunco',
+    'Curarrehue',
+    'Freire',
+    'Galvarino',
+    'Gorbea',
+    'Lautaro',
+    'Loncoche',
+    'Melipeuco',
+    'Nueva Imperial',
+    'Padre Las Casas',
+    'Perquenco',
+    'Pitrufquén',
+    'Pucón',
+    'Saavedra',
+    'Teodoro Schmidt',
+    'Toltén',
+    'Vilcún',
+    'Villarrica',
+    'Cholchol',
+    'Angol',
+    'Collipulli',
+    'Curacautín',
+    'Ercilla',
+    'Lonquimay',
+    'Los Sauces',
+    'Lumaco',
+    'Purén',
+    'Renaico',
+    'Traiguén',
+    'Victoria',
+  ],
+  'Los Ríos': [
+    'Valdivia',
+    'Corral',
+    'Lanco',
+    'Los Lagos',
+    'Máfil',
+    'Mariquina',
+    'Paillaco',
+    'Panguipulli',
+    'La Unión',
+    'Futrono',
+    'Lago Ranco',
+    'Río Bueno',
+  ],
+  'Los Lagos': [
+    'Puerto Montt',
+    'Calbuco',
+    'Cochamó',
+    'Fresia',
+    'Frutillar',
+    'Los Muermos',
+    'Llanquihue',
+    'Maullín',
+    'Puerto Varas',
+    'Osorno',
+    'Puerto Octay',
+    'Purranque',
+    'Puyehue',
+    'Río Negro',
+    'San Juan de la Costa',
+    'San Pablo',
+    'Ancud',
+    'Castro',
+    'Chonchi',
+    'Curaco de Vélez',
+    'Dalcahue',
+    'Puqueldón',
+    'Queilén',
+    'Quemchi',
+    'Quellón',
+    'Quinchao',
+    'Chaitén',
+    'Futaleufú',
+    'Hualaihué',
+    'Palena',
+  ],
+  'Aysén del General Carlos Ibáñez del Campo': [
+    'Coyhaique',
+    'Lago Verde',
+    'Aysén',
+    'Cisnes',
+    'Guaitecas',
+    'Chile Chico',
+    'Río Ibáñez',
+    'Cochrane',
+    "O'Higgins",
+    'Tortel',
+  ],
+  'Magallanes y de la Antártica Chilena': [
+    'Punta Arenas',
+    'Laguna Blanca',
+    'Río Verde',
+    'San Gregorio',
+    'Cabo de Hornos',
+    'Antártica',
+    'Porvenir',
+    'Primavera',
+    'Timaukel',
+    'Natales',
+    'Torres del Paine',
+  ],
+};
+const businessAmenityOptions = [
+  { value: 'PET_FRIENDLY', label: 'Pet friendly' },
+  { value: 'TERRAZA', label: 'Terraza' },
+  { value: 'AREA_FUMADORES', label: 'Área para fumadores' },
+  { value: 'SALA_REUNIONES', label: 'Sala de reuniones' },
+  { value: 'CYBER', label: 'Cyber' },
+  { value: 'ENCHUFES', label: 'Enchufes para cargar dispositivos' },
 ];
 
 const sanitizeSessionLikes = (raw) => {
@@ -173,6 +550,19 @@ const humanizeCategoryType = (type = '') =>
     .toLowerCase()
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
+
+const normalizeLocationValue = (value = '') => String(value || '').trim().toLowerCase();
+const normalizeAmenityValue = (value = '') => String(value || '').trim().toUpperCase();
+
+const getCitiesForRegion = (region = '') => (region ? chileCitiesByRegion[region] || [] : []);
+
+const buildCityOptions = (region, currentCity) => {
+  const cities = getCitiesForRegion(region);
+  if (currentCity && !cities.includes(currentCity)) {
+    return [currentCity, ...cities];
+  }
+  return cities;
+};
 
 const detectMediaTypeFromUrl = (value = '') => {
   if (!value) return 'IMAGEN';
@@ -229,7 +619,7 @@ function App() {
     address: '',
     city: '',
     region: '',
-    priceRange: '',
+    amenities: [],
   });
   const [publicationForm, setPublicationForm] = useState({
     titulo: '',
@@ -256,7 +646,7 @@ function App() {
     address: '',
     city: '',
     region: '',
-    priceRange: '',
+    amenities: [],
     imageUrl: '',
   });
 
@@ -438,7 +828,9 @@ function App() {
       filters.categoryId === defaultFilters.categoryId &&
       filters.businessId === defaultFilters.businessId &&
       filters.businessType === defaultFilters.businessType &&
-      filters.priceRange === defaultFilters.priceRange &&
+      filters.region === defaultFilters.region &&
+      filters.city === defaultFilters.city &&
+      (!filters.amenities || filters.amenities.length === 0) &&
       filters.sortBy === defaultFilters.sortBy &&
       filters.sortDir === defaultFilters.sortDir;
     if (!isDefault) {
@@ -612,7 +1004,7 @@ function App() {
       address: selected.address || '',
       city: selected.city || '',
       region: selected.region || '',
-      priceRange: selected.priceRange || '',
+      amenities: Array.isArray(selected.amenities) ? selected.amenities : [],
       imageUrl: selected.imageUrl || '',
     }));
   }, [businessListForForms, profileBusinessId]);
@@ -721,7 +1113,7 @@ function App() {
         address: businessForm.address || null,
         city: businessForm.city || null,
         region: businessForm.region || null,
-        priceRange: businessForm.priceRange || null,
+        amenities: Array.isArray(businessForm.amenities) ? businessForm.amenities : [],
       };
       const data = await fetchJson('/businesses', {
         method: 'POST',
@@ -747,7 +1139,7 @@ function App() {
         address: '',
         city: '',
         region: '',
-        priceRange: '',
+        amenities: [],
       });
       if (!tenantIdFromResponse || tenantIdFromResponse === selectedTenantId) {
         loadBusinesses();
@@ -889,7 +1281,7 @@ function App() {
           address: businessProfileForm.address,
           city: businessProfileForm.city,
           region: businessProfileForm.region,
-          priceRange: businessProfileForm.priceRange || null,
+          amenities: Array.isArray(businessProfileForm.amenities) ? businessProfileForm.amenities : [],
         }),
       });
       notify('success', 'Perfil de negocio actualizado');
@@ -1189,17 +1581,6 @@ function App() {
     return Array.from(types);
   }, [feedWithDecorations, businesses]);
 
-  const priceRangeOptions = useMemo(() => {
-    const ranges = new Set();
-    businesses.forEach((b) => {
-      if (b.priceRange) ranges.add(String(b.priceRange));
-    });
-    feedWithDecorations.forEach((pub) => {
-      if (pub.business?.priceRange) ranges.add(String(pub.business.priceRange));
-    });
-    return Array.from(ranges);
-  }, [businesses, feedWithDecorations]);
-
   const categoryFilterOptions = useMemo(() => {
     const normalizeKey = (value) => String(value || '').trim().toLowerCase();
     const readTypeValue = (entry) => {
@@ -1269,9 +1650,23 @@ function App() {
       const target = String(filters.businessType).toUpperCase();
       list = list.filter((pub) => String(pub.business?.type || '').toUpperCase() === target);
     }
-    if (filters.priceRange) {
-      const target = String(filters.priceRange).toUpperCase();
-      list = list.filter((pub) => String(pub.business?.priceRange || '').toUpperCase() === target);
+    if (filters.region) {
+      const target = normalizeLocationValue(filters.region);
+      list = list.filter((pub) => normalizeLocationValue(pub.business?.region) === target);
+    }
+    if (filters.city) {
+      const target = normalizeLocationValue(filters.city);
+      list = list.filter((pub) => normalizeLocationValue(pub.business?.city) === target);
+    }
+    const selectedAmenities = Array.isArray(filters.amenities)
+      ? filters.amenities.map(normalizeAmenityValue).filter(Boolean)
+      : [];
+    if (selectedAmenities.length) {
+      list = list.filter((pub) => {
+        const businessAmenities = Array.isArray(pub.business?.amenities) ? pub.business.amenities : [];
+        const normalizedAmenities = businessAmenities.map(normalizeAmenityValue);
+        return selectedAmenities.every((amenity) => normalizedAmenities.includes(amenity));
+      });
     }
     const sortBy = topHeartsMode ? 'hearts' : filters.sortBy;
     const sortDir = topHeartsMode ? 'desc' : filters.sortDir;
@@ -1324,6 +1719,8 @@ function App() {
     const match = businesses.find((b) => String(b.id) === String(businessId));
     return match?.imageUrl || '';
   })();
+  const businessFormCityOptions = buildCityOptions(businessForm.region, businessForm.city);
+  const businessProfileCityOptions = buildCityOptions(businessProfileForm.region, businessProfileForm.city);
 
   return (
     <div className="min-h-screen bg-background">
@@ -1472,18 +1869,13 @@ function App() {
                       />
                     </div>
                     <div>
-                      <Label>Ciudad</Label>
-                      <Input
-                        value={businessProfileForm.city}
-                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, city: e.target.value }))}
-                      />
-                    </div>
-                    <div>
                       <Label>Región</Label>
                       <select
                         className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                         value={businessProfileForm.region || ''}
-                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, region: e.target.value }))}
+                        onChange={(e) =>
+                          setBusinessProfileForm((prev) => ({ ...prev, region: e.target.value, city: '' }))
+                        }
                       >
                         <option value="">Selecciona región</option>
                         {chileRegions.map((region) => (
@@ -1494,17 +1886,66 @@ function App() {
                       </select>
                     </div>
                     <div>
-                      <Label>Rango de precio</Label>
+                      <Label>Ciudad</Label>
                       <select
                         className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
-                        value={businessProfileForm.priceRange || ''}
-                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, priceRange: e.target.value }))}
+                        value={businessProfileForm.city || ''}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, city: e.target.value }))}
+                        disabled={!businessProfileForm.region}
                       >
-                        <option value="">Sin rango</option>
-                        <option value="BAJO">Bajo</option>
-                        <option value="MEDIO">Medio</option>
-                        <option value="ALTO">Alto</option>
+                        <option value="">
+                          {businessProfileForm.region ? 'Selecciona ciudad' : 'Selecciona región primero'}
+                        </option>
+                        {businessProfileCityOptions.map((city) => (
+                          <option key={city} value={city}>
+                            {city}
+                          </option>
+                        ))}
                       </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Servicios y espacios</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">Selecciona todo lo que aplique.</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {businessAmenityOptions.map((amenity) => {
+                          const isChecked = businessProfileForm.amenities.includes(amenity.value);
+                          return (
+                            <label
+                              key={amenity.value}
+                              className="flex items-center gap-3 rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-soft transition hover:border-destructive/60"
+                            >
+                              <input
+                                type="checkbox"
+                                className="peer sr-only"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setBusinessProfileForm((prev) => {
+                                    const current = Array.isArray(prev.amenities) ? prev.amenities : [];
+                                    const next = new Set(current);
+                                    if (checked) next.add(amenity.value);
+                                    else next.delete(amenity.value);
+                                    return { ...prev, amenities: Array.from(next) };
+                                  });
+                                }}
+                              />
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-input bg-background text-transparent transition peer-focus:ring-2 peer-focus:ring-ring peer-focus:ring-offset-2 peer-focus:ring-offset-background peer-checked:border-destructive peer-checked:bg-destructive peer-checked:text-white">
+                                <svg viewBox="0 0 12 9" className="h-3 w-3" aria-hidden="true">
+                                  <path
+                                    d="M1 4.5L4.25 7.5L11 1.25"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </span>
+                              <span className="text-sm font-medium">{amenity.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div className="md:col-span-2 flex flex-wrap gap-2">
                       <Button type="submit">Guardar perfil</Button>
@@ -1785,7 +2226,9 @@ function App() {
         onOpenChange={setExploreOpen}
         categories={categoryFilterOptions}
         businessTypes={businessTypeOptions}
-        priceRanges={priceRangeOptions}
+        regions={chileRegions}
+        citiesByRegion={chileCitiesByRegion}
+        amenities={businessAmenityOptions}
         filters={filters}
         onChange={(partial) => {
           setTopHeartsMode(false);
@@ -1797,7 +2240,9 @@ function App() {
             ...prev,
             categoryId: '',
             businessType: '',
-            priceRange: '',
+            region: '',
+            city: '',
+            amenities: [],
             sortBy: '',
             sortDir: 'desc',
           }));
@@ -2082,23 +2527,32 @@ function App() {
                     />
                   </div>
                   <div>
-                    <Label>Ciudad</Label>
-                    <Input
-                      value={businessForm.city}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, city: e.target.value }))}
-                    />
-                  </div>
-                  <div>
                     <Label>Región</Label>
                     <select
                       className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                       value={businessForm.region || ''}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, region: e.target.value }))}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, region: e.target.value, city: '' }))}
                     >
                       <option value="">Selecciona región</option>
                       {chileRegions.map((region) => (
                         <option key={region} value={region}>
                           {region}
+                        </option>
+                      ))}
+                      </select>
+                    </div>
+                  <div>
+                    <Label>Ciudad</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      value={businessForm.city || ''}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, city: e.target.value }))}
+                      disabled={!businessForm.region}
+                    >
+                      <option value="">{businessForm.region ? 'Selecciona ciudad' : 'Selecciona región primero'}</option>
+                      {businessFormCityOptions.map((city) => (
+                        <option key={city} value={city}>
+                          {city}
                         </option>
                       ))}
                     </select>
@@ -2110,18 +2564,49 @@ function App() {
                       onChange={(e) => setBusinessForm((prev) => ({ ...prev, address: e.target.value }))}
                     />
                   </div>
-                  <div>
-                    <Label>Rango precios</Label>
-                    <select
-                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
-                      value={businessForm.priceRange}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, priceRange: e.target.value }))}
-                    >
-                      <option value="">Sin definir</option>
-                      <option value="BAJO">Bajo</option>
-                      <option value="MEDIO">Medio</option>
-                      <option value="ALTO">Alto</option>
-                    </select>
+                  <div className="md:col-span-2">
+                    <Label>Servicios y espacios</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">Selecciona todo lo que aplique.</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {businessAmenityOptions.map((amenity) => {
+                        const isChecked = businessForm.amenities.includes(amenity.value);
+                        return (
+                          <label
+                            key={amenity.value}
+                            className="flex items-center gap-3 rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-soft transition hover:border-destructive/60"
+                          >
+                            <input
+                              type="checkbox"
+                              className="peer sr-only"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setBusinessForm((prev) => {
+                                  const current = Array.isArray(prev.amenities) ? prev.amenities : [];
+                                  const next = new Set(current);
+                                  if (checked) next.add(amenity.value);
+                                  else next.delete(amenity.value);
+                                  return { ...prev, amenities: Array.from(next) };
+                                });
+                              }}
+                            />
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-input bg-background text-transparent transition peer-focus:ring-2 peer-focus:ring-ring peer-focus:ring-offset-2 peer-focus:ring-offset-background peer-checked:border-destructive peer-checked:bg-destructive peer-checked:text-white">
+                              <svg viewBox="0 0 12 9" className="h-3 w-3" aria-hidden="true">
+                                <path
+                                  d="M1 4.5L4.25 7.5L11 1.25"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
+                            <span className="text-sm font-medium">{amenity.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div className="md:col-span-2">
                     <Button type="submit">Crear negocio</Button>

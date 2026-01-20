@@ -4,7 +4,7 @@ import { AuthRequest, authMiddleware, optionalAuthMiddleware, requireRole } from
 import { EstadoRegistroUsuario, RolUsuario, User } from './entities/User.js';
 import { Tenant, TenantEstado } from './entities/Tenant.js';
 import { Category, CategoriaTipo } from './entities/Category.js';
-import { Business, NegocioEstado, NegocioRangoPrecio, NegocioTipo } from './entities/Business.js';
+import { Business, NegocioEstado, NegocioTipo } from './entities/Business.js';
 import { Publication, PublicacionEstado, PublicacionTipo } from './entities/Publication.js';
 import { Media, MediaTipo } from './entities/Media.js';
 import { PublicationCategory } from './entities/PublicationCategory.js';
@@ -84,6 +84,23 @@ const ensureUserReady = (user: User, options: { requireTenant?: boolean } = {}) 
   if (requireTenant && !user.tenantId) {
     throw new Error('Debes tener un tenant asignado');
   }
+};
+
+const BUSINESS_AMENITIES = new Set([
+  'PET_FRIENDLY',
+  'TERRAZA',
+  'AREA_FUMADORES',
+  'SALA_REUNIONES',
+  'CYBER',
+  'ENCHUFES',
+]);
+
+const normalizeAmenities = (raw: unknown) => {
+  const values = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : [];
+  const normalized = values
+    .map((value) => String(value).trim().toUpperCase())
+    .filter((value) => BUSINESS_AMENITIES.has(value));
+  return Array.from(new Set(normalized));
 };
 
 const categoriaTiposCafe: CategoriaTipo[] = [
@@ -444,7 +461,7 @@ router.post(
   asyncHandler(async (req: AuthRequest, res) => {
     const user = req.auth!.user!;
     ensureUserReady(user, { requireTenant: false });
-    const { name, type, description, address, city, region, priceRange, imageUrl } = req.body;
+    const { name, type, description, address, city, region, amenities, imageUrl } = req.body;
     if (!name) return res.status(400).json({ message: 'Nombre es obligatorio' });
 
     let tenant = null as Tenant | null;
@@ -482,7 +499,7 @@ router.post(
         address: address || null,
         city: city || null,
         region: region || null,
-        priceRange: (priceRange as NegocioRangoPrecio) || null,
+        amenities: normalizeAmenities(amenities),
         status: NegocioEstado.ACTIVO,
       })
     );
@@ -506,7 +523,7 @@ router.put(
       return res.status(403).json({ message: 'No tienes permiso para editar este negocio' });
     }
 
-    const { name, description, address, city, region, priceRange, imageUrl } = req.body;
+    const { name, description, address, city, region, amenities, imageUrl } = req.body;
     const updates: Partial<Business> = {};
     if (name !== undefined) updates.name = String(name).slice(0, 255);
     if (description !== undefined) updates.description = description || null;
@@ -514,7 +531,7 @@ router.put(
     if (address !== undefined) updates.address = address || null;
     if (city !== undefined) updates.city = city || null;
     if (region !== undefined) updates.region = region || null;
-    if (priceRange && Object.values(NegocioRangoPrecio).includes(priceRange)) updates.priceRange = priceRange;
+    if (amenities !== undefined) updates.amenities = normalizeAmenities(amenities);
 
     await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
       manager.getRepository(Business).update({ id: businessId }, updates)

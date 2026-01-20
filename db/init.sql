@@ -34,7 +34,6 @@ DROP TYPE IF EXISTS media_tipo_enum CASCADE;
 DROP TYPE IF EXISTS publicacion_estado_enum CASCADE;
 DROP TYPE IF EXISTS publicacion_tipo_enum CASCADE;
 DROP TYPE IF EXISTS negocio_estado_enum CASCADE;
-DROP TYPE IF EXISTS negocio_rango_precios_enum CASCADE;
 DROP TYPE IF EXISTS negocio_tipo_enum CASCADE;
 DROP TYPE IF EXISTS usuario_estado_registro_enum CASCADE;
 DROP TYPE IF EXISTS rol_usuario_enum CASCADE;
@@ -68,12 +67,6 @@ CREATE TYPE negocio_tipo_enum AS ENUM (
   'CAFETERIA',
   'BAR',
   'FOODTRUCK'
-);
-
-CREATE TYPE negocio_rango_precios_enum AS ENUM (
-  'BAJO',
-  'MEDIO',
-  'ALTO'
 );
 
 CREATE TYPE negocio_estado_enum AS ENUM (
@@ -223,7 +216,7 @@ CREATE TABLE negocio (
   direccion      VARCHAR(255),
   ciudad         VARCHAR(100),
   region         VARCHAR(100),
-  rango_precios  negocio_rango_precios_enum,
+  amenidades     TEXT[],
   latitud        DECIMAL(9,6),
   longitud       DECIMAL(9,6),
   estado         negocio_estado_enum NOT NULL DEFAULT 'ACTIVO',

@@ -2557,7 +2557,7 @@ function App() {
                       ))}
                     </select>
                   </div>
-                  <div>
+                  <div className="md:col-span-2">
                     <Label>Dirección</Label>
                     <Input
                       value={businessForm.address}

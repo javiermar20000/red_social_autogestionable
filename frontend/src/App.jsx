@@ -25,6 +25,8 @@ const API_URL = import.meta.env.VITE_API_URL || '/api';
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 const SESSION_LIKES_STORAGE_KEY = 'publicationLikesSession';
 const MAX_BUSINESS_LOGO_BYTES = 1024 * 1024;
+const numberFormatter = new Intl.NumberFormat('es-CL');
+const formatNumber = (value) => numberFormatter.format(value);
 
 const fetchJson = async (path, options = {}) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -387,13 +389,13 @@ function App() {
   };
 
   const loadBusinesses = async () => {
-    if (!selectedTenantId) {
+    if (!selectedTenantId && !isAdmin) {
       setBusinesses([]);
       return;
     }
     try {
       const params = new URLSearchParams();
-      params.set('tenantId', selectedTenantId);
+      if (selectedTenantId) params.set('tenantId', selectedTenantId);
       if (isOferente) params.set('mine', 'true');
       const query = params.toString();
       const data = await fetchJson(`/businesses${query ? `?${query}` : ''}`, { headers: authHeaders });
@@ -517,9 +519,11 @@ function App() {
   useEffect(() => {
     if (selectedTenantId) {
       loadCategories();
+    }
+    if (selectedTenantId || isAdmin) {
       loadBusinesses();
     }
-  }, [selectedTenantId]);
+  }, [selectedTenantId, isAdmin]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -793,6 +797,14 @@ function App() {
     e.preventDefault();
     const businessId = activePublicationBusinessId;
     if (!businessId) return notify('danger', 'Selecciona un negocio para publicar');
+    const rawPrice = publicationForm.precio;
+    const parsedPrice = Number(rawPrice);
+    if (rawPrice === '' || rawPrice === null || rawPrice === undefined) {
+      return notify('danger', 'El precio es obligatorio');
+    }
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      return notify('danger', 'El precio debe ser un número válido');
+    }
     const isEditing = Boolean(editingPublicationId);
     const businessForPublication =
       businessListForForms.find((b) => String(b.id) === String(businessId)) || selectedBusinessForPublication;
@@ -849,7 +861,7 @@ function App() {
           fechaFinVigencia: publicationForm.fechaFinVigencia || undefined,
           mediaUrl: publicationForm.mediaUrl || undefined,
           mediaType: publicationForm.mediaType,
-          precio: publicationForm.precio === '' ? null : Number(publicationForm.precio),
+          precio: parsedPrice,
         }),
       });
       notify('success', isEditing ? 'Publicación actualizada' : 'Publicación creada y enviada a validación');
@@ -1037,6 +1049,33 @@ function App() {
   const getHeartsValue = (pub) => {
     if (!pub) return 0;
     return getBaseHeartsValue(pub);
+  };
+
+  const getPublicationLabel = (pub) => {
+    const title = String(pub?.titulo || '').trim();
+    if (title) return title;
+    const businessName = String(pub?.business?.name || '').trim();
+    if (businessName) return `Publicación de ${businessName}`;
+    const fallbackId = pub?.id ? `#${pub.id}` : 'sin id';
+    return `Publicación ${fallbackId}`;
+  };
+
+  const buildTopStats = (items, valueAccessor, limit = 5) => {
+    const entries = (items || []).map((pub, index) => {
+      const value = valueAccessor(pub);
+      return {
+        id: pub?.id ?? `pub-${index}`,
+        label: getPublicationLabel(pub),
+        value: Number.isFinite(value) ? value : 0,
+      };
+    });
+    const sorted = [...entries].sort((a, b) => b.value - a.value).slice(0, limit);
+    const maxValue = sorted.reduce((max, item) => Math.max(max, item.value), 0);
+    const bars = sorted.map((item) => ({
+      ...item,
+      percent: maxValue > 0 ? Math.round((item.value / maxValue) * 100) : 0,
+    }));
+    return { bars, maxValue };
   };
 
   const hasLikedInSession = (pub) => {
@@ -1266,6 +1305,14 @@ function App() {
     if (currentUser?.rol === 'OFERENTE') return myPublications;
     return [];
   }, [isAdmin, feedWithDecorations, myPublications, currentUser]);
+  const statsSummary = useMemo(() => {
+    const totalPublications = panelPublications.length;
+    const totalVisits = panelPublications.reduce((sum, pub) => sum + getVisitsValue(pub), 0);
+    const totalLikes = panelPublications.reduce((sum, pub) => sum + getHeartsValue(pub), 0);
+    const topVisits = buildTopStats(panelPublications, getVisitsValue);
+    const topLikes = buildTopStats(panelPublications, getHeartsValue);
+    return { totalPublications, totalVisits, totalLikes, topVisits, topLikes };
+  }, [panelPublications]);
   const businessLogoValue = typeof businessProfileForm.imageUrl === 'string' ? businessProfileForm.imageUrl : '';
   const isBusinessLogoDataUrl = businessLogoValue.startsWith('data:');
   const businessLogoInputValue = isBusinessLogoDataUrl ? '' : businessLogoValue;
@@ -1334,10 +1381,11 @@ function App() {
               </Button>
             </div>
             <Tabs value={adminPanelTab} onValueChange={setAdminPanelTab} className="mt-4">
-              <TabsList className="grid w-full md:w-auto md:grid-cols-3">
+              <TabsList className="grid w-full grid-cols-2 md:w-auto md:grid-cols-4">
                 <TabsTrigger value="perfil">Perfil</TabsTrigger>
                 <TabsTrigger value="gestion">Gestión publicaciones</TabsTrigger>
                 <TabsTrigger value="feed">Publicaciones</TabsTrigger>
+                <TabsTrigger value="estadisticas">Estadísticas</TabsTrigger>
               </TabsList>
 
               <TabsContent value="perfil" className="mt-4">
@@ -1571,6 +1619,92 @@ function App() {
                   </div>
                 )}
               </TabsContent>
+
+              <TabsContent value="estadisticas" className="mt-4 space-y-6">
+                <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Tablero de rendimiento</p>
+                      <h4 className="text-lg font-semibold">Visualizaciones y me gusta</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {isAdmin ? 'Resumen global de publicaciones publicadas' : 'Resumen de tus publicaciones'}
+                    </p>
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-3">
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Publicaciones</p>
+                      <p className="mt-2 text-2xl font-semibold">{formatNumber(statsSummary.totalPublications)}</p>
+                      <p className="text-xs text-muted-foreground">Total en el tablero</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Visitas</p>
+                      <p className="mt-2 text-2xl font-semibold">{formatNumber(statsSummary.totalVisits)}</p>
+                      <p className="text-xs text-muted-foreground">Suma de visualizaciones</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Me gusta</p>
+                      <p className="mt-2 text-2xl font-semibold">{formatNumber(statsSummary.totalLikes)}</p>
+                      <p className="text-xs text-muted-foreground">Reacciones acumuladas</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-border bg-card p-4">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-semibold">Más visitadas</h5>
+                      <span className="text-xs text-muted-foreground">Top 5</span>
+                    </div>
+                    {statsSummary.topVisits.bars.length && statsSummary.topVisits.maxValue > 0 ? (
+                      <div className="mt-4 space-y-3">
+                        {statsSummary.topVisits.bars.map((item) => (
+                          <div key={item.id} className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="max-w-[70%] truncate font-medium">{item.label}</span>
+                              <span className="text-muted-foreground">{formatNumber(item.value)}</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full bg-emerald-500"
+                                style={{ width: `${item.percent}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm text-muted-foreground">Aún no hay visualizaciones registradas.</p>
+                    )}
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-4">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-semibold">Más me gusta</h5>
+                      <span className="text-xs text-muted-foreground">Top 5</span>
+                    </div>
+                    {statsSummary.topLikes.bars.length && statsSummary.topLikes.maxValue > 0 ? (
+                      <div className="mt-4 space-y-3">
+                        {statsSummary.topLikes.bars.map((item) => (
+                          <div key={item.id} className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="max-w-[70%] truncate font-medium">{item.label}</span>
+                              <span className="text-muted-foreground">{formatNumber(item.value)}</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full bg-rose-500"
+                                style={{ width: `${item.percent}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm text-muted-foreground">Aún no hay me gusta registrados.</p>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
             </Tabs>
           </section>
         )}
@@ -1597,9 +1731,14 @@ function App() {
                     <div key={p.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
                       <div>
                         <p className="font-semibold">{p.titulo}</p>
-                        <p className="text-xs text-muted-foreground">Negocio #{p.businessId}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {p.business?.name ? `${p.business.name} · #${p.businessId}` : `Negocio #${p.businessId}`}
+                        </p>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex flex-wrap gap-1">
+                        <Button size="sm" variant="outline" onClick={() => handleSelectPublication(p)}>
+                          Ver más
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => handleApprovePublication(p.id, true)}>
                           Aprobar
                         </Button>
@@ -1815,9 +1954,10 @@ function App() {
                       type="number"
                       min="0"
                       step="0.01"
-                      placeholder="Opcional"
+                      placeholder="Ej: 4500"
                       value={publicationForm.precio}
                       onChange={(e) => setPublicationForm((prev) => ({ ...prev, precio: e.target.value }))}
+                      required
                     />
                   </div>
                   <div className="md:col-span-2">

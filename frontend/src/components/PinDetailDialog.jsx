@@ -154,19 +154,6 @@ const PinDetailDialog = ({
 
           <div className="p-6 flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex gap-2">
-                <span className="inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                  {tipo || 'AVISO'}
-                </span>
-                <span className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
-                  {estado}
-                </span>
-                {formattedPrice && (
-                  <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-700">
-                    {formattedPrice}
-                  </span>
-                )}
-              </div>
               <div className="flex items-center gap-2">
                 {canManage && (
                   <>
@@ -178,9 +165,6 @@ const PinDetailDialog = ({
                     </Button>
                   </>
                 )}
-                <Button size="icon" variant="ghost" className="rounded-full">
-                  <MoreHorizontal className="h-5 w-5" />
-                </Button>
               </div>
             </div>
 
@@ -191,7 +175,7 @@ const PinDetailDialog = ({
               </DialogDescription>
             </DialogHeader>
 
-            {formattedPrice && <p className="mt-2 text-sm font-semibold text-emerald-700">{formattedPrice}</p>}
+            {formattedPrice && <p className="mt-2 text-center text-xl font-bold text-emerald-700">{formattedPrice}</p>}
             <p className="mt-4 text-muted-foreground leading-relaxed whitespace-pre-line">{contenido}</p>
 
             {categories.length > 0 && (

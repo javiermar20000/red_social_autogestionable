@@ -2480,13 +2480,14 @@ function App() {
                       </p>
                     )}
                   </div>
+                  <br></br>
                   <div className="md:col-span-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="submit">
-                        {editingPublicationId ? 'Actualizar publicación' : 'Publicar (queda pendiente de validación)'}
+                    <div className="flex flex-wrap gap-2 justify-center items-center">
+                      <Button variant="danger" type="submit">
+                        {editingPublicationId ? 'Actualizar publicación' : 'Publicar'}
                       </Button>
                       {editingPublicationId && (
-                        <Button type="button" variant="outline" onClick={resetPublicationForm}>
+                        <Button variant="danger" type="button" onClick={resetPublicationForm}>
                           Cancelar edición
                         </Button>
                       )}
@@ -2609,8 +2610,9 @@ function App() {
                       })}
                     </div>
                   </div>
-                  <div className="md:col-span-2">
-                    <Button type="submit">Crear negocio</Button>
+                  <br></br>
+                  <div className="md:col-span-2 flex flex-wrap gap-2 justify-center items-center">
+                    <Button variant="danger" type="submit">Crear negocio</Button>
                   </div>
                 </form>
               </TabsContent>

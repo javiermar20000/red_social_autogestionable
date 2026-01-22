@@ -153,20 +153,7 @@ const PinDetailDialog = ({
           </div>
 
           <div className="p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                {canManage && (
-                  <>
-                    <Button size="sm" variant="outline" onClick={() => onEdit?.(publication)}>
-                      Editar
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => onDelete?.(publication.id)}>
-                      Eliminar
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
+            
 
             <DialogHeader className="items-start text-left">
               <DialogTitle className="text-2xl font-bold">{titulo}</DialogTitle>
@@ -200,6 +187,22 @@ const PinDetailDialog = ({
               <div>
                 <p className="font-semibold">{businessName}</p>
                 <p className="text-sm text-muted-foreground">{visitas} visitas</p>
+              </div>
+            </div>
+
+            <br></br>
+            <div className="flex flex-wrap justify-between">
+              <div className="flex items-center gap-2">
+                {canManage && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => onEdit?.(publication)}>
+                      Editar
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => onDelete?.(publication.id)}>
+                      Eliminar
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
 

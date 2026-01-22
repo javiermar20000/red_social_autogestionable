@@ -1947,8 +1947,9 @@ function App() {
                         })}
                       </div>
                     </div>
-                    <div className="md:col-span-2 flex flex-wrap gap-2">
-                      <Button type="submit">Guardar perfil</Button>
+                    <br></br>
+                    <div className="md:col-span-2 flex flex-wrap gap-2 justify-center items-center">
+                      <Button variant="danger" type="submit">Guardar perfil</Button>
                     </div>
                   </form>
                 )}

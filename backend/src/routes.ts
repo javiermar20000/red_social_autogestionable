@@ -921,6 +921,82 @@ router.get(
   })
 );
 
+router.get(
+  '/feed/ads',
+  optionalAuthMiddleware,
+  asyncHandler(async (req: AuthRequest, res) => {
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: true, optional: true, allowAdminAll: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
+    const ctxIsAdmin = !!req.auth?.isAdminGlobal;
+
+    const fetchAds = async (ctxTenantId: string | null) =>
+      runWithContext({ tenantId: ctxTenantId ?? undefined, isAdmin: ctxTenantId ? ctxIsAdmin : true }, async (manager) => {
+        const businessRepo = manager.getRepository(Business);
+        const businesses = await businessRepo.find({
+          where: {
+            ...(ctxTenantId ? { tenantId: ctxTenantId } : {}),
+            status: NegocioEstado.ACTIVO,
+          },
+        });
+        const businessIds = businesses.map((b) => b.id);
+        if (!businessIds.length) return [];
+
+        const qb = manager.getRepository(Publication).createQueryBuilder('p');
+        qb.where('p.businessId IN (:...bizIds)', { bizIds: businessIds });
+        qb.andWhere('p.estado = :estado', { estado: PublicacionEstado.PUBLICADA });
+        qb.andWhere('p.esPublicidad = :esPublicidad', { esPublicidad: true });
+        qb.orderBy('p.fechaPublicacion', 'DESC').addOrderBy('p.fechaCreacion', 'DESC');
+        const rows = await qb.getMany();
+        if (!rows.length) return [];
+
+        const publicationIds = rows.map((p) => p.id);
+        const linkRepo = manager.getRepository(PublicationCategory);
+        const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
+        const mediaRepo = manager.getRepository(Media);
+        const medias = await mediaRepo.find({ where: { publicationId: In(publicationIds) } });
+        const categoryRepo = manager.getRepository(Category);
+        const categoryIds = [...new Set(links.map((l) => l.categoryId))];
+        const categoryEntities = categoryIds.length ? await categoryRepo.find({ where: { id: In(categoryIds) } }) : [];
+
+        const categoriesByPublication = links.reduce<Record<string, Category[]>>((acc, link) => {
+          const found = categoryEntities.find((c) => c.id === link.categoryId);
+          if (found) {
+            acc[link.publicationId] = acc[link.publicationId] || [];
+            acc[link.publicationId].push(found);
+          }
+          return acc;
+        }, {});
+
+        const mediaByPublication = medias.reduce<Record<string, Media[]>>((acc, media) => {
+          acc[media.publicationId] = acc[media.publicationId] || [];
+          acc[media.publicationId].push(media);
+          return acc;
+        }, {});
+
+        const businessMap = businesses.reduce<Record<string, Business>>((acc, biz) => {
+          acc[biz.id] = biz;
+          return acc;
+        }, {});
+
+        return rows.map((p) => ({
+          ...p,
+          categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
+          categories: categoriesByPublication[p.id] || [],
+          business: businessMap[p.businessId],
+          coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
+          coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+        }));
+      });
+
+    const publications = tenantId ? await fetchAds(tenantId) : await fetchAds(null);
+    res.json(publications);
+  })
+);
+
 router.put(
   '/publications/:id',
   authMiddleware,
@@ -1124,6 +1200,115 @@ router.get(
       }));
     });
     res.json(pending);
+  })
+);
+
+router.get(
+  '/admin/publications/ads',
+  authMiddleware,
+  requireRole(['admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: false, optional: true, allowAdminAll: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
+
+    const publications = await runWithContext({ tenantId: tenantId ?? undefined, isAdmin: true }, async (manager) => {
+      const businessRepo = manager.getRepository(Business);
+      const businesses = await businessRepo.find({
+        where: {
+          ...(tenantId ? { tenantId } : {}),
+          status: NegocioEstado.ACTIVO,
+        },
+      });
+      const businessIds = businesses.map((b) => b.id);
+      if (!businessIds.length) return [];
+
+      const qb = manager.getRepository(Publication).createQueryBuilder('p');
+      qb.where('p.businessId IN (:...bizIds)', { bizIds: businessIds });
+      qb.andWhere('p.estado = :estado', { estado: PublicacionEstado.PUBLICADA });
+      qb.orderBy('p.fechaPublicacion', 'DESC').addOrderBy('p.fechaCreacion', 'DESC');
+      const rows = await qb.getMany();
+      if (!rows.length) return [];
+
+      const publicationIds = rows.map((p) => p.id);
+      const linkRepo = manager.getRepository(PublicationCategory);
+      const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
+      const mediaRepo = manager.getRepository(Media);
+      const medias = await mediaRepo.find({ where: { publicationId: In(publicationIds) } });
+      const categoryRepo = manager.getRepository(Category);
+      const categoryIds = [...new Set(links.map((l) => l.categoryId))];
+      const categoryEntities = categoryIds.length ? await categoryRepo.find({ where: { id: In(categoryIds) } }) : [];
+
+      const categoriesByPublication = links.reduce<Record<string, Category[]>>((acc, link) => {
+        const found = categoryEntities.find((c) => c.id === link.categoryId);
+        if (found) {
+          acc[link.publicationId] = acc[link.publicationId] || [];
+          acc[link.publicationId].push(found);
+        }
+        return acc;
+      }, {});
+
+      const mediaByPublication = medias.reduce<Record<string, Media[]>>((acc, media) => {
+        acc[media.publicationId] = acc[media.publicationId] || [];
+        acc[media.publicationId].push(media);
+        return acc;
+      }, {});
+
+      const businessMap = businesses.reduce<Record<string, Business>>((acc, biz) => {
+        acc[biz.id] = biz;
+        return acc;
+      }, {});
+
+      return rows.map((p) => ({
+        ...p,
+        categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
+        categories: categoriesByPublication[p.id] || [],
+        business: businessMap[p.businessId],
+        coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
+        coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+      }));
+    });
+
+    res.json(publications);
+  })
+);
+
+router.post(
+  '/admin/publications/:id/ads',
+  authMiddleware,
+  requireRole(['admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const publicationId = req.params.id;
+    const { enabled } = req.body as { enabled?: boolean };
+    const tenantId = getTenantIdFromRequest(req);
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ message: 'enabled debe ser booleano' });
+    }
+
+    await runWithContext({ tenantId: tenantId ?? undefined, isAdmin: true }, async (manager) => {
+      const publicationRepo = manager.getRepository(Publication);
+      const publication = await publicationRepo.findOne({ where: { id: publicationId } });
+      if (!publication) throw new Error('Publicación no encontrada');
+
+      const businessRepo = manager.getRepository(Business);
+      const business = await businessRepo.findOne({ where: { id: publication.businessId } });
+      if (!business) throw new Error('Negocio no encontrado');
+      if (tenantId && String(business.tenantId) !== String(tenantId)) {
+        throw new Error('La publicación no pertenece al tenant seleccionado');
+      }
+      if (enabled && publication.estado !== PublicacionEstado.PUBLICADA) {
+        throw new Error('Solo publicaciones publicadas pueden mostrarse en publicidad');
+      }
+
+      await publicationRepo.update({ id: publicationId }, { esPublicidad: enabled });
+    });
+
+    res.json({
+      message: enabled ? 'Publicación añadida al espacio publicitario' : 'Publicación retirada del espacio publicitario',
+    });
   })
 );
 

@@ -75,4 +75,7 @@ export class Publication {
 
   @Column({ default: 0 })
   likes!: number;
+
+  @Column({ name: 'es_publicidad', type: 'boolean', default: false })
+  esPublicidad!: boolean;
 }

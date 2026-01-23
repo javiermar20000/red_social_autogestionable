@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft } from 'lucide-react';
 import Header from './components/Header.jsx';
+import AdPanel from './components/AdPanel.jsx';
 import MasonryGrid from './components/MasonryGrid.jsx';
 import PinCard from './components/PinCard.jsx';
 import PinDetailDialog from './components/PinDetailDialog.jsx';
@@ -600,6 +602,17 @@ function App() {
 
   const [feed, setFeed] = useState([]);
   const [loadingFeed, setLoadingFeed] = useState(false);
+  const [adPublications, setAdPublications] = useState([]);
+  const [loadingAds, setLoadingAds] = useState(false);
+  const [adPanelOpen, setAdPanelOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return !window.matchMedia('(max-width: 1200px)').matches;
+  });
+  const [adPanelUserClosed, setAdPanelUserClosed] = useState(false);
+  const [isAdPanelNarrow, setIsAdPanelNarrow] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 1200px)').matches;
+  });
   const [filters, setFilters] = useState({ ...defaultFilters });
   const [topHeartsMode, setTopHeartsMode] = useState(false);
   const [likedById, setLikedById] = useState(() => readSessionLikes());
@@ -635,6 +648,10 @@ function App() {
   });
 
   const [adminQueues, setAdminQueues] = useState({ publications: [] });
+  const [adminAdPublications, setAdminAdPublications] = useState([]);
+  const [loadingAdminAds, setLoadingAdminAds] = useState(false);
+  const [savingAdminAds, setSavingAdminAds] = useState(() => new Set());
+  const [adminAdsTenantId, setAdminAdsTenantId] = useState(() => localStorage.getItem('tenantId') || '');
   const [myPublications, setMyPublications] = useState([]);
   const [loadingMyPublications, setLoadingMyPublications] = useState(false);
   const [editingPublicationId, setEditingPublicationId] = useState(null);
@@ -675,6 +692,14 @@ function App() {
   const isAdmin = currentUser?.role === 'admin';
   const isOferente = currentUser?.rol === 'OFERENTE';
   const shouldShowPublicFeed = !isAdmin && !isOferente;
+
+  const toggleAdPanel = () => {
+    setAdPanelOpen((prev) => {
+      const next = !prev;
+      setAdPanelUserClosed(!next);
+      return next;
+    });
+  };
 
   const notify = (variant, message) => {
     setAlerts((prev) => [...prev, { id: crypto.randomUUID(), variant, message }]);
@@ -821,6 +846,28 @@ function App() {
     }
   };
 
+  const loadAdPublications = async () => {
+    if (!shouldShowPublicFeed) {
+      setAdPublications([]);
+      setLoadingAds(false);
+      return;
+    }
+    setLoadingAds(true);
+    try {
+      const params = new URLSearchParams();
+      const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : selectedTenantId;
+      if (tenantParam) params.set('tenantId', tenantParam);
+      const query = params.toString();
+      const data = await fetchJson(`/feed/ads${query ? `?${query}` : ''}`, { headers: authHeaders });
+      setAdPublications(data);
+    } catch (err) {
+      notify('danger', err.message);
+      setAdPublications([]);
+    } finally {
+      setLoadingAds(false);
+    }
+  };
+
   const handleHome = () => {
     setTopHeartsMode(false);
     const isDefault =
@@ -893,6 +940,55 @@ function App() {
     }
   };
 
+  const loadAdminAds = async () => {
+    if (!isAdmin) return;
+    setLoadingAdminAds(true);
+    try {
+      const params = new URLSearchParams();
+      if (adminAdsTenantId) params.set('tenantId', adminAdsTenantId);
+      const query = params.toString();
+      const data = await fetchJson(`/admin/publications/ads${query ? `?${query}` : ''}`, { headers: authHeaders });
+      setAdminAdPublications(data);
+    } catch (err) {
+      notify('danger', err.message);
+      setAdminAdPublications([]);
+    } finally {
+      setLoadingAdminAds(false);
+    }
+  };
+
+  const handleToggleAdminAd = async (publication, enabled) => {
+    if (!isAdmin || !publication?.id) return;
+    const targetId = String(publication.id);
+    setSavingAdminAds((prev) => {
+      const next = new Set(prev);
+      next.add(targetId);
+      return next;
+    });
+    try {
+      const params = new URLSearchParams();
+      if (adminAdsTenantId) params.set('tenantId', adminAdsTenantId);
+      const query = params.toString();
+      await fetchJson(`/admin/publications/${publication.id}/ads${query ? `?${query}` : ''}`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ enabled }),
+      });
+      setAdminAdPublications((prev) =>
+        prev.map((item) => (String(item.id) === targetId ? { ...item, esPublicidad: enabled } : item))
+      );
+      notify('success', enabled ? 'Publicidad activada' : 'Publicidad desactivada');
+    } catch (err) {
+      notify('danger', err.message);
+    } finally {
+      setSavingAdminAds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetId);
+        return next;
+      });
+    }
+  };
+
   useEffect(() => {
     loadPublicTenants();
     loadCategoryTypes();
@@ -907,6 +1003,33 @@ function App() {
       setSelectedTenantId('');
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mediaQuery = window.matchMedia('(max-width: 1200px)');
+    const handleChange = () => {
+      const isNarrow = mediaQuery.matches;
+      setIsAdPanelNarrow(isNarrow);
+      if (isNarrow) {
+        setAdPanelOpen(false);
+      } else if (!adPanelUserClosed) {
+        setAdPanelOpen(true);
+      }
+    };
+    handleChange();
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleChange);
+    } else {
+      mediaQuery.addListener(handleChange);
+    }
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener('change', handleChange);
+      } else {
+        mediaQuery.removeListener(handleChange);
+      }
+    };
+  }, [adPanelUserClosed]);
 
   useEffect(() => {
     if (selectedTenantId) {
@@ -925,8 +1048,16 @@ function App() {
   }, [filters.search, filters.categoryId, filters.businessId, currentUser, selectedTenantId]);
 
   useEffect(() => {
+    loadAdPublications();
+  }, [shouldShowPublicFeed, selectedTenantId, currentUser, token]);
+
+  useEffect(() => {
     loadAdminQueues();
   }, [currentUser]);
+
+  useEffect(() => {
+    loadAdminAds();
+  }, [isAdmin, adminAdsTenantId]);
 
   useEffect(() => {
     if (isOferente) {
@@ -1340,37 +1471,49 @@ function App() {
     handleSelectPublication(publication);
   };
 
+  const decoratePublicationList = (items = []) =>
+    items.map((item, idx) => {
+      const fallbackCover = placeholderImages[(Number(item.id) || idx) % placeholderImages.length];
+      const coverUrl = item.coverUrl || fallbackCover;
+      const coverType = item.coverType || detectMediaTypeFromUrl(item.coverUrl || '');
+      const precio =
+        item.precio === null || item.precio === undefined
+          ? null
+          : Number.isFinite(Number(item.precio))
+          ? Number(item.precio)
+          : null;
+      const rawCategories =
+        item.categories && item.categories.length
+          ? item.categories
+          : (item.categoryIds || []).map(
+              (cid) => categories.find((c) => String(c.id) === String(cid)) || { id: cid, name: cid }
+            );
+      const normalizedCategories = rawCategories.map((cat) => normalizeCategory(cat, categories)).filter(Boolean);
+      return {
+        ...item,
+        coverUrl,
+        coverType,
+        precio,
+        categories: normalizedCategories,
+        categoryIds: item.categoryIds || normalizedCategories.map((c) => c.id),
+        business: item.business || businesses.find((b) => b.id === item.businessId),
+      };
+    });
+
   const feedWithDecorations = useMemo(
-    () =>
-      feed.map((item, idx) => {
-        const fallbackCover = placeholderImages[(Number(item.id) || idx) % placeholderImages.length];
-        const coverUrl = item.coverUrl || fallbackCover;
-        const coverType = item.coverType || detectMediaTypeFromUrl(item.coverUrl || '');
-        const precio =
-          item.precio === null || item.precio === undefined
-            ? null
-            : Number.isFinite(Number(item.precio))
-            ? Number(item.precio)
-            : null;
-        const rawCategories =
-          item.categories && item.categories.length
-            ? item.categories
-            : (item.categoryIds || []).map(
-                (cid) => categories.find((c) => String(c.id) === String(cid)) || { id: cid, name: cid }
-              );
-        const normalizedCategories = rawCategories.map((cat) => normalizeCategory(cat, categories)).filter(Boolean);
-        return {
-          ...item,
-          coverUrl,
-          coverType,
-          precio,
-          categories: normalizedCategories,
-          categoryIds: item.categoryIds || normalizedCategories.map((c) => c.id),
-          business: item.business || businesses.find((b) => b.id === item.businessId),
-        };
-      }),
+    () => decoratePublicationList(feed),
     [feed, categories, businesses]
   );
+
+  const adsWithDecorations = useMemo(
+    () => decoratePublicationList(adPublications),
+    [adPublications, categories, businesses]
+  );
+
+  const adminAdsWithDecorations = useMemo(() => {
+    const decorated = decoratePublicationList(adminAdPublications);
+    return decorated.sort((a, b) => Number(Boolean(b.esPublicidad)) - Number(Boolean(a.esPublicidad)));
+  }, [adminAdPublications, categories, businesses]);
 
   const derivedCategories = useMemo(() => {
     const map = new Map();
@@ -1741,28 +1884,68 @@ function App() {
 
       <main className="container px-4 py-6 space-y-6">
         {shouldShowPublicFeed && (
-          <section>
-            {loadingFeed ? (
-              <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
-                Cargando feed...
+          <section className="relative">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+              <div className="min-w-0 flex-1">
+                {loadingFeed ? (
+                  <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
+                    Cargando feed...
+                  </div>
+                ) : filteredPublicFeed.length ? (
+                  <MasonryGrid className="mt-1">
+                    {filteredPublicFeed.map((pub) => (
+                      <PinCard
+                        key={pub.id}
+                        publication={pub}
+                        likesCount={getHeartsValue(pub)}
+                        liked={hasLikedInSession(pub)}
+                        onLike={handleLike}
+                        onSelect={handleSelectPublication}
+                      />
+                    ))}
+                  </MasonryGrid>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
+                    No hay publicaciones que coincidan con los filtros.
+                  </div>
+                )}
               </div>
-            ) : filteredPublicFeed.length ? (
-              <MasonryGrid>
-                {filteredPublicFeed.map((pub) => (
-                  <PinCard
-                    key={pub.id}
-                    publication={pub}
-                    likesCount={getHeartsValue(pub)}
-                    liked={hasLikedInSession(pub)}
-                    onLike={handleLike}
+
+              {!isAdPanelNarrow && adPanelOpen && (
+                <div className="lg:basis-[12.5%] lg:min-w-[180px] lg:max-w-[220px] lg:shrink-0">
+                  <AdPanel
+                    open={adPanelOpen}
+                    publications={adsWithDecorations}
+                    loading={loadingAds}
+                    onToggle={toggleAdPanel}
                     onSelect={handleSelectPublication}
                   />
-                ))}
-              </MasonryGrid>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
-                No hay publicaciones que coincidan con los filtros.
-              </div>
+                </div>
+              )}
+            </div>
+
+            {!adPanelOpen && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="fixed right-4 top-20 z-40 h-11 w-11 rounded-full bg-card/95 shadow-soft backdrop-blur"
+                onClick={toggleAdPanel}
+                aria-label="Abrir espacio publicitario"
+                title="Espacio publicitario"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            )}
+
+            {isAdPanelNarrow && adPanelOpen && (
+              <AdPanel
+                open={adPanelOpen}
+                floating
+                publications={adsWithDecorations}
+                loading={loadingAds}
+                onToggle={toggleAdPanel}
+                onSelect={handleSelectPublication}
+              />
             )}
           </section>
         )}
@@ -2039,6 +2222,95 @@ function App() {
                     </div>
                   </div>
                 </div>
+
+                {isAdmin && (
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Espacio publicitario</p>
+                        <h4 className="text-lg font-semibold">Selecciona publicaciones destacadas</h4>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={loadAdminAds}>
+                        Recargar
+                      </Button>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                          <Label>Tenant</Label>
+                          <select
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft md:w-64"
+                            value={adminAdsTenantId}
+                            onChange={(e) => setAdminAdsTenantId(e.target.value)}
+                          >
+                            <option value="">Todos los tenants</option>
+                            {tenants.map((tenant) => (
+                              <option key={tenant.id} value={tenant.id}>
+                                {tenant.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Solo publicaciones publicadas pueden aparecer aquí.</p>
+                      </div>
+
+                      {loadingAdminAds && (
+                        <p className="text-sm text-muted-foreground">Cargando publicaciones publicitarias...</p>
+                      )}
+                      {!loadingAdminAds && !adminAdsWithDecorations.length && (
+                        <p className="text-sm text-muted-foreground">Sin publicaciones disponibles para este espacio.</p>
+                      )}
+
+                      <div className="space-y-3">
+                        {adminAdsWithDecorations.map((pub) => {
+                          const mediaSrc = pub.coverUrl || '';
+                          const isVideo =
+                            pub.coverType === 'VIDEO' || detectMediaTypeFromUrl(pub.coverUrl || '') === 'VIDEO';
+                          const isSaving = savingAdminAds.has(String(pub.id));
+                          return (
+                            <div
+                              key={pub.id}
+                              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 md:flex-row md:items-center md:justify-between"
+                            >
+                              <button
+                                type="button"
+                                className="flex items-center gap-3 text-left"
+                                onClick={() => handleSelectPublication(pub)}
+                              >
+                                <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-muted">
+                                  {isVideo ? (
+                                    <video src={mediaSrc} className="h-full w-full object-cover" muted loop playsInline />
+                                  ) : (
+                                    <img src={mediaSrc} alt={pub.titulo} className="h-full w-full object-cover" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs text-muted-foreground line-clamp-1">
+                                    {pub.business?.name || 'Negocio'}
+                                  </p>
+                                  <p className="text-sm font-semibold line-clamp-1">{pub.titulo}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {pub.esPublicidad ? 'Visible en publicidad' : 'No visible'}
+                                  </p>
+                                </div>
+                              </button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant={pub.esPublicidad ? 'outline' : 'danger'}
+                                  disabled={isSaving}
+                                  onClick={() => handleToggleAdminAd(pub, !pub.esPublicidad)}
+                                >
+                                  {pub.esPublicidad ? 'Quitar' : 'Mostrar'}
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="feed" className="mt-4">

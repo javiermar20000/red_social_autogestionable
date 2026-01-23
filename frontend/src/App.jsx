@@ -1915,6 +1915,7 @@ function App() {
                 <div className="lg:basis-[12.5%] lg:min-w-[180px] lg:max-w-[220px] lg:shrink-0">
                   <AdPanel
                     open={adPanelOpen}
+                    floating
                     publications={adsWithDecorations}
                     loading={loadingAds}
                     onToggle={toggleAdPanel}

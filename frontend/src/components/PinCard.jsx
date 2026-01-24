@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Heart, Share2, Facebook, Instagram, Twitter, MessageCircle } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
+import { cn } from '../lib/cn.js';
 import placeholderImg from '../assets/pin2.jpg';
 
 const formatCategoryLabel = (cat) => {
@@ -28,9 +29,10 @@ const formatCompactLikes = (value) => {
   return `${formatted} mill`;
 };
 
-const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect }) => {
+const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect, compact = false }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const isCompact = Boolean(compact);
   const mediaSrc = publication.coverUrl || publication.placeholder || placeholderImg;
   const categories = publication.categories || [];
   const isVideo =
@@ -59,9 +61,18 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
     return promoKeywords.some((keyword) => label.includes(keyword));
   });
   const showOfferBadge = isPromoCategory && publication.estado !== 'AVISO_GENERAL';
-  const likeButtonClassName = liked
-    ? 'h-8 w-8 rounded-full bg-red-500 text-white hover:bg-red-600'
-    : 'h-8 w-8 rounded-full text-white hover:bg-white/20';
+  const actionButtonSize = isCompact ? 'h-7 w-7' : 'h-8 w-8';
+  const actionIconClass = isCompact ? '!h-3.5 !w-3.5' : 'h-4 w-4';
+  const shareBubbleSize = isCompact ? 'h-8 w-8' : 'h-9 w-9';
+  const shareBubbleBaseClass = cn(
+    'flex items-center justify-center rounded-full text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80',
+    shareBubbleSize
+  );
+  const likeButtonClassName = cn(
+    actionButtonSize,
+    'rounded-full text-white',
+    liked ? 'bg-red-500 hover:bg-red-600' : 'hover:bg-white/20'
+  );
   const likeButtonLabel = liked ? 'Me gusta marcado' : 'Dar me gusta';
   const businessName = publication.business?.name || publication.authorName || 'GastroHub';
   const locationParts = [publication.business?.address, publication.business?.city, publication.business?.region].filter(Boolean);
@@ -96,6 +107,19 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
     }
     setIsShareOpen(false);
   };
+  const visitsClassName = cn('line-clamp-1 font-semibold', isCompact ? 'text-xs' : 'text-sm');
+  const businessNameClassName = cn('opacity-90', isCompact ? 'text-[0.7rem]' : 'text-xs');
+  const likeCountClassName = cn('font-semibold text-white tabular-nums', isCompact ? 'text-[0.7rem]' : 'text-xs');
+  const offerBadgeClassName = cn(
+    'rounded-full bg-orange-500 font-semibold text-white',
+    isCompact ? 'px-2.5 py-0.5 text-[0.7rem]' : 'px-3 py-1 text-xs'
+  );
+  const businessTypeBadgeClassName = cn(
+    'rounded-full bg-white/90 font-semibold text-slate-800',
+    isCompact ? 'px-2.5 py-0.5 text-[0.7rem]' : 'px-3 py-1 text-xs'
+  );
+  const footerTitleClassName = cn('font-semibold', isCompact ? 'text-xs' : 'text-sm');
+  const footerPriceClassName = cn('opacity-90', isCompact ? 'text-[0.7rem]' : 'text-xs');
 
   return (
     <div
@@ -144,8 +168,8 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
         >
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
             <div className="text-white">
-              <h3 className="line-clamp-1 text-sm font-semibold">{formattedVisits} visitas</h3>
-              <p className="text-xs opacity-90">{publication.business?.name || publication.authorName || 'GastroHub'}</p>
+              <h3 className={visitsClassName}>{formattedVisits} visitas</h3>
+              <p className={businessNameClassName}>{publication.business?.name || publication.authorName || 'GastroHub'}</p>
             </div>
             <div className="flex gap-2">
               <div className="flex items-center gap-1">
@@ -162,20 +186,20 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
                     onLike?.(publication);
                   }}
                 >
-                  <Heart className="h-4 w-4" fill={liked ? 'currentColor' : 'none'} />
+                  <Heart className={actionIconClass} fill={liked ? 'currentColor' : 'none'} />
                 </Button>
-                <span className="text-xs font-semibold text-white tabular-nums">{formattedLikes}</span>
+                <span className={likeCountClassName}>{formattedLikes}</span>
               </div>
               <div className="relative">
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-8 w-8 rounded-full text-white hover:bg-white/20"
+                  className={cn(actionButtonSize, 'rounded-full text-white hover:bg-white/20')}
                   aria-label="Compartir"
                   aria-expanded={isShareOpen}
                   onClick={handleShareToggle}
                 >
-                  <Share2 className="h-4 w-4" />
+                  <Share2 className={actionIconClass} />
                 </Button>
                 {isShareOpen && (
                   <div
@@ -183,7 +207,7 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
                     onClick={(event) => event.stopPropagation()}
                   >
                     <a
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      className={cn(shareBubbleBaseClass, 'bg-[#25D366]')}
                       href={whatsappHref}
                       target="_blank"
                       rel="noreferrer noopener"
@@ -191,10 +215,10 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
                       title="Compartir en WhatsApp"
                       onClick={handleShareLinkClick}
                     >
-                      <MessageCircle className="h-4 w-4" />
+                      <MessageCircle className={actionIconClass} />
                     </a>
                     <a
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1877F2] text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      className={cn(shareBubbleBaseClass, 'bg-[#1877F2]')}
                       href={facebookHref}
                       target="_blank"
                       rel="noreferrer noopener"
@@ -202,10 +226,13 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
                       title="Compartir en Facebook"
                       onClick={handleShareLinkClick}
                     >
-                      <Facebook className="h-4 w-4" />
+                      <Facebook className={actionIconClass} />
                     </a>
                     <a
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#515bd4] text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      className={cn(
+                        shareBubbleBaseClass,
+                        'bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#515bd4]'
+                      )}
                       href="https://www.instagram.com/"
                       target="_blank"
                       rel="noreferrer noopener"
@@ -213,10 +240,10 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
                       title="Compartir en Instagram (copia el mensaje)"
                       onClick={handleInstagramShare}
                     >
-                      <Instagram className="h-4 w-4" />
+                      <Instagram className={actionIconClass} />
                     </a>
                     <a
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-black text-white shadow-md transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      className={cn(shareBubbleBaseClass, 'bg-black')}
                       href={twitterHref}
                       target="_blank"
                       rel="noreferrer noopener"
@@ -224,7 +251,7 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
                       title="Compartir en X"
                       onClick={handleShareLinkClick}
                     >
-                      <Twitter className="h-4 w-4" />
+                      <Twitter className={actionIconClass} />
                     </a>
                   </div>
                 )}
@@ -235,21 +262,19 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect 
 
         <div className="pointer-events-none absolute left-3 top-3 z-20 flex flex-wrap items-center gap-2">
           {showOfferBadge && (
-            <span className="rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white">Oferta</span>
+            <span className={offerBadgeClassName}>Oferta</span>
           )}
         </div>
 
         {publication.business?.type && (
           <div className="pointer-events-none absolute right-3 top-3 z-20">
-            <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800">
-              {publication.business.type}
-            </span>
+            <span className={businessTypeBadgeClassName}>{publication.business.type}</span>
           </div>
         )}
       </div>
       <div className="flex flex-col items-center justify-center bg-red-600 px-4 py-3 text-center text-white">
-        <p className="text-sm font-semibold">{publication.titulo}</p>
-        <p className="text-xs opacity-90">{displayPrice}</p>
+        <p className={footerTitleClassName}>{publication.titulo}</p>
+        <p className={footerPriceClassName}>{displayPrice}</p>
       </div>
     </div>
   );

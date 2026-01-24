@@ -692,6 +692,7 @@ function App() {
   const isAdmin = currentUser?.role === 'admin';
   const isOferente = currentUser?.rol === 'OFERENTE';
   const shouldShowPublicFeed = !isAdmin && !isOferente;
+  const isAdPanelExpanded = adPanelOpen && !isAdPanelNarrow;
 
   const toggleAdPanel = () => {
     setAdPanelOpen((prev) => {
@@ -1885,7 +1886,7 @@ function App() {
       <main className="container px-4 py-6 space-y-6">
         {shouldShowPublicFeed && (
           <section className="relative">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            <div className={cn('flex flex-col gap-6 lg:flex-row lg:items-start', isAdPanelExpanded && 'lg:gap-4')}>
               <div className="min-w-0 flex-1">
                 {loadingFeed ? (
                   <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
@@ -1901,6 +1902,7 @@ function App() {
                         liked={hasLikedInSession(pub)}
                         onLike={handleLike}
                         onSelect={handleSelectPublication}
+                        compact={isAdPanelExpanded}
                       />
                     ))}
                   </MasonryGrid>
@@ -1915,7 +1917,6 @@ function App() {
                 <div className="lg:basis-[12.5%] lg:min-w-[180px] lg:max-w-[220px] lg:shrink-0">
                   <AdPanel
                     open={adPanelOpen}
-                    floating
                     publications={adsWithDecorations}
                     loading={loadingAds}
                     onToggle={toggleAdPanel}

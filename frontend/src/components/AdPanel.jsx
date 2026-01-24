@@ -11,6 +11,13 @@ const isVideoCover = (publication) => {
   );
 };
 
+const formatPrice = (value) => {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return `$${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(numeric)}`;
+};
+
 const AdPanel = ({ open, floating = false, publications = [], loading = false, onToggle, onSelect }) => {
   const scrollRef = useRef(null);
   const [paused, setPaused] = useState(false);
@@ -94,6 +101,7 @@ const AdPanel = ({ open, floating = false, publications = [], loading = false, o
           publications.map((publication) => {
             const mediaSrc = publication.coverUrl || publication.placeholder || '';
             const showVideo = isVideoCover(publication);
+            const priceLabel = formatPrice(publication.precio) || 'Sin precio';
             return (
               <button
                 key={publication.id}
@@ -113,9 +121,7 @@ const AdPanel = ({ open, floating = false, publications = [], loading = false, o
                     {publication.business?.name || 'GastroHub'}
                   </p>
                   <p className="text-sm font-semibold line-clamp-2">{publication.titulo}</p>
-                  <p className="text-xs text-muted-foreground line-clamp-1">
-                    {publication.tipo ? publication.tipo.replace(/_/g, ' ') : 'Recomendado'}
-                  </p>
+                  <p className="text-xs text-muted-foreground line-clamp-1">{priceLabel}</p>
                 </div>
               </button>
             );

@@ -69,7 +69,7 @@ const AdPanel = ({ open, floating = false, publications = [], loading = false, o
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Espacio publicitario</p>
-          <p className="text-sm font-semibold">Selección del administrador</p>
+          <p className="text-sm font-semibold">Alimentos destacados</p>
         </div>
         {onToggle && (
           <Button variant="ghost" size="icon" onClick={onToggle} aria-label="Cerrar espacio publicitario">

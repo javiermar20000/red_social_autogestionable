@@ -1914,9 +1914,10 @@ function App() {
               </div>
 
               {!isAdPanelNarrow && adPanelOpen && (
-                <div className="lg:basis-[12.5%] lg:min-w-[180px] lg:max-w-[220px] lg:shrink-0">
+                <div className="lg:basis-[320px] lg:min-w-[320px] lg:max-w-[320px] lg:shrink-0">
                   <AdPanel
                     open={adPanelOpen}
+                    floating
                     publications={adsWithDecorations}
                     loading={loadingAds}
                     onToggle={toggleAdPanel}

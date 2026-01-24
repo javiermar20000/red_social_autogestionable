@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Mail, MessageCircle, User } from 'lucide-react';
 import Header from './components/Header.jsx';
 import AdPanel from './components/AdPanel.jsx';
 import MasonryGrid from './components/MasonryGrid.jsx';
@@ -579,6 +579,7 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [exploreOpen, setExploreOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const currentYear = new Date().getFullYear();
 
   const [authLoading, setAuthLoading] = useState(false);
@@ -2473,6 +2474,18 @@ function App() {
         )}
       </main>
 
+      {(isOferente || isAdmin) && (
+        <Button
+          size="lg"
+          className="fixed bottom-6 right-6 z-40 rounded-full px-6 shadow-soft hover:shadow-hover"
+          onClick={() => setContactOpen(true)}
+          aria-label="Abrir contacto"
+        >
+          ¡Contáctenos!
+          <User className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      )}
+
       <footer className="border-t border-border bg-card/80">
         <div className="container px-4 py-8 space-y-6 text-center">
           <div className="flex flex-col items-center gap-3">
@@ -2524,6 +2537,61 @@ function App() {
           }));
         }}
       />
+
+      {(isOferente || isAdmin) && (
+        <Dialog open={contactOpen} onOpenChange={setContactOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader className="text-left">
+              <DialogTitle>¿Necesitas ayuda?</DialogTitle>
+              <DialogDescription>
+                Escríbenos y te acompañamos con la gestión del panel.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4 space-y-3 text-sm">
+              <div className="flex items-stretch justify-between gap-4 rounded-xl border border-border bg-muted/50 p-4">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">WhatsApp</p>
+                  <a
+                    className="mt-2 inline-flex text-base font-semibold text-primary hover:underline"
+                    href="https://wa.me/56978713797"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    (+56) 9 7871 3797
+                  </a>
+                </div>
+                <a
+                  className="flex w-16 self-stretch items-center justify-center rounded-lg bg-background/60 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  href="https://wa.me/56978713797"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Abrir WhatsApp"
+                >
+                  <MessageCircle className="h-9 w-9" aria-hidden="true" />
+                </a>
+              </div>
+              <div className="flex items-stretch justify-between gap-4 rounded-xl border border-border bg-muted/50 p-4">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Correo</p>
+                  <a
+                    className="mt-2 inline-flex text-base font-semibold text-primary hover:underline"
+                    href="mailto:javiermar1200@gmail.com"
+                  >
+                    javiermar1200@gmail.com
+                  </a>
+                </div>
+                <a
+                  className="flex w-16 self-stretch items-center justify-center rounded-lg bg-background/60 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  href="mailto:javiermar1200@gmail.com"
+                  aria-label="Enviar correo"
+                >
+                  <Mail className="h-9 w-9" aria-hidden="true" />
+                </a>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Dialog
         open={notificationsOpen}

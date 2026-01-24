@@ -61,7 +61,9 @@ const AdPanel = ({ open, floating = false, publications = [], loading = false, o
     <aside
       className={cn(
         'rounded-2xl border border-border bg-card p-3 shadow-soft',
-        floating ? 'fixed right-4 top-20 z-50 w-[min(80vw,320px)]' : 'sticky top-24'
+        floating
+          ? 'fixed right-4 top-20 z-50 w-[min(80vw,320px)] 2xl:right-[calc((100vw-1400px)/2+1rem)]'
+          : 'sticky top-24'
       )}
     >
       <div className="flex items-start justify-between gap-3">

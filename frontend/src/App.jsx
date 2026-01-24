@@ -2480,6 +2480,7 @@ function App() {
           className="fixed bottom-6 right-6 z-40 rounded-full px-6 shadow-soft hover:shadow-hover"
           onClick={() => setContactOpen(true)}
           aria-label="Abrir contacto"
+          variant="danger"
         >
           ¡Contáctenos!
           <User className="h-4 w-4" aria-hidden="true" />
@@ -2491,13 +2492,13 @@ function App() {
           <div className="flex flex-col items-center gap-3">
             <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Sobre la app</p>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              GastroHub es la red social autogestionable para negocios gastronómicos: comparte novedades, gestiona tus
+              Match Coffee es la red social autogestionable para negocios gastronómicos: comparte novedades, gestiona tus
               locales y deja que la comunidad descubra tus productos en un feed curado.
             </p>
           </div>
           <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
             <p>Creado para comunidades que se autogestionan y comparten gastronomía local.</p>
-            <p>© {currentYear} GastroHub. Todos los derechos reservados.</p>
+            <p>© {currentYear} Match Coffee. Todos los derechos reservados.</p>
           </div>
         </div>
       </footer>

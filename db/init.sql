@@ -212,6 +212,7 @@ CREATE TABLE negocio (
   nombre         VARCHAR(255) NOT NULL,
   tipo           negocio_tipo_enum NOT NULL,
   descripcion    TEXT,
+  telefono       VARCHAR(30),
   imagen_url     TEXT,
   direccion      VARCHAR(255),
   ciudad         VARCHAR(100),

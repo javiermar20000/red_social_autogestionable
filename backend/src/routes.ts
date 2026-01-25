@@ -461,7 +461,7 @@ router.post(
   asyncHandler(async (req: AuthRequest, res) => {
     const user = req.auth!.user!;
     ensureUserReady(user, { requireTenant: false });
-    const { name, type, description, address, city, region, amenities, imageUrl } = req.body;
+    const { name, type, description, address, city, region, amenities, imageUrl, phone } = req.body;
     if (!name) return res.status(400).json({ message: 'Nombre es obligatorio' });
 
     let tenant = null as Tenant | null;
@@ -495,6 +495,7 @@ router.post(
         name,
         type: (type as NegocioTipo) || NegocioTipo.RESTAURANTE,
         description: description || null,
+        phone: phone ? String(phone).slice(0, 30) : null,
         imageUrl: imageUrl || null,
         address: address || null,
         city: city || null,
@@ -504,6 +505,45 @@ router.post(
       })
     );
     res.json({ business, tenant });
+  })
+);
+
+router.get(
+  '/businesses/:id',
+  optionalAuthMiddleware,
+  asyncHandler(async (req: AuthRequest, res) => {
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: true, optional: true, allowAdminAll: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
+    const requester = req.auth;
+    const isAdmin = !!requester?.isAdminGlobal;
+    if (!tenantId && !isAdmin) return res.status(400).json({ message: 'tenantId es requerido' });
+    const businessId = req.params.id;
+
+    const business = await runWithContext({ tenantId, isAdmin }, async (manager) => {
+      const record = await manager.getRepository(Business).findOne({ where: { id: businessId } });
+      if (!record) return null;
+      if (tenantId && record.tenantId !== tenantId) return null;
+      const isOwner = requester?.user && record.ownerId === requester.user.id;
+      if (!isAdmin && !isOwner && record.status !== NegocioEstado.ACTIVO) return null;
+
+      const owner = await manager.getRepository(User).findOne({
+        where: { id: record.ownerId },
+        select: { email: true, nombre: true },
+      });
+
+      return {
+        ...record,
+        contactEmail: owner?.email || null,
+        ownerName: owner?.nombre || null,
+      };
+    });
+
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    res.json(business);
   })
 );
 
@@ -523,11 +563,12 @@ router.put(
       return res.status(403).json({ message: 'No tienes permiso para editar este negocio' });
     }
 
-    const { name, description, address, city, region, amenities, imageUrl } = req.body;
+    const { name, description, address, city, region, amenities, imageUrl, phone } = req.body;
     const updates: Partial<Business> = {};
     if (name !== undefined) updates.name = String(name).slice(0, 255);
     if (description !== undefined) updates.description = description || null;
     if (imageUrl !== undefined) updates.imageUrl = imageUrl || null;
+    if (phone !== undefined) updates.phone = phone ? String(phone).slice(0, 30) : null;
     if (address !== undefined) updates.address = address || null;
     if (city !== undefined) updates.city = city || null;
     if (region !== undefined) updates.region = region || null;

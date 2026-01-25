@@ -21,6 +21,7 @@ const PinDetailDialog = ({
   currentUser,
   onLike,
   liked = false,
+  onViewBusiness,
   businessLogoUrl = '',
 }) => {
   const lastVisitedId = useRef(null);
@@ -139,6 +140,18 @@ const PinDetailDialog = ({
     if (typeof window === 'undefined' || !mapUrl) return;
     window.open(mapUrl, '_blank', 'noopener,noreferrer');
   };
+  const businessId = business?.id || publication?.businessId;
+  const canOpenBusiness = Boolean(businessId && onViewBusiness);
+  const handleOpenBusinessProfile = (event) => {
+    event.stopPropagation();
+    if (!canOpenBusiness) return;
+    onViewBusiness?.({
+      ...business,
+      id: businessId,
+      name: business?.name || businessName,
+      imageUrl: business?.imageUrl || businessAvatarSrc,
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -178,7 +191,13 @@ const PinDetailDialog = ({
               </div>
             )}
 
-            <div className="mt-6 flex items-center gap-3">
+            <button
+              type="button"
+              className={`mt-6 flex items-center gap-3 text-left ${canOpenBusiness ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
+              onClick={handleOpenBusinessProfile}
+              disabled={!canOpenBusiness}
+              aria-label={`Ver perfil de ${businessName}`}
+            >
               <Avatar src={businessAvatarSrc} alt={`Logo de ${businessName}`}>
                 <AvatarFallback className="bg-primary text-primary-foreground">
                   {businessName[0]}
@@ -188,7 +207,7 @@ const PinDetailDialog = ({
                 <p className="font-semibold">{businessName}</p>
                 <p className="text-sm text-muted-foreground">{visitas} visitas</p>
               </div>
-            </div>
+            </button>
 
             <br></br>
             <div className="flex flex-wrap justify-between">

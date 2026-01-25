@@ -623,6 +623,9 @@ function App() {
   const [similarSource, setSimilarSource] = useState(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [hasNewSimilar, setHasNewSimilar] = useState(false);
+  const [businessProfile, setBusinessProfile] = useState(null);
+  const [businessProfilePublications, setBusinessProfilePublications] = useState([]);
+  const [loadingBusinessProfile, setLoadingBusinessProfile] = useState(false);
 
   const [tenantForm, setTenantForm] = useState({ nombre: '', dominio: '' });
   const [categoryForm, setCategoryForm] = useState({ name: '', type: '', tenantId: '' });
@@ -634,6 +637,7 @@ function App() {
     city: '',
     region: '',
     amenities: [],
+    phone: '',
   });
   const [publicationForm, setPublicationForm] = useState({
     titulo: '',
@@ -666,6 +670,7 @@ function App() {
     region: '',
     amenities: [],
     imageUrl: '',
+    phone: '',
   });
 
   const resetPublicationForm = () => {
@@ -870,7 +875,14 @@ function App() {
     }
   };
 
+  const resetBusinessProfileView = () => {
+    setBusinessProfile(null);
+    setBusinessProfilePublications([]);
+    setLoadingBusinessProfile(false);
+  };
+
   const handleHome = () => {
+    resetBusinessProfileView();
     setTopHeartsMode(false);
     const isDefault =
       filters.search === defaultFilters.search &&
@@ -1139,6 +1151,7 @@ function App() {
       region: selected.region || '',
       amenities: Array.isArray(selected.amenities) ? selected.amenities : [],
       imageUrl: selected.imageUrl || '',
+      phone: selected.phone || '',
     }));
   }, [businessListForForms, profileBusinessId]);
 
@@ -1246,6 +1259,7 @@ function App() {
         address: businessForm.address || null,
         city: businessForm.city || null,
         region: businessForm.region || null,
+        phone: businessForm.phone || null,
         amenities: Array.isArray(businessForm.amenities) ? businessForm.amenities : [],
       };
       const data = await fetchJson('/businesses', {
@@ -1273,6 +1287,7 @@ function App() {
         city: '',
         region: '',
         amenities: [],
+        phone: '',
       });
       if (!tenantIdFromResponse || tenantIdFromResponse === selectedTenantId) {
         loadBusinesses();
@@ -1411,6 +1426,7 @@ function App() {
           name: businessProfileForm.name,
           description: businessProfileForm.description,
           imageUrl: businessProfileForm.imageUrl || null,
+          phone: businessProfileForm.phone || null,
           address: businessProfileForm.address,
           city: businessProfileForm.city,
           region: businessProfileForm.region,
@@ -1462,6 +1478,34 @@ function App() {
     setHasNewSimilar(similarList.length > 0);
   };
 
+  const handleViewBusinessProfile = async (payload) => {
+    const businessId = payload?.id || payload?.businessId;
+    if (!businessId) return notify('danger', 'No se pudo abrir el negocio');
+    const tenantId = payload?.tenantId || selectedTenantId || currentUser?.tenantId || '';
+    setSelectedPublication(null);
+    setBusinessProfile(payload || null);
+    setBusinessProfilePublications([]);
+    setLoadingBusinessProfile(true);
+    try {
+      const params = new URLSearchParams();
+      if (tenantId) params.set('tenantId', tenantId);
+      const query = params.toString();
+      const detail = await fetchJson(`/businesses/${businessId}${query ? `?${query}` : ''}`, { headers: authHeaders });
+      setBusinessProfile(detail);
+      const publications = await fetchJson(`/businesses/${businessId}/publications${query ? `?${query}` : ''}`, {
+        headers: authHeaders,
+      });
+      setBusinessProfilePublications(publications);
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch (err) {
+      notify('danger', err.message);
+    } finally {
+      setLoadingBusinessProfile(false);
+    }
+  };
+
   const handleOpenNotifications = () => {
     setNotificationsOpen(true);
     setHasNewSimilar(false);
@@ -1501,6 +1545,15 @@ function App() {
         business: item.business || businesses.find((b) => b.id === item.businessId),
       };
     });
+
+  const businessProfileDecorated = useMemo(() => {
+    if (!businessProfilePublications.length) return [];
+    const enriched = businessProfilePublications.map((item) => ({
+      ...item,
+      business: item.business || businessProfile,
+    }));
+    return decoratePublicationList(enriched);
+  }, [businessProfilePublications, businessProfile, categories, businesses]);
 
   const feedWithDecorations = useMemo(
     () => decoratePublicationList(feed),
@@ -1866,6 +1919,11 @@ function App() {
   })();
   const businessFormCityOptions = buildCityOptions(businessForm.region, businessForm.city);
   const businessProfileCityOptions = buildCityOptions(businessProfileForm.region, businessProfileForm.city);
+  const showBusinessProfile = Boolean(businessProfile) || loadingBusinessProfile;
+  const businessProfileEmail =
+    businessProfile?.contactEmail || businessProfile?.email || businessProfile?.ownerEmail || '';
+  const businessProfilePhone = businessProfile?.phone || '';
+  const businessProfileImage = businessProfile?.imageUrl || businessProfile?.logoUrl || '';
 
   return (
     <div className="min-h-screen bg-background">
@@ -1885,7 +1943,93 @@ function App() {
       />
 
       <main className="container px-4 py-6 space-y-6">
-        {shouldShowPublicFeed && (
+        {showBusinessProfile ? (
+          <section className="space-y-6">
+            <div className="rounded-2xl bg-card p-6 shadow-soft">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={resetBusinessProfileView}
+                    aria-label="Volver al feed"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Perfil del negocio</p>
+                    <h4 className="text-xl font-semibold">{businessProfile?.name || 'Negocio'}</h4>
+                  </div>
+                </div>
+                {businessProfile?.type && (
+                  <span className="rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground">
+                    {businessProfile.type}
+                  </span>
+                )}
+              </div>
+              <div className="mt-6 flex flex-col items-center text-center">
+                <Avatar
+                  src={businessProfileImage}
+                  alt={`Logo de ${businessProfile?.name || 'negocio'}`}
+                  className="h-24 w-24"
+                >
+                  <AvatarFallback className="bg-primary text-primary-foreground">
+                    {(businessProfile?.name || 'N')[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <p className="mt-3 text-2xl font-bold">{businessProfile?.name || 'Negocio'}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {businessProfile?.description || 'Sin descripción registrada.'}
+                </p>
+              </div>
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Correo</p>
+                  <p className="mt-2 text-sm font-semibold">{businessProfileEmail || 'No disponible'}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Teléfono</p>
+                  <p className="mt-2 text-sm font-semibold">{businessProfilePhone || 'No disponible'}</p>
+                </div>
+              </div>
+            </div>
+
+            <section className="rounded-2xl bg-card p-5 shadow-soft">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Publicaciones del negocio</p>
+                  <h4 className="text-xl font-semibold">Todas las publicaciones</h4>
+                </div>
+                {loadingBusinessProfile && <p className="text-xs text-muted-foreground">Cargando publicaciones...</p>}
+              </div>
+              {loadingBusinessProfile ? (
+                <div className="mt-4 rounded-2xl border border-dashed border-border p-6 text-center text-muted-foreground">
+                  Cargando publicaciones...
+                </div>
+              ) : businessProfileDecorated.length ? (
+                <MasonryGrid className="mt-4">
+                  {businessProfileDecorated.map((pub) => (
+                    <PinCard
+                      key={pub.id}
+                      publication={pub}
+                      likesCount={getHeartsValue(pub)}
+                      liked={hasLikedInSession(pub)}
+                      onLike={handleLike}
+                      onSelect={handleSelectPublication}
+                    />
+                  ))}
+                </MasonryGrid>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-dashed border-border p-6 text-center text-muted-foreground">
+                  Este negocio aún no tiene publicaciones.
+                </div>
+              )}
+            </section>
+          </section>
+        ) : (
+          <>
+            {shouldShowPublicFeed && (
           <section className="relative">
             <div className={cn('flex flex-col gap-6 lg:flex-row lg:items-start', isAdPanelExpanded && 'lg:gap-4')}>
               <div className="min-w-0 flex-1">
@@ -2053,6 +2197,15 @@ function App() {
                       <Input
                         value={businessProfileForm.address}
                         onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, address: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Teléfono de contacto</Label>
+                      <Input
+                        type="tel"
+                        value={businessProfileForm.phone}
+                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, phone: e.target.value }))}
+                        placeholder="+56 9 1234 5678"
                       />
                     </div>
                     <div>
@@ -2471,6 +2624,8 @@ function App() {
               </div>
             </div>
           </section>
+        )}
+          </>
         )}
       </main>
 
@@ -2911,6 +3066,15 @@ function App() {
                     />
                   </div>
                   <div className="md:col-span-2">
+                    <Label>Teléfono de contacto</Label>
+                    <Input
+                      type="tel"
+                      value={businessForm.phone}
+                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, phone: e.target.value }))}
+                      placeholder="+56 9 1234 5678"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
                     <Label>Servicios y espacios</Label>
                     <p className="mt-1 text-xs text-muted-foreground">Selecciona todo lo que aplique.</p>
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -3040,6 +3204,7 @@ function App() {
         onLike={handleLike}
         liked={hasLikedInSession(selectedPublication)}
         businessLogoUrl={selectedBusinessLogoUrl}
+        onViewBusiness={handleViewBusinessProfile}
         onEdit={(pub) => {
           if (pub) {
             handleEditPublication(pub);

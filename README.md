@@ -35,6 +35,30 @@ npm run dev -- --host
 ```
 Asegúrate de tener PostgreSQL y Redis levantados con las variables de `.env`.
 
+## APK (Android con navegador/TWA)
+El frontend ya incluye `manifest.webmanifest`, `sw.js` y `assetlinks.json` en `frontend/public` para hacerlo instalable. Para obtener un APK que use el navegador de Android por debajo (Trusted Web Activity):
+
+### Requisitos
+- JDK 17+ instalado.
+- Android SDK (platform-tools y build-tools).
+- Node.js.
+
+### Pasos
+1) Compila y publica el frontend con HTTPS en un dominio accesible.
+```bash
+cd frontend
+npm install
+npm run build
+```
+2) Actualiza `frontend/public/.well-known/assetlinks.json` con tu `package_name` y el SHA-256 del certificado con el que firmarás el APK.
+3) Genera el proyecto Android y el APK con Bubblewrap:
+```bash
+npm i -g @bubblewrap/cli
+bubblewrap init --manifest https://TU_DOMINIO/manifest.webmanifest
+bubblewrap build
+```
+El APK queda dentro del proyecto generado por Bubblewrap, en `app/build/outputs/apk/release/app-release.apk`.
+
 ### Proxy del frontend
 - Dev local (sin Docker): `VITE_API_PROXY_TARGET=http://localhost:4000`.
 - Con Docker ya no se expone el backend; Nginx en el contenedor de frontend hace proxy interno a `backend:4000` en la ruta `/api`. Usa `http://localhost:8081` en el host.

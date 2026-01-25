@@ -598,6 +598,7 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [exploreOpen, setExploreOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createDialogTab, setCreateDialogTab] = useState('publicacion');
   const [contactOpen, setContactOpen] = useState(false);
   const currentYear = new Date().getFullYear();
 
@@ -708,8 +709,10 @@ function App() {
     setEditingPublicationId(null);
   };
 
-  const openCreateDialog = () => {
+  const openCreateDialog = (tab = 'publicacion') => {
+    const nextTab = typeof tab === 'string' ? tab : 'publicacion';
     resetPublicationForm();
+    setCreateDialogTab(nextTab);
     setCreateOpen(true);
   };
 
@@ -1336,6 +1339,7 @@ function App() {
       mediaType: publication.coverType || detectMediaTypeFromUrl(publication.coverUrl || ''),
       precio: publication.precio === null || publication.precio === undefined ? '' : publication.precio,
     });
+    setCreateDialogTab('publicacion');
     setCreateOpen(true);
   };
 
@@ -2129,9 +2133,13 @@ function App() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={openCreateDialog} className="gap-2">
-                  <PlusCircle className="h-4 w-4" aria-hidden="true" />
-                  Crear contenido
+                <Button variant="outline" onClick={() => openCreateDialog('negocio')} className="gap-2">
+                  <Building2 className="h-4 w-4" aria-hidden="true" />
+                  Agregar negocio
+                </Button>
+                <Button variant="outline" onClick={() => openCreateDialog('publicacion')} className="gap-2">
+                  <FileText className="h-4 w-4" aria-hidden="true" />
+                  Agregar alimentos
                 </Button>
                 {isAdmin && (
                   <Button variant="outline" onClick={loadAdminQueues} className="gap-2">
@@ -3056,7 +3064,7 @@ function App() {
               </Button>
             </div>
           ) : (
-            <Tabs defaultValue="publicacion" className="mt-2">
+            <Tabs value={createDialogTab} onValueChange={setCreateDialogTab} className="mt-2">
               <TabsList className="w-full grid grid-cols-2 md:grid-cols-2">
                 <TabsTrigger value="publicacion">Publicación</TabsTrigger>
                 <TabsTrigger value="negocio">Negocio</TabsTrigger>

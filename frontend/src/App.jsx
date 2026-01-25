@@ -1984,11 +1984,11 @@ function App() {
                 </p>
               </div>
               <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                <div className="rounded-xl border border-border bg-muted/30 text-center p-4">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Correo</p>
                   <p className="mt-2 text-sm font-semibold">{businessProfileEmail || 'No disponible'}</p>
                 </div>
-                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                <div className="rounded-xl border border-border bg-muted/30 text-center p-4">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Teléfono</p>
                   <p className="mt-2 text-sm font-semibold">{businessProfilePhone || 'No disponible'}</p>
                 </div>

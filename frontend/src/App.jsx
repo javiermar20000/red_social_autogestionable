@@ -1,5 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Mail, MessageCircle, User } from 'lucide-react';
+import {
+  BarChart3,
+  Building2,
+  CheckCircle2,
+  ChevronLeft,
+  Eye,
+  EyeOff,
+  FileText,
+  Mail,
+  Megaphone,
+  MessageCircle,
+  Pencil,
+  PlusCircle,
+  RefreshCw,
+  ShieldCheck,
+  Tags,
+  Trash2,
+  User,
+  XCircle,
+} from 'lucide-react';
 import Header from './components/Header.jsx';
 import AdPanel from './components/AdPanel.jsx';
 import MasonryGrid from './components/MasonryGrid.jsx';
@@ -2099,24 +2118,121 @@ function App() {
         )}
         {(isOferente || isAdmin) && (
           <section className="rounded-2xl bg-card p-5 shadow-soft">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{isAdmin ? 'Panel del administrador' : 'Panel del oferente'}</p>
-                <h4 className="text-xl font-semibold">Gestiona tu perfil y publicaciones</h4>
+                <h4 className="text-xl font-semibold">Centro de gestión</h4>
+                <p className="text-sm text-muted-foreground">
+                  {isAdmin
+                    ? 'Administra publicaciones, publicidad y validaciones en un solo lugar.'
+                    : 'Actualiza tu perfil, publicaciones y catálogo de forma clara.'}
+                </p>
               </div>
-              <Button variant="outline" onClick={openCreateDialog}>
-                Abrir panel de creación
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={openCreateDialog} className="gap-2">
+                  <PlusCircle className="h-4 w-4" aria-hidden="true" />
+                  Crear contenido
+                </Button>
+                {isAdmin && (
+                  <Button variant="outline" onClick={loadAdminQueues} className="gap-2">
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                    Actualizar pendientes
+                  </Button>
+                )}
+              </div>
             </div>
-            <Tabs value={adminPanelTab} onValueChange={setAdminPanelTab} className="mt-4">
-              <TabsList className="grid w-full grid-cols-2 md:w-auto md:grid-cols-4">
-                <TabsTrigger value="perfil">Perfil</TabsTrigger>
-                <TabsTrigger value="gestion">Gestión publicaciones</TabsTrigger>
-                <TabsTrigger value="feed">Publicaciones</TabsTrigger>
-                <TabsTrigger value="estadisticas">Estadísticas</TabsTrigger>
+            <Tabs value={adminPanelTab} onValueChange={setAdminPanelTab} className="mt-5">
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-3 xl:grid-cols-6">
+                <TabsTrigger
+                  value="perfil"
+                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                    <Building2 className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="text-sm font-semibold">Perfil</span>
+                    <span className="text-xs text-muted-foreground">Datos del negocio</span>
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="publicaciones"
+                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                    <FileText className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="text-sm font-semibold">Publicaciones</span>
+                    <span className="text-xs text-muted-foreground">Crear, editar y revisar</span>
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="catalogo"
+                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                    <Tags className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="text-sm font-semibold">Catálogo</span>
+                    <span className="text-xs text-muted-foreground">Negocios y categorías</span>
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="estadisticas"
+                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                    <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="text-sm font-semibold">Estadísticas</span>
+                    <span className="text-xs text-muted-foreground">Rendimiento y visitas</span>
+                  </span>
+                </TabsTrigger>
+                {isAdmin && (
+                  <TabsTrigger
+                    value="aprobaciones"
+                    className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                      <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="flex flex-col">
+                      <span className="text-sm font-semibold">Aprobaciones</span>
+                      <span className="text-xs text-muted-foreground">
+                        {adminQueues.publications.length} pendientes
+                      </span>
+                    </span>
+                  </TabsTrigger>
+                )}
+                {isAdmin && (
+                  <TabsTrigger
+                    value="publicidad"
+                    className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                      <Megaphone className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="flex flex-col">
+                      <span className="text-sm font-semibold">Publicidad</span>
+                      <span className="text-xs text-muted-foreground">Destacados del feed</span>
+                    </span>
+                  </TabsTrigger>
+                )}
               </TabsList>
 
-              <TabsContent value="perfil" className="mt-4">
+              <TabsContent value="perfil" className="mt-6 space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                    <Building2 className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Perfil del negocio</p>
+                    <h4 className="text-lg font-semibold">Actualiza la información visible</h4>
+                  </div>
+                </div>
                 {businessListForForms.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
                     Aún no tienes negocios activos en este tenant.
@@ -2295,7 +2411,7 @@ function App() {
                 )}
               </TabsContent>
 
-              <TabsContent value="gestion" className="mt-4 space-y-6">
+              <TabsContent value="publicaciones" className="mt-6 space-y-6">
                 {isOferente && (
                   <div className="rounded-2xl border border-border bg-muted/30 p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -2303,9 +2419,16 @@ function App() {
                         <p className="text-sm text-muted-foreground">Tus publicaciones</p>
                         <h4 className="text-lg font-semibold">Gestiona y edita lo que ya publicaste</h4>
                       </div>
-                      <Button size="sm" variant="outline" onClick={openCreateDialog}>
-                        Nueva publicación
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={openCreateDialog} className="gap-2">
+                          <PlusCircle className="h-4 w-4" aria-hidden="true" />
+                          Nueva publicación
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={loadMyPublications} className="gap-2">
+                          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                          Recargar
+                        </Button>
+                      </div>
                     </div>
                     <div className="mt-4 space-y-3">
                       {loadingMyPublications && <p className="text-sm text-muted-foreground">Cargando tus publicaciones...</p>}
@@ -2331,10 +2454,12 @@ function App() {
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <Button size="sm" variant="outline" onClick={() => handleEditPublication(pub)}>
+                            <Button size="sm" variant="outline" onClick={() => handleEditPublication(pub)} className="gap-2">
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
                               Editar
                             </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDeletePublication(pub.id)}>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeletePublication(pub.id)} className="gap-2">
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
                               Eliminar
                             </Button>
                           </div>
@@ -2344,14 +2469,105 @@ function App() {
                   </div>
                 )}
 
-                <div className="rounded-2xl border border-border bg-muted/30 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Gestión rápida</p>
-                      <h4 className="text-lg font-semibold">Negocios y categorías</h4>
+                {isAdmin && (
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Edición rápida</p>
+                        <h4 className="text-lg font-semibold">Publicaciones publicadas</h4>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={loadFeed} className="gap-2">
+                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                        Actualizar
+                      </Button>
                     </div>
-                    <Button size="sm" variant="outline" onClick={openCreateDialog}>
-                      Abrir panel de creación
+                    <div className="mt-4 space-y-3">
+                      {!panelPublications.length && (
+                        <p className="text-sm text-muted-foreground">No hay publicaciones para gestionar.</p>
+                      )}
+                      {panelPublications.slice(0, 8).map((pub) => (
+                        <div
+                          key={pub.id}
+                          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between"
+                        >
+                          <div className="space-y-1">
+                            <p className="text-sm text-muted-foreground">
+                              {pub.estado || pub.tipo || 'Publicada'} · {pub.business?.name || 'Negocio'}
+                            </p>
+                            <h5 className="text-lg font-semibold">{pub.titulo}</h5>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleEditPublication(pub)} className="gap-2">
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                              Editar
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeletePublication(pub.id)} className="gap-2">
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              Eliminar
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {panelPublications.length > 8 && (
+                        <p className="text-xs text-muted-foreground">
+                          Mostrando 8 de {panelPublications.length}. Usa la vista previa para ver el resto.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        {isAdmin ? 'Feed general' : 'Vista previa del feed'}
+                      </p>
+                      <h4 className="text-lg font-semibold">
+                        {isAdmin ? 'Publicaciones publicadas' : 'Así verán tus publicaciones'}
+                      </h4>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={loadFeed} className="gap-2">
+                      <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                      Actualizar
+                    </Button>
+                  </div>
+                  {panelPublications.length ? (
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {panelPublications.map((pub) => (
+                        <PinCard
+                          key={pub.id}
+                          publication={pub}
+                          likesCount={getHeartsValue(pub)}
+                          liked={hasLikedInSession(pub)}
+                          onLike={handleLike}
+                          onSelect={handleSelectPublication}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-xl border border-dashed border-border p-6 text-center text-muted-foreground">
+                      No hay publicaciones para mostrar.
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="catalogo" className="mt-6 space-y-6">
+                <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                        <Tags className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Catálogo del tenant</p>
+                        <h4 className="text-lg font-semibold">Negocios y categorías</h4>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={openCreateDialog} className="gap-2">
+                      <PlusCircle className="h-4 w-4" aria-hidden="true" />
+                      Crear
                     </Button>
                   </div>
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -2379,15 +2595,80 @@ function App() {
                     </div>
                   </div>
                 </div>
+              </TabsContent>
 
-                {isAdmin && (
+              {isAdmin && (
+                <TabsContent value="aprobaciones" className="mt-6 space-y-6">
                   <div className="rounded-2xl border border-border bg-muted/30 p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Espacio publicitario</p>
-                        <h4 className="text-lg font-semibold">Selecciona publicaciones destacadas</h4>
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                          <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Aprobación de publicaciones</p>
+                          <h4 className="text-lg font-semibold">Pendientes por validar</h4>
+                        </div>
                       </div>
-                      <Button size="sm" variant="outline" onClick={loadAdminAds}>
+                      <Button variant="outline" size="sm" onClick={loadAdminQueues} className="gap-2">
+                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                        Recargar
+                      </Button>
+                    </div>
+                    <div className="mt-4">
+                      <div className="rounded-xl border border-border p-4">
+                        <div className="flex items-center justify-between">
+                          <h6 className="font-semibold">Publicaciones</h6>
+                          <span className="text-xs text-muted-foreground">{adminQueues.publications.length}</span>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {adminQueues.publications.map((p) => (
+                            <div key={p.id} className="flex flex-col gap-3 rounded-lg bg-muted/60 p-3 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <p className="font-semibold">{p.titulo}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {p.business?.name ? `${p.business.name} · #${p.businessId}` : `Negocio #${p.businessId}`}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Button size="sm" variant="outline" onClick={() => handleSelectPublication(p)} className="gap-2">
+                                  <Eye className="h-4 w-4" aria-hidden="true" />
+                                  Ver más
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => handleApprovePublication(p.id, true)} className="gap-2">
+                                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                                  Aprobar
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => handleApprovePublication(p.id, false)} className="gap-2">
+                                  <XCircle className="h-4 w-4" aria-hidden="true" />
+                                  Rechazar
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          {!adminQueues.publications.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+              )}
+
+              {isAdmin && (
+                <TabsContent value="publicidad" className="mt-6 space-y-6">
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                          <Megaphone className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Espacio publicitario</p>
+                          <h4 className="text-lg font-semibold">Selecciona publicaciones destacadas</h4>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={loadAdminAds} className="gap-2">
+                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
                         Recargar
                       </Button>
                     </div>
@@ -2457,7 +2738,13 @@ function App() {
                                   variant={pub.esPublicidad ? 'outline' : 'danger'}
                                   disabled={isSaving}
                                   onClick={() => handleToggleAdminAd(pub, !pub.esPublicidad)}
+                                  className="gap-2"
                                 >
+                                  {pub.esPublicidad ? (
+                                    <EyeOff className="h-4 w-4" aria-hidden="true" />
+                                  ) : (
+                                    <Eye className="h-4 w-4" aria-hidden="true" />
+                                  )}
                                   {pub.esPublicidad ? 'Quitar' : 'Mostrar'}
                                 </Button>
                               </div>
@@ -2467,36 +2754,20 @@ function App() {
                       </div>
                     </div>
                   </div>
-                )}
-              </TabsContent>
+                </TabsContent>
+              )}
 
-              <TabsContent value="feed" className="mt-4">
-                {panelPublications.length ? (
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {panelPublications.map((pub) => (
-                      <PinCard
-                        key={pub.id}
-                        publication={pub}
-                        likesCount={getHeartsValue(pub)}
-                        liked={hasLikedInSession(pub)}
-                        onLike={handleLike}
-                        onSelect={handleSelectPublication}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-border p-6 text-center text-muted-foreground">
-                    No hay publicaciones para mostrar.
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="estadisticas" className="mt-4 space-y-6">
+              <TabsContent value="estadisticas" className="mt-6 space-y-6">
                 <div className="rounded-2xl border border-border bg-muted/30 p-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Tablero de rendimiento</p>
-                      <h4 className="text-lg font-semibold">Visualizaciones y me gusta</h4>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-background text-foreground shadow-soft">
+                        <BarChart3 className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Tablero de rendimiento</p>
+                        <h4 className="text-lg font-semibold">Visualizaciones y me gusta</h4>
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {isAdmin ? 'Resumen global de publicaciones publicadas' : 'Resumen de tus publicaciones'}
@@ -2580,51 +2851,6 @@ function App() {
           </section>
         )}
 
-        {isAdmin && (
-          <section className="rounded-2xl bg-card p-5 shadow-soft">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Panel de validación</p>
-                <h4 className="text-xl font-semibold">Publicaciones pendientes</h4>
-              </div>
-              <Button variant="outline" onClick={loadAdminQueues}>
-                Recargar
-              </Button>
-            </div>
-            <div className="mt-4">
-              <div className="rounded-xl border border-border p-4">
-                <div className="flex items-center justify-between">
-                  <h6 className="font-semibold">Publicaciones</h6>
-                  <span className="text-xs text-muted-foreground">{adminQueues.publications.length}</span>
-                </div>
-                <div className="mt-2 space-y-2">
-                  {adminQueues.publications.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between rounded-lg bg-muted/60 p-3">
-                      <div>
-                        <p className="font-semibold">{p.titulo}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {p.business?.name ? `${p.business.name} · #${p.businessId}` : `Negocio #${p.businessId}`}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        <Button size="sm" variant="outline" onClick={() => handleSelectPublication(p)}>
-                          Ver más
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleApprovePublication(p.id, true)}>
-                          Aprobar
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleApprovePublication(p.id, false)}>
-                          Rechazar
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  {!adminQueues.publications.length && <p className="text-sm text-muted-foreground">Sin pendientes</p>}
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
           </>
         )}
       </main>

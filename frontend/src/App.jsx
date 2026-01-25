@@ -10,12 +10,8 @@ import {
   Mail,
   Megaphone,
   MessageCircle,
-  Pencil,
-  PlusCircle,
   RefreshCw,
   ShieldCheck,
-  Tags,
-  Trash2,
   User,
   XCircle,
 } from 'lucide-react';
@@ -2150,7 +2146,12 @@ function App() {
               </div>
             </div>
             <Tabs value={adminPanelTab} onValueChange={setAdminPanelTab} className="mt-5">
-              <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-3 xl:grid-cols-6">
+              <TabsList
+                className={cn(
+                  'grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-3',
+                  isAdmin ? 'xl:grid-cols-5' : 'xl:grid-cols-3'
+                )}
+              >
                 <TabsTrigger
                   value="perfil"
                   className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
@@ -2173,18 +2174,6 @@ function App() {
                   <span className="flex flex-col">
                     <span className="text-sm font-semibold">Publicaciones</span>
                     <span className="text-xs text-muted-foreground">Crear, editar y revisar</span>
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="catalogo"
-                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
-                    <Tags className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <span className="flex flex-col">
-                    <span className="text-sm font-semibold">Catálogo</span>
-                    <span className="text-xs text-muted-foreground">Negocios y categorías</span>
                   </span>
                 </TabsTrigger>
                 <TabsTrigger
@@ -2420,111 +2409,6 @@ function App() {
               </TabsContent>
 
               <TabsContent value="publicaciones" className="mt-6 space-y-6">
-                {isOferente && (
-                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Tus publicaciones</p>
-                        <h4 className="text-lg font-semibold">Gestiona y edita lo que ya publicaste</h4>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={openCreateDialog} className="gap-2">
-                          <PlusCircle className="h-4 w-4" aria-hidden="true" />
-                          Nueva publicación
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={loadMyPublications} className="gap-2">
-                          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                          Recargar
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {loadingMyPublications && <p className="text-sm text-muted-foreground">Cargando tus publicaciones...</p>}
-                      {!loadingMyPublications && !myPublications.length && (
-                        <p className="text-sm text-muted-foreground">Aún no tienes publicaciones creadas.</p>
-                      )}
-                      {myPublications.map((pub) => (
-                        <div
-                          key={pub.id}
-                          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between"
-                        >
-                          <div className="space-y-1">
-                            <p className="text-sm text-muted-foreground">
-                              {pub.estado} · {pub.business?.name || 'Negocio'}
-                            </p>
-                            <h5 className="text-lg font-semibold">{pub.titulo}</h5>
-                            <div className="flex flex-wrap gap-2">
-                              {(pub.categories || []).map((cat) => (
-                                <span key={cat.id || cat} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
-                                  {formatCategoryLabel(cat)}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button size="sm" variant="outline" onClick={() => handleEditPublication(pub)} className="gap-2">
-                              <Pencil className="h-4 w-4" aria-hidden="true" />
-                              Editar
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDeletePublication(pub.id)} className="gap-2">
-                              <Trash2 className="h-4 w-4" aria-hidden="true" />
-                              Eliminar
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {isAdmin && (
-                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Edición rápida</p>
-                        <h4 className="text-lg font-semibold">Publicaciones publicadas</h4>
-                      </div>
-                      <Button size="sm" variant="outline" onClick={loadFeed} className="gap-2">
-                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                        Actualizar
-                      </Button>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {!panelPublications.length && (
-                        <p className="text-sm text-muted-foreground">No hay publicaciones para gestionar.</p>
-                      )}
-                      {panelPublications.slice(0, 8).map((pub) => (
-                        <div
-                          key={pub.id}
-                          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between"
-                        >
-                          <div className="space-y-1">
-                            <p className="text-sm text-muted-foreground">
-                              {pub.estado || pub.tipo || 'Publicada'} · {pub.business?.name || 'Negocio'}
-                            </p>
-                            <h5 className="text-lg font-semibold">{pub.titulo}</h5>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button size="sm" variant="outline" onClick={() => handleEditPublication(pub)} className="gap-2">
-                              <Pencil className="h-4 w-4" aria-hidden="true" />
-                              Editar
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDeletePublication(pub.id)} className="gap-2">
-                              <Trash2 className="h-4 w-4" aria-hidden="true" />
-                              Eliminar
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                      {panelPublications.length > 8 && (
-                        <p className="text-xs text-muted-foreground">
-                          Mostrando 8 de {panelPublications.length}. Usa la vista previa para ver el resto.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 <div className="rounded-2xl border border-border bg-muted/30 p-4">
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
@@ -2535,7 +2419,12 @@ function App() {
                         {isAdmin ? 'Publicaciones publicadas' : 'Así verán tus publicaciones'}
                       </h4>
                     </div>
-                    <Button size="sm" variant="outline" onClick={loadFeed} className="gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={isAdmin ? loadFeed : loadMyPublications}
+                      className="gap-2"
+                    >
                       <RefreshCw className="h-4 w-4" aria-hidden="true" />
                       Actualizar
                     </Button>
@@ -2558,50 +2447,6 @@ function App() {
                       No hay publicaciones para mostrar.
                     </div>
                   )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="catalogo" className="mt-6 space-y-6">
-                <div className="rounded-2xl border border-border bg-muted/30 p-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
-                        <Tags className="h-5 w-5" aria-hidden="true" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Catálogo del tenant</p>
-                        <h4 className="text-lg font-semibold">Negocios y categorías</h4>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={openCreateDialog} className="gap-2">
-                      <PlusCircle className="h-4 w-4" aria-hidden="true" />
-                      Crear
-                    </Button>
-                  </div>
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <div className="rounded-xl border border-border p-4">
-                      <h5 className="font-semibold">Categorias activas</h5>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {categories.map((c) => (
-                          <span key={c.id} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">
-                            {c.name} · {c.type}
-                          </span>
-                        ))}
-                        {!categories.length && <p className="text-sm text-muted-foreground">Sin categorías</p>}
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-border p-4">
-                      <h5 className="font-semibold">Negocios activos ({businessListForForms.length})</h5>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {businessListForForms.map((b) => (
-                          <span key={b.id} className="rounded-full border px-3 py-1 text-xs">
-                            {b.name} · {b.type}
-                          </span>
-                        ))}
-                        {!businessListForForms.length && <p className="text-sm text-muted-foreground">Sin negocios activos</p>}
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </TabsContent>
 

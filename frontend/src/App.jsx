@@ -1957,8 +1957,6 @@ function App() {
     return { totalPublications, totalVisits, totalLikes, topVisits, topLikes };
   }, [panelPublications]);
   const businessLogoValue = typeof businessProfileForm.imageUrl === 'string' ? businessProfileForm.imageUrl : '';
-  const isBusinessLogoDataUrl = businessLogoValue.startsWith('data:');
-  const businessLogoInputValue = isBusinessLogoDataUrl ? '' : businessLogoValue;
   const hasBusinessLogo = Boolean(businessLogoValue);
   const selectedBusinessLogoUrl = (() => {
     const businessId = selectedPublication?.business?.id ?? selectedPublication?.businessId;
@@ -2310,6 +2308,7 @@ function App() {
                     <div>
                       <Label>Nombre del restaurante</Label>
                       <Input
+                        className="h-12"
                         value={businessProfileForm.name}
                         onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, name: e.target.value }))}
                         required
@@ -2317,40 +2316,36 @@ function App() {
                     </div>
                     <div>
                       <Label>Imagen de perfil</Label>
-                      <Input
-                        placeholder="https://..."
-                        value={businessLogoInputValue}
-                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
-                      />
-                      <div className="mt-2 flex flex-wrap items-center gap-3">
-                        <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-input bg-muted/60 px-3 py-2 text-sm font-medium hover:bg-muted">
-                          <input type="file" accept="image/*" className="sr-only" onChange={handleBusinessLogoUpload} />
-                          Subir imagen
-                        </label>
-                        {hasBusinessLogo && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setBusinessProfileForm((prev) => ({ ...prev, imageUrl: '' }))}
+                      <div className="mt-0 flex items-start justify-between gap-3 lg:items-center lg:justify-start">
+                        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                          <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-input bg-muted/60 px-3 py-2 text-sm font-medium hover:bg-muted">
+                            <input type="file" accept="image/*" className="sr-only" onChange={handleBusinessLogoUpload} />
+                            Subir imagen
+                          </label>
+                          {hasBusinessLogo && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setBusinessProfileForm((prev) => ({ ...prev, imageUrl: '' }))}
+                            >
+                              Quitar
+                            </Button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Avatar
+                            src={businessLogoValue}
+                            alt={`Logo de ${businessProfileForm.name || 'negocio'}`}
+                            className="h-12 w-12"
                           >
-                            Quitar
-                          </Button>
-                        )}
-                        <p className="text-xs text-muted-foreground">Máx 1 MB. Se guarda en el servidor.</p>
-                      </div>
-                      {hasBusinessLogo && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <Avatar src={businessLogoValue} alt={`Logo de ${businessProfileForm.name || 'negocio'}`}>
-                            <AvatarFallback className="bg-primary text-primary-foreground">
-                              {(businessProfileForm.name || 'N')[0]}
+                            <AvatarFallback className="bg-muted text-muted-foreground">
+                              <User className="h-5 w-5" aria-hidden="true" />
                             </AvatarFallback>
                           </Avatar>
-                          <p className="text-xs text-muted-foreground">
-                            {isBusinessLogoDataUrl ? 'Imagen cargada desde archivo.' : 'Imagen desde URL.'}
-                          </p>
+                          <p className="text-xs text-muted-foreground whitespace-nowrap">Máx 1MB.</p>
                         </div>
-                      )}
+                      </div>
                     </div>
                     <div className="md:col-span-2">
                       <Label>Descripción</Label>

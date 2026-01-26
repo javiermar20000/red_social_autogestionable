@@ -3,6 +3,7 @@ import {
   BarChart3,
   Building2,
   CheckCircle2,
+  Bell,
   ChevronLeft,
   ChevronUp,
   Eye,
@@ -1974,6 +1975,8 @@ function App() {
     businessProfile?.contactEmail || businessProfile?.email || businessProfile?.ownerEmail || '';
   const businessProfilePhone = businessProfile?.phone || '';
   const businessProfileImage = businessProfile?.imageUrl || businessProfile?.logoUrl || '';
+  const hasSimilarNotifications = similarItems.length > 0;
+  const similarNotificationsLabel = hasSimilarNotifications ? (similarItems.length > 9 ? '9+' : similarItems.length) : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -2170,6 +2173,23 @@ function App() {
                 onSelect={handleSelectPublication}
               />
             )}
+            <button
+              type="button"
+              className={cn(
+                'fixed bottom-20 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-card/95 text-foreground shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60 md:hidden',
+                hasNewSimilar && 'notification-attention bg-rose-100 text-rose-600'
+              )}
+              onClick={handleOpenNotifications}
+              aria-label="Abrir notificaciones"
+              title="Notificaciones"
+            >
+              <Bell className="h-5 w-5" />
+              {hasSimilarNotifications && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold leading-none text-white">
+                  {similarNotificationsLabel}
+                </span>
+              )}
+            </button>
             <button
               type="button"
               className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/60"

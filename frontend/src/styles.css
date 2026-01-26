@@ -143,3 +143,30 @@
 .scrollbar-hidden::-webkit-scrollbar {
   display: none;
 }
+
+@keyframes notification-attention {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  20% {
+    transform: translateY(-4px) scale(1.04);
+  }
+  45% {
+    transform: translateY(0) scale(1);
+  }
+  70% {
+    transform: translateY(-2px) scale(1.02);
+  }
+}
+
+.notification-attention {
+  animation: notification-attention 1.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-attention {
+    animation: none;
+  }
+}

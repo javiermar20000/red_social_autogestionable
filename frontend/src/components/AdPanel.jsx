@@ -18,6 +18,91 @@ const formatPrice = (value) => {
   return `$${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(numeric)}`;
 };
 
+const AdRail = ({ open, publications = [], loading = false, onSelect }) => {
+  const scrollRef = useRef(null);
+  const [paused, setPaused] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const hasPublications = publications.length > 0;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handleChange = () => setReduceMotion(mediaQuery.matches);
+    handleChange();
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleChange);
+    } else {
+      mediaQuery.addListener(handleChange);
+    }
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener('change', handleChange);
+      } else {
+        mediaQuery.removeListener(handleChange);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open || paused || reduceMotion || !publications.length) return undefined;
+    const container = scrollRef.current;
+    if (!container) return undefined;
+    const interval = setInterval(() => {
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      if (maxScroll <= 0) return;
+      const next = container.scrollTop + 1;
+      container.scrollTop = next >= maxScroll ? 0 : next;
+    }, 45);
+    return () => clearInterval(interval);
+  }, [open, paused, reduceMotion, publications]);
+
+  if (!open || (!loading && !hasPublications)) return null;
+
+  return (
+    <aside className="w-16 rounded-2xl border border-border bg-card/95 p-2 shadow-soft backdrop-blur">
+      <div
+        ref={scrollRef}
+        className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onFocus={() => setPaused(true)}
+        onBlur={() => setPaused(false)}
+      >
+        {loading && !hasPublications && (
+          <div className="rounded-lg border border-dashed border-border p-2 text-center text-[10px] text-muted-foreground">
+            Cargando...
+          </div>
+        )}
+        {hasPublications &&
+          publications.map((publication) => {
+            const mediaSrc = publication.coverUrl || publication.placeholder || '';
+            const showVideo = isVideoCover(publication);
+            return (
+              <button
+                key={publication.id}
+                type="button"
+                className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background/80 shadow-soft transition hover:border-primary/40"
+                onClick={() => onSelect?.(publication)}
+                title={publication.titulo || 'Publicidad'}
+              >
+                {showVideo ? (
+                  <video src={mediaSrc} className="h-full w-full object-cover" muted loop playsInline />
+                ) : (
+                  <img
+                    src={mediaSrc}
+                    alt={publication.titulo || 'Publicidad'}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                )}
+              </button>
+            );
+          })}
+      </div>
+    </aside>
+  );
+};
+
 const AdPanel = ({ open, floating = false, publications = [], loading = false, onToggle, onSelect }) => {
   const scrollRef = useRef(null);
   const [paused, setPaused] = useState(false);
@@ -133,4 +218,5 @@ const AdPanel = ({ open, floating = false, publications = [], loading = false, o
   );
 };
 
+export { AdRail };
 export default AdPanel;

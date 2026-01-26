@@ -16,7 +16,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import Header from './components/Header.jsx';
-import AdPanel from './components/AdPanel.jsx';
+import AdPanel, { AdRail } from './components/AdPanel.jsx';
 import MasonryGrid from './components/MasonryGrid.jsx';
 import PinCard from './components/PinCard.jsx';
 import PinDetailDialog from './components/PinDetailDialog.jsx';
@@ -2126,7 +2126,7 @@ function App() {
               )}
             </div>
 
-            {!adPanelOpen && (
+            {!adPanelOpen && !isAdPanelNarrow && (
               <Button
                 variant="outline"
                 size="icon"
@@ -2137,6 +2137,27 @@ function App() {
               >
                 <ChevronLeft className="h-5 w-5" />
               </Button>
+            )}
+
+            {isAdPanelNarrow && !adPanelOpen && (
+              <div className="fixed right-4 top-20 z-40 flex flex-col items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-11 w-11 rounded-full bg-card/95 shadow-soft backdrop-blur"
+                  onClick={toggleAdPanel}
+                  aria-label="Abrir espacio publicitario"
+                  title="Espacio publicitario"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <AdRail
+                  open
+                  publications={adsWithDecorations}
+                  loading={loadingAds}
+                  onSelect={handleSelectPublication}
+                />
+              </div>
             )}
 
             {isAdPanelNarrow && adPanelOpen && (

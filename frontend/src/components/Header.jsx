@@ -94,7 +94,7 @@ const Header = ({
                 <div className="hidden text-right md:block">
                   <p className="text-xs text-muted-foreground">Conectado como</p>
                   <p className="text-sm font-semibold">
-                    {currentUser.email || currentUser.nombre} · {currentUser.role || currentUser.rol}
+                    {currentUser.nombre} · {currentUser.role || currentUser.rol}
                   </p>
                 </div>
                 <Button variant="ghost" size="icon" onClick={onLogout} title="Cerrar sesión">
@@ -126,7 +126,7 @@ const Header = ({
                     <>
                       <p className="text-xs text-muted-foreground">Conectado como</p>
                       <p className="text-sm font-semibold">
-                        {currentUser.email || currentUser.nombre} · {currentUser.role || currentUser.rol}
+                        {currentUser.nombre} · {currentUser.role || currentUser.rol}
                       </p>
                     </>
                   ) : (

@@ -568,6 +568,13 @@ const humanizeCategoryType = (type = '') =>
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+const normalizeSearchValue = (value = '') =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 const normalizeLocationValue = (value = '') => String(value || '').trim().toLowerCase();
 const normalizeAmenityValue = (value = '') => String(value || '').trim().toUpperCase();
 
@@ -1574,6 +1581,30 @@ function App() {
     return decoratePublicationList(enriched);
   }, [businessProfilePublications, businessProfile, categories, businesses]);
 
+  const normalizedSearch = useMemo(() => normalizeSearchValue(filters.search), [filters.search]);
+
+  const businessProfileFiltered = useMemo(() => {
+    if (!normalizedSearch) return businessProfileDecorated;
+    return businessProfileDecorated.filter((pub) => {
+      const categoryValues = (pub.categories || []).flatMap((cat) => [
+        cat?.name,
+        cat?.type,
+        cat?.slug,
+        cat?.id,
+      ]);
+      const searchable = [
+        pub.titulo,
+        pub.contenido,
+        pub.business?.name,
+        pub.authorName,
+        ...categoryValues,
+      ]
+        .filter(Boolean)
+        .map((value) => normalizeSearchValue(value));
+      return searchable.some((value) => value.includes(normalizedSearch));
+    });
+  }, [businessProfileDecorated, normalizedSearch]);
+
   const feedWithDecorations = useMemo(
     () => decoratePublicationList(feed),
     [feed, categories, businesses]
@@ -2026,9 +2057,9 @@ function App() {
                 <div className="mt-4 rounded-2xl border border-dashed border-border p-6 text-center text-muted-foreground">
                   Cargando publicaciones...
                 </div>
-              ) : businessProfileDecorated.length ? (
+              ) : businessProfileFiltered.length ? (
                 <MasonryGrid className="mt-4">
-                  {businessProfileDecorated.map((pub) => (
+                  {businessProfileFiltered.map((pub) => (
                     <PinCard
                       key={pub.id}
                       publication={pub}
@@ -2039,6 +2070,10 @@ function App() {
                     />
                   ))}
                 </MasonryGrid>
+              ) : businessProfileDecorated.length ? (
+                <div className="mt-4 rounded-2xl border border-dashed border-border p-6 text-center text-muted-foreground">
+                  No hay publicaciones que coincidan con la búsqueda.
+                </div>
               ) : (
                 <div className="mt-4 rounded-2xl border border-dashed border-border p-6 text-center text-muted-foreground">
                   Este negocio aún no tiene publicaciones.

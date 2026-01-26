@@ -62,7 +62,7 @@ const AdRail = ({ open, publications = [], loading = false, onSelect }) => {
     <aside className="w-16 rounded-2xl border border-border bg-card/95 p-2 shadow-soft backdrop-blur">
       <div
         ref={scrollRef}
-        className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto"
+        className="flex max-h-[50vh] flex-col gap-2 overflow-x-hidden overflow-y-auto scrollbar-hidden"
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
         onFocus={() => setPaused(true)}

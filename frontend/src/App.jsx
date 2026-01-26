@@ -2474,6 +2474,9 @@ function App() {
                           liked={hasLikedInSession(pub)}
                           onLike={handleLike}
                           onSelect={handleSelectPublication}
+                          showActions
+                          onEdit={handleEditPublication}
+                          onDelete={handleDeletePublication}
                         />
                       ))}
                     </div>

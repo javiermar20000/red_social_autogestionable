@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Heart, Share2, Facebook, Instagram, Twitter, MessageCircle } from 'lucide-react';
+import { Heart, Share2, Facebook, Instagram, Twitter, MessageCircle, Pencil, Trash2 } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
 import { cn } from '../lib/cn.js';
 import placeholderImg from '../assets/pin2.jpg';
@@ -29,7 +29,17 @@ const formatCompactLikes = (value) => {
   return `${formatted} mill`;
 };
 
-const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect, compact = false }) => {
+const PinCard = ({
+  publication,
+  likesCount = 0,
+  liked = false,
+  onLike,
+  onSelect,
+  compact = false,
+  showActions = false,
+  onEdit,
+  onDelete,
+}) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const isCompact = Boolean(compact);
@@ -120,6 +130,11 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect,
   );
   const footerTitleClassName = cn('font-semibold', isCompact ? 'text-xs' : 'text-sm');
   const footerPriceClassName = cn('opacity-90', isCompact ? 'text-[0.7rem]' : 'text-xs');
+  const showFooterActions = Boolean(showActions);
+  const actionButtonBaseClass =
+    'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80';
+  const editButtonClassName = cn(actionButtonBaseClass, 'bg-sky-500 hover:bg-sky-600');
+  const deleteButtonClassName = cn(actionButtonBaseClass, 'bg-orange-500 hover:bg-orange-600');
 
   return (
     <div
@@ -272,9 +287,51 @@ const PinCard = ({ publication, likesCount = 0, liked = false, onLike, onSelect,
           </div>
         )}
       </div>
-      <div className="flex flex-col items-center justify-center bg-red-600 px-4 py-3 text-center text-white">
-        <p className={footerTitleClassName}>{publication.titulo}</p>
-        <p className={footerPriceClassName}>{displayPrice}</p>
+      <div
+        className={cn(
+          'bg-red-600 px-4 py-3 text-white',
+          showFooterActions
+            ? 'grid grid-cols-[auto,1fr,auto] items-center gap-3'
+            : 'flex flex-col items-center justify-center text-center'
+        )}
+      >
+        {showFooterActions ? (
+          <>
+            <button
+              type="button"
+              className={editButtonClassName}
+              aria-label="Editar publicación"
+              title="Editar publicación"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit?.(publication);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <div className="flex flex-col items-center justify-center text-center">
+              <p className={footerTitleClassName}>{publication.titulo}</p>
+              <p className={footerPriceClassName}>{displayPrice}</p>
+            </div>
+            <button
+              type="button"
+              className={deleteButtonClassName}
+              aria-label="Eliminar publicación"
+              title="Eliminar publicación"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete?.(publication.id);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </>
+        ) : (
+          <>
+            <p className={footerTitleClassName}>{publication.titulo}</p>
+            <p className={footerPriceClassName}>{displayPrice}</p>
+          </>
+        )}
       </div>
     </div>
   );

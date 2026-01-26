@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Building2,
   CheckCircle2,
   ChevronLeft,
+  ChevronUp,
   Eye,
   EyeOff,
   FileText,
@@ -604,6 +605,7 @@ function App() {
   const [createDialogTab, setCreateDialogTab] = useState('publicacion');
   const [contactOpen, setContactOpen] = useState(false);
   const currentYear = new Date().getFullYear();
+  const publicFeedRef = useRef(null);
 
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -2082,7 +2084,7 @@ function App() {
         ) : (
           <>
             {shouldShowPublicFeed && (
-          <section className="relative">
+          <section className="relative" ref={publicFeedRef}>
             <div className={cn('flex flex-col gap-6 lg:flex-row lg:items-start', isAdPanelExpanded && 'lg:gap-4')}>
               <div className={cn('min-w-0 flex-1', isAdPanelNarrow && !adPanelOpen && 'pr-20')}>
                 {loadingFeed ? (
@@ -2168,6 +2170,15 @@ function App() {
                 onSelect={handleSelectPublication}
               />
             )}
+            <button
+              type="button"
+              className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/60"
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              aria-label="Volver arriba"
+              title="Volver arriba"
+            >
+              <ChevronUp className="h-5 w-5" />
+            </button>
           </section>
         )}
         {(isOferente || isAdmin) && (

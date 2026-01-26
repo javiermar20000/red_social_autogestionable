@@ -2084,7 +2084,7 @@ function App() {
             {shouldShowPublicFeed && (
           <section className="relative">
             <div className={cn('flex flex-col gap-6 lg:flex-row lg:items-start', isAdPanelExpanded && 'lg:gap-4')}>
-              <div className="min-w-0 flex-1">
+              <div className={cn('min-w-0 flex-1', isAdPanelNarrow && !adPanelOpen && 'pr-20')}>
                 {loadingFeed ? (
                   <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
                     Cargando feed...

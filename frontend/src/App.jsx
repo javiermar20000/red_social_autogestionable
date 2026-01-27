@@ -44,6 +44,13 @@ const API_URL = import.meta.env.VITE_API_URL || '/api';
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 const SESSION_LIKES_STORAGE_KEY = 'publicationLikesSession';
 const MAX_BUSINESS_LOGO_BYTES = 1024 * 1024;
+const FEED_CACHE_STORAGE_KEY = 'gastrohub-feed-cache-v1';
+const ADS_CACHE_STORAGE_KEY = 'gastrohub-ads-cache-v1';
+const CACHE_MAX_ENTRIES = 6;
+const CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const FEED_MEDIA_PREFETCH_LIMIT = 36;
+const ADS_MEDIA_PREFETCH_LIMIT = 14;
+const MEDIA_PREFETCH_TIMEOUT_MS = 3500;
 const numberFormatter = new Intl.NumberFormat('es-CL');
 const formatNumber = (value) => numberFormatter.format(value);
 
@@ -55,6 +62,107 @@ const fetchJson = async (path, options = {}) => {
     throw new Error(data.message || 'Error de servidor');
   }
   return data;
+};
+
+const getLocalStorage = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+
+const readCacheBucket = (storageKey) => {
+  const storage = getLocalStorage();
+  if (!storage) return { entries: {}, order: [] };
+  try {
+    const raw = storage.getItem(storageKey);
+    if (!raw) return { entries: {}, order: [] };
+    const parsed = JSON.parse(raw);
+    const entries = parsed && typeof parsed === 'object' ? parsed.entries || {} : {};
+    const order = Array.isArray(parsed?.order) ? parsed.order : [];
+    return { entries, order };
+  } catch {
+    return { entries: {}, order: [] };
+  }
+};
+
+const writeCacheBucket = (storageKey, bucket) => {
+  const storage = getLocalStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(storageKey, JSON.stringify(bucket));
+  } catch {
+    // ignore storage failures
+  }
+};
+
+const readCacheEntry = (storageKey, cacheKey, maxAgeMs = CACHE_MAX_AGE_MS) => {
+  const bucket = readCacheBucket(storageKey);
+  const entry = bucket.entries?.[cacheKey];
+  if (!entry || !entry.data) return null;
+  if (maxAgeMs && entry.savedAt && Date.now() - entry.savedAt > maxAgeMs) return null;
+  return entry;
+};
+
+const writeCacheEntry = (storageKey, cacheKey, data, maxEntries = CACHE_MAX_ENTRIES) => {
+  const bucket = readCacheBucket(storageKey);
+  const entries = { ...(bucket.entries || {}) };
+  entries[cacheKey] = { data, savedAt: Date.now() };
+  const order = [cacheKey, ...(bucket.order || []).filter((key) => key !== cacheKey)];
+  const trimmedOrder = maxEntries ? order.slice(0, maxEntries) : order;
+  const prunedEntries = {};
+  trimmedOrder.forEach((key) => {
+    if (entries[key]) prunedEntries[key] = entries[key];
+  });
+  writeCacheBucket(storageKey, { entries: prunedEntries, order: trimmedOrder });
+};
+
+const shouldPrefetchMedia = () => {
+  if (typeof navigator === 'undefined') return false;
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (connection?.saveData) return false;
+  return true;
+};
+
+const prefetchImages = async (urls, { limit = FEED_MEDIA_PREFETCH_LIMIT, timeoutMs = MEDIA_PREFETCH_TIMEOUT_MS } = {}) => {
+  if (typeof window === 'undefined') return;
+  if (!shouldPrefetchMedia()) return;
+  const unique = Array.from(new Set(urls.filter(Boolean)));
+  const targets = unique.slice(0, limit);
+  await Promise.allSettled(
+    targets.map(
+      (url) =>
+        new Promise((resolve) => {
+          const img = new Image();
+          let settled = false;
+          const cleanup = () => {
+            if (settled) return;
+            settled = true;
+            img.onload = null;
+            img.onerror = null;
+            clearTimeout(timer);
+            resolve(true);
+          };
+          const timer = setTimeout(cleanup, timeoutMs);
+          img.onload = cleanup;
+          img.onerror = cleanup;
+          img.src = url;
+        })
+    )
+  );
+};
+
+const prefetchMediaAssets = async (items = [], options = {}) => {
+  const urls = (items || [])
+    .map((item) => item?.coverUrl || item?.placeholder || '')
+    .filter((value) => typeof value === 'string')
+    .map((value) => value.trim())
+    .filter((value) => value && !value.startsWith('data:') && !value.startsWith('blob:'));
+  const imageUrls = urls.filter((url) => detectMediaTypeFromUrl(url) !== 'VIDEO');
+  if (!imageUrls.length) return;
+  await prefetchImages(imageUrls, options);
 };
 
 const publicationTypes = [
@@ -660,6 +768,8 @@ function App() {
   const [contactOpen, setContactOpen] = useState(false);
   const currentYear = new Date().getFullYear();
   const publicFeedRef = useRef(null);
+  const feedCacheKeyRef = useRef('');
+  const adsCacheKeyRef = useRef('');
 
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -794,6 +904,28 @@ function App() {
     setTimeout(() => setAlerts((prev) => prev.slice(1)), 4000);
   };
 
+  const buildFeedCacheKey = (query) => {
+    const baseKey = query || 'default';
+    if (currentUser?.rol === 'OFERENTE') {
+      return `oferente:${currentUser?.id || 'me'}|${baseKey}`;
+    }
+    if (currentUser?.role === 'admin') {
+      return `admin:${currentUser?.id || 'admin'}|${baseKey}`;
+    }
+    return `public|${baseKey}`;
+  };
+
+  const buildAdsCacheKey = (query, tenantParam) => {
+    const baseKey = query || 'default';
+    const tenantKey = tenantParam || 'public';
+    return `${tenantKey}|${baseKey}`;
+  };
+
+  const syncFeedCache = (nextFeed, cacheKey = feedCacheKeyRef.current) => {
+    if (!cacheKey || !Array.isArray(nextFeed)) return;
+    writeCacheEntry(FEED_CACHE_STORAGE_KEY, cacheKey, nextFeed);
+  };
+
   const handleMediaUrlChange = (value) => {
     const mediaType = detectMediaTypeFromUrl(value);
     setPublicationForm((prev) => ({ ...prev, mediaUrl: value, mediaType }));
@@ -910,25 +1042,42 @@ function App() {
   };
 
   const loadFeed = async () => {
+    const params = new URLSearchParams();
+    const categoryIdsForFilter = resolveCategoryIdsForFilter(filters.categoryId);
+    const numericCategoryIds = categoryIdsForFilter.filter((id) => /^\d+$/.test(String(id)));
+    if (filters.search) params.set('search', filters.search);
+    if (numericCategoryIds.length === 1) {
+      params.set('categoryId', numericCategoryIds[0]);
+    }
+    if (filters.businessId) params.set('businessId', filters.businessId);
+    if (currentUser?.rol === 'OFERENTE') params.set('mine', 'true');
+    const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : '';
+    if (tenantParam) params.set('tenantId', tenantParam);
+    const query = params.toString();
+    const cacheKey = buildFeedCacheKey(query);
+    const cachedEntry = readCacheEntry(FEED_CACHE_STORAGE_KEY, cacheKey);
+    const cachedData = Array.isArray(cachedEntry?.data) ? cachedEntry.data : null;
+    if (cachedData && cachedData.length) {
+      setFeed(cachedData);
+      feedCacheKeyRef.current = cacheKey;
+      prefetchMediaAssets(cachedData, { limit: FEED_MEDIA_PREFETCH_LIMIT });
+    } else if (feedCacheKeyRef.current !== cacheKey) {
+      setFeed([]);
+    }
     setLoadingFeed(true);
     try {
-      const params = new URLSearchParams();
-      const categoryIdsForFilter = resolveCategoryIdsForFilter(filters.categoryId);
-      const numericCategoryIds = categoryIdsForFilter.filter((id) => /^\d+$/.test(String(id)));
-      if (filters.search) params.set('search', filters.search);
-      if (numericCategoryIds.length === 1) {
-        params.set('categoryId', numericCategoryIds[0]);
-      }
-      if (filters.businessId) params.set('businessId', filters.businessId);
-      if (currentUser?.rol === 'OFERENTE') params.set('mine', 'true');
-      const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : '';
-      if (tenantParam) params.set('tenantId', tenantParam);
-      const query = params.toString();
       const data = await fetchJson(`/feed/publications${query ? `?${query}` : ''}`, { headers: authHeaders });
+      if (cachedData && cachedData.length) {
+        await prefetchMediaAssets(data, { limit: FEED_MEDIA_PREFETCH_LIMIT });
+      }
       setFeed(data);
+      feedCacheKeyRef.current = cacheKey;
+      writeCacheEntry(FEED_CACHE_STORAGE_KEY, cacheKey, data);
     } catch (err) {
-      notify('danger', err.message);
-      setFeed([]);
+      if (!cachedData || cachedData.length === 0) {
+        notify('danger', err.message);
+        setFeed([]);
+      }
     } finally {
       setLoadingFeed(false);
     }
@@ -940,17 +1089,35 @@ function App() {
       setLoadingAds(false);
       return;
     }
-    setLoadingAds(true);
+    let cachedData = null;
     try {
       const params = new URLSearchParams();
       const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : selectedTenantId;
       if (tenantParam) params.set('tenantId', tenantParam);
       const query = params.toString();
+      const cacheKey = buildAdsCacheKey(query, tenantParam);
+      const cachedEntry = readCacheEntry(ADS_CACHE_STORAGE_KEY, cacheKey);
+      cachedData = Array.isArray(cachedEntry?.data) ? cachedEntry.data : null;
+      if (cachedData && cachedData.length) {
+        setAdPublications(cachedData);
+        adsCacheKeyRef.current = cacheKey;
+        prefetchMediaAssets(cachedData, { limit: ADS_MEDIA_PREFETCH_LIMIT });
+      } else if (adsCacheKeyRef.current !== cacheKey) {
+        setAdPublications([]);
+      }
+      setLoadingAds(true);
       const data = await fetchJson(`/feed/ads${query ? `?${query}` : ''}`, { headers: authHeaders });
+      if (cachedData && cachedData.length) {
+        await prefetchMediaAssets(data, { limit: ADS_MEDIA_PREFETCH_LIMIT });
+      }
       setAdPublications(data);
+      adsCacheKeyRef.current = cacheKey;
+      writeCacheEntry(ADS_CACHE_STORAGE_KEY, cacheKey, data);
     } catch (err) {
-      notify('danger', err.message);
-      setAdPublications([]);
+      if (!cachedData || cachedData.length === 0) {
+        notify('danger', err.message);
+        setAdPublications([]);
+      }
     } finally {
       setLoadingAds(false);
     }
@@ -1544,8 +1711,15 @@ function App() {
     const tenantForVisit = publication?.business?.tenantId || selectedTenantId;
     if (!publication?.id || !tenantForVisit || publication.estado !== 'PUBLICADA') return;
     try {
-      await fetchJson(`/publications/${publication.id}/visit?tenantId=${tenantForVisit}`, { method: 'POST' });
-      loadFeed();
+      const publicationId = String(publication.id);
+      const currentVisits = getVisitsValue(publication);
+      const optimisticVisits = currentVisits + 1;
+      applyVisitsUpdate(publicationId, optimisticVisits);
+      const data = await fetchJson(`/publications/${publication.id}/visit?tenantId=${tenantForVisit}`, { method: 'POST' });
+      const serverVisits = Number(data?.visitas ?? data?.visits ?? data?.visitCount);
+      if (Number.isFinite(serverVisits)) {
+        applyVisitsUpdate(publicationId, serverVisits);
+      }
     } catch {
       // silencioso
     }
@@ -1793,13 +1967,45 @@ function App() {
     return changed ? updated : items;
   };
 
+  const updatePublicationVisits = (items, publicationId, nextVisits) => {
+    if (!Array.isArray(items) || !items.length) return items;
+    const normalized = Math.max(0, Math.floor(Number(nextVisits) || 0));
+    let changed = false;
+    const updated = items.map((item) => {
+      if (String(item.id) !== publicationId) return item;
+      const current = getVisitsValue(item);
+      if (current === normalized) return item;
+      changed = true;
+      return { ...item, visitas: normalized };
+    });
+    return changed ? updated : items;
+  };
+
   const applyLikesUpdate = (publicationId, nextLikes) => {
     const normalized = Math.max(0, Math.floor(Number(nextLikes) || 0));
-    setFeed((prev) => updatePublicationLikes(prev, publicationId, normalized));
+    setFeed((prev) => {
+      const updated = updatePublicationLikes(prev, publicationId, normalized);
+      if (updated !== prev) syncFeedCache(updated);
+      return updated;
+    });
     setMyPublications((prev) => updatePublicationLikes(prev, publicationId, normalized));
     setSelectedPublication((prev) => {
       if (!prev || String(prev.id) !== publicationId) return prev;
       return { ...prev, likes: normalized };
+    });
+  };
+
+  const applyVisitsUpdate = (publicationId, nextVisits) => {
+    const normalized = Math.max(0, Math.floor(Number(nextVisits) || 0));
+    setFeed((prev) => {
+      const updated = updatePublicationVisits(prev, publicationId, normalized);
+      if (updated !== prev) syncFeedCache(updated);
+      return updated;
+    });
+    setMyPublications((prev) => updatePublicationVisits(prev, publicationId, normalized));
+    setSelectedPublication((prev) => {
+      if (!prev || String(prev.id) !== publicationId) return prev;
+      return { ...prev, visitas: normalized };
     });
   };
 
@@ -2030,6 +2236,8 @@ function App() {
   const businessProfileImage = businessProfile?.imageUrl || businessProfile?.logoUrl || '';
   const hasSimilarNotifications = similarItems.length > 0;
   const similarNotificationsLabel = hasSimilarNotifications ? (similarItems.length > 9 ? '9+' : similarItems.length) : null;
+  const showFeedLoading = loadingFeed && feed.length === 0;
+  const showAdsLoading = loadingAds && adsWithDecorations.length === 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -2143,7 +2351,7 @@ function App() {
           <section className="relative" ref={publicFeedRef}>
             <div className={cn('flex flex-col gap-6 lg:flex-row lg:items-start', isAdPanelExpanded && 'lg:gap-4')}>
               <div className={cn('min-w-0 flex-1', isAdPanelNarrow && !adPanelOpen && 'pr-20')}>
-                {loadingFeed ? (
+                {showFeedLoading ? (
                   <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
                     Cargando feed...
                   </div>
@@ -2174,7 +2382,7 @@ function App() {
                     open={adPanelOpen}
                     floating
                     publications={adsWithDecorations}
-                    loading={loadingAds}
+                    loading={showAdsLoading}
                     onToggle={toggleAdPanel}
                     onSelect={handleSelectPublication}
                   />
@@ -2210,7 +2418,7 @@ function App() {
                 <AdRail
                   open
                   publications={adsWithDecorations}
-                  loading={loadingAds}
+                  loading={showAdsLoading}
                   onSelect={handleSelectPublication}
                 />
               </div>
@@ -2221,7 +2429,7 @@ function App() {
                 open={adPanelOpen}
                 floating
                 publications={adsWithDecorations}
-                loading={loadingAds}
+                loading={showAdsLoading}
                 onToggle={toggleAdPanel}
                 onSelect={handleSelectPublication}
               />

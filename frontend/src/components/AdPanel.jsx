@@ -174,7 +174,7 @@ const AdPanel = ({ open, floating = false, publications = [], loading = false, o
         onFocus={() => setPaused(true)}
         onBlur={() => setPaused(false)}
       >
-        {loading && (
+        {loading && publications.length === 0 && (
           <div className="rounded-xl border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
             Cargando publicidad...
           </div>

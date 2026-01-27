@@ -231,7 +231,7 @@ const oferenteAdPlans = [
     id: 'inicio',
     name: 'Plan Inicio',
     description: 'Presencia básica para comenzar a destacar.',
-    price: 19990,
+    price: 4990,
     presence: 35,
     presenceLabel: 'Baja',
     benefits: [
@@ -248,7 +248,7 @@ const oferenteAdPlans = [
     id: 'impulso',
     name: 'Plan Impulso',
     description: 'Mayor frecuencia y alcance sostenido.',
-    price: 49990,
+    price: 8990,
     presence: 65,
     presenceLabel: 'Media',
     benefits: [
@@ -265,7 +265,7 @@ const oferenteAdPlans = [
     id: 'dominio',
     name: 'Plan Dominio',
     description: 'Máxima presencia para ser el primero.',
-    price: 89990,
+    price: 14990,
     presence: 100,
     presenceLabel: 'Alta',
     benefits: [

@@ -3,8 +3,8 @@
 # min_api: 21
 # common_typos_disable
 # {"id":"com.android.tools.r8.mapping","version":"2.2"}
-# pg_map_id: 9a90474
-# pg_map_hash: SHA-256 9a9047469ea4cfa9f07bea86c40755433bb3ffee8ec02e04844cbdf8e980b4d1
+# pg_map_id: 19426d7
+# pg_map_hash: SHA-256 19426d763ff9ece699a904e1ff432ab613c652460c9f45d694fcf8411faf28d1
 android.support.customtabs.ICustomTabsCallback -> a.a:
 # {"id":"sourceFile","fileName":"ICustomTabsCallback.java"}
     java.lang.String DESCRIPTOR -> a
@@ -25031,15 +25031,15 @@ kotlinx.coroutines.JobKt__JobKt -> W.c:
       # {"id":"com.android.tools.r8.residualsignature","signature":"(LP/a;Ljava/util/concurrent/CancellationException;)V"}
     6:9:void cancel$default(kotlin.coroutines.CoroutineContext,java.util.concurrent.CancellationException,int,java.lang.Object):563:563 -> b
       # {"id":"com.android.tools.r8.residualsignature","signature":"(LP/a;Ljava/util/concurrent/CancellationException;ILjava/lang/Object;)V"}
-site.loophole.cf575ea47c9647700713794789887de9.twa.Application -> site.loophole.cf575ea47c9647700713794789887de9.twa.Application:
+site.loophole.twa.Application -> site.loophole.twa.Application:
 # {"id":"sourceFile","fileName":"Application.java"}
     1:4:void <init>():20:20 -> <init>
     1:4:void onCreate():26:26 -> onCreate
-site.loophole.cf575ea47c9647700713794789887de9.twa.DelegationService -> site.loophole.cf575ea47c9647700713794789887de9.twa.DelegationService:
+site.loophole.twa.DelegationService -> site.loophole.twa.DelegationService:
 # {"id":"sourceFile","fileName":"DelegationService.java"}
     1:4:void <init>():5:5 -> <init>
     1:4:void onCreate():9:9 -> onCreate
-site.loophole.cf575ea47c9647700713794789887de9.twa.LauncherActivity -> site.loophole.cf575ea47c9647700713794789887de9.twa.LauncherActivity:
+site.loophole.twa.LauncherActivity -> site.loophole.twa.LauncherActivity:
 # {"id":"sourceFile","fileName":"LauncherActivity.java"}
     1:4:void <init>():25:25 -> <init>
     1:5:android.net.Uri getLaunchingUrl():48:48 -> i

@@ -22,7 +22,7 @@
      the abbreviated format.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="site.loophole.cf575ea47c9647700713794789887de9.twa"
+    package="site.loophole.twa"
     android:versionCode="1"
     android:versionName="1" >
 
@@ -43,13 +43,13 @@
     </queries>
 
     <permission
-        android:name="site.loophole.cf575ea47c9647700713794789887de9.twa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:name="site.loophole.twa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
 
-    <uses-permission android:name="site.loophole.cf575ea47c9647700713794789887de9.twa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+    <uses-permission android:name="site.loophole.twa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <application
-        android:name="site.loophole.cf575ea47c9647700713794789887de9.twa.Application"
+        android:name="site.loophole.twa.Application"
         android:allowBackup="true"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:extractNativeLibs="true"
@@ -84,7 +84,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name="site.loophole.cf575ea47c9647700713794789887de9.twa.LauncherActivity"
+            android:name="site.loophole.twa.LauncherActivity"
             android:alwaysRetainTaskState="true"
             android:exported="true"
             android:label="@string/launcherName" >
@@ -163,7 +163,7 @@
         </provider>
 
         <service
-            android:name="site.loophole.cf575ea47c9647700713794789887de9.twa.DelegationService"
+            android:name="site.loophole.twa.DelegationService"
             android:enabled="@bool/enableNotification"
             android:exported="@bool/enableNotification" >
             <meta-data
@@ -181,7 +181,7 @@
 
         <provider
             android:name="androidx.startup.InitializationProvider"
-            android:authorities="site.loophole.cf575ea47c9647700713794789887de9.twa.androidx-startup"
+            android:authorities="site.loophole.twa.androidx-startup"
             android:exported="false" >
             <meta-data
                 android:name="androidx.emoji2.text.EmojiCompatInitializer"

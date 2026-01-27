@@ -36,7 +36,7 @@ MERGED from [androidx.tracing:tracing:1.0.0] /home/javiermar2000/.gradle/caches/
 MERGED from [androidx.arch.core:core-runtime:2.2.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/09558f1b9b56a339611f1f3ff5685123/transformed/core-runtime-2.2.0/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.annotation:annotation-experimental:1.4.1] /home/javiermar2000/.gradle/caches/8.11.1/transforms/7880efad619dc72d569f5e6e2c17444b/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:2:1-7:12
 	package
-		ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:23:5-65
+		ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:23:5-32
 		INJECTED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml
 	android:versionName
 		INJECTED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml
@@ -125,7 +125,7 @@ category#android.intent.category.DEFAULT
 ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:74:21-80
 	android:name
 		ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:74:31-77
-activity#site.loophole.cf575ea47c9647700713794789887de9.twa.LauncherActivity
+activity#site.loophole.twa.LauncherActivity
 ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:79:9-160:20
 	android:label
 		ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:81:13-49
@@ -273,7 +273,7 @@ ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/
 		ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:174:17-50
 	android:name
 		ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:173:17-67
-service#site.loophole.cf575ea47c9647700713794789887de9.twa.DelegationService
+service#site.loophole.twa.DelegationService
 ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:177:9-192:19
 	android:enabled
 		ADDED from /home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/src/main/AndroidManifest.xml:179:13-55
@@ -399,7 +399,7 @@ ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1
 		ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/a5429f7b20c607b890f08b5283ad4ec0/transformed/core-1.13.0/AndroidManifest.xml:24:9-44
 	android:name
 		ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/a5429f7b20c607b890f08b5283ad4ec0/transformed/core-1.13.0/AndroidManifest.xml:23:9-81
-permission#site.loophole.cf575ea47c9647700713794789887de9.twa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+permission#site.loophole.twa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/a5429f7b20c607b890f08b5283ad4ec0/transformed/core-1.13.0/AndroidManifest.xml:22:5-24:47
 	android:protectionLevel
 		ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/a5429f7b20c607b890f08b5283ad4ec0/transformed/core-1.13.0/AndroidManifest.xml:24:9-44
@@ -409,7 +409,7 @@ uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/a5429f7b20c607b890f08b5283ad4ec0/transformed/core-1.13.0/AndroidManifest.xml:26:5-97
 	android:name
 		ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/a5429f7b20c607b890f08b5283ad4ec0/transformed/core-1.13.0/AndroidManifest.xml:26:22-94
-uses-permission#site.loophole.cf575ea47c9647700713794789887de9.twa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+uses-permission#site.loophole.twa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/a5429f7b20c607b890f08b5283ad4ec0/transformed/core-1.13.0/AndroidManifest.xml:26:5-97
 	android:name
 		ADDED from [androidx.core:core:1.13.0] /home/javiermar2000/.gradle/caches/8.11.1/transforms/a5429f7b20c607b890f08b5283ad4ec0/transformed/core-1.13.0/AndroidManifest.xml:26:22-94

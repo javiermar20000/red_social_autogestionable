@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "site.loophole.cf575ea47c9647700713794789887de9.twa.app-mergeReleaseResources-23:/values-sl/values-sl.xml",
+            "outputFile": "site.loophole.twa.app-mergeReleaseResources-23:/values-sl/values-sl.xml",
             "map": [
                 {
                     "source": "/home/javiermar2000/.gradle/caches/8.11.1/transforms/be57bd43967b699c12a0f6b8bd2f21c6/transformed/browser-1.9.0-alpha04/res/values-sl/values-sl.xml",

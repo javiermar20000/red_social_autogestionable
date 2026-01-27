@@ -28,20 +28,20 @@
     <!-- Value from default config. -->
     <string name="fallbackType" translatable="false">customtabs</string>
     <!-- Value from default config. -->
-    <string name="fullScopeUrl" translatable="false">https://cf575ea47c9647700713794789887de9.loophole.site/</string>
+    <string name="fullScopeUrl" translatable="false">https://73d253ab45de12e76734dde42c16d11a.loophole.site/</string>
     <!-- Value from default config. -->
     <string name="generatorApp" translatable="false">bubblewrap-cli</string>
     <!-- Value from default config. -->
-    <string name="hostName" translatable="false">cf575ea47c9647700713794789887de9.loophole.site</string>
+    <string name="hostName" translatable="false">73d253ab45de12e76734dde42c16d11a.loophole.site</string>
     <!-- Value from default config. -->
-    <string name="launchUrl" translatable="false">https://cf575ea47c9647700713794789887de9.loophole.site/</string>
+    <string name="launchUrl" translatable="false">https://73d253ab45de12e76734dde42c16d11a.loophole.site/</string>
     <!-- Value from default config. -->
     <string name="launcherName" translatable="false">Match Coffee</string>
     <!-- Value from default config. -->
     <string name="orientation" translatable="false">portrait</string>
     <!-- Value from default config. -->
-    <string name="providerAuthority" translatable="false">site.loophole.cf575ea47c9647700713794789887de9.twa.fileprovider</string>
+    <string name="providerAuthority" translatable="false">site.loophole.twa.fileprovider</string>
     <!-- Value from default config. -->
-    <string name="webManifestUrl" translatable="false">https://cf575ea47c9647700713794789887de9.loophole.site/manifest.webmanifest</string>
+    <string name="webManifestUrl" translatable="false">https://73d253ab45de12e76734dde42c16d11a.loophole.site/manifest.webmanifest</string>
 
 </resources>

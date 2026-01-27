@@ -15484,15 +15484,18 @@ org.jspecify.annotations.NonNull
 org.jspecify.annotations.NullMarked
 org.jspecify.annotations.NullUnmarked
 org.jspecify.annotations.Nullable
-site.loophole.cf575ea47c9647700713794789887de9.twa.R$bool
-site.loophole.cf575ea47c9647700713794789887de9.twa.R$color
-site.loophole.cf575ea47c9647700713794789887de9.twa.R$drawable
-site.loophole.cf575ea47c9647700713794789887de9.twa.R$integer
-site.loophole.cf575ea47c9647700713794789887de9.twa.R$mipmap
-site.loophole.cf575ea47c9647700713794789887de9.twa.R$raw
-site.loophole.cf575ea47c9647700713794789887de9.twa.R$string
-site.loophole.cf575ea47c9647700713794789887de9.twa.R$xml
-site.loophole.cf575ea47c9647700713794789887de9.twa.R
+site.loophole.cf575ea47c9647700713794789887de9.twa.Application
+site.loophole.cf575ea47c9647700713794789887de9.twa.DelegationService
+site.loophole.cf575ea47c9647700713794789887de9.twa.LauncherActivity
+site.loophole.twa.R$bool
+site.loophole.twa.R$color
+site.loophole.twa.R$drawable
+site.loophole.twa.R$integer
+site.loophole.twa.R$mipmap
+site.loophole.twa.R$raw
+site.loophole.twa.R$string
+site.loophole.twa.R$xml
+site.loophole.twa.R
 androidx.activity.ComponentActivity$$InternalSyntheticThrowCCEIfNotNull$8$a1bd6d651ab59ec80aa3499b3179e00e9e49e09d1f638d332bd382cbaa60557c$0
 androidx.activity.ComponentActivity$4:
     final synthetic androidx.activity.ComponentActivity this$0

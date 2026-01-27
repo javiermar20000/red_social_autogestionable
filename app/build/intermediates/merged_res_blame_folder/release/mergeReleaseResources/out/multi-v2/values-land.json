@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "site.loophole.cf575ea47c9647700713794789887de9.twa.app-mergeReleaseResources-23:/values-land/values-land.xml",
+            "outputFile": "site.loophole.twa.app-mergeReleaseResources-23:/values-land/values-land.xml",
             "map": [
                 {
                     "source": "/home/javiermar2000/.gradle/caches/8.11.1/transforms/183ebbc8ed821348f80a6d36d20b75e3/transformed/appcompat-1.7.0/res/values-land/values-land.xml",

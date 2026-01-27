@@ -1,6 +1,6 @@
 {
   "packageId": "site.loophole.twa",
-  "host": "73d253ab45de12e76734dde42c16d11a.loophole.site",
+  "host": "0153ab31cce0995acf345955165d56d5.loophole.site",
   "name": "Match Coffee",
   "launcherName": "Match Coffee",
   "display": "standalone",
@@ -13,7 +13,7 @@
   "backgroundColor": "#F7F7F7",
   "enableNotifications": true,
   "startUrl": "/",
-  "iconUrl": "https://73d253ab45de12e76734dde42c16d11a.loophole.site/icons/icon-512.png",
+  "iconUrl": "https://0153ab31cce0995acf345955165d56d5.loophole.site/icons/icon-512.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "/home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/android.keystore",
@@ -23,7 +23,7 @@
   "appVersionCode": 1,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://73d253ab45de12e76734dde42c16d11a.loophole.site/manifest.webmanifest",
+  "webManifestUrl": "https://0153ab31cce0995acf345955165d56d5.loophole.site/manifest.webmanifest",
   "fallbackType": "customtabs",
   "features": {},
   "alphaDependencies": {
@@ -32,7 +32,7 @@
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
-  "fullScopeUrl": "https://73d253ab45de12e76734dde42c16d11a.loophole.site/",
+  "fullScopeUrl": "https://0153ab31cce0995acf345955165d56d5.loophole.site/",
   "minSdkVersion": 21,
   "orientation": "portrait",
   "fingerprints": [],

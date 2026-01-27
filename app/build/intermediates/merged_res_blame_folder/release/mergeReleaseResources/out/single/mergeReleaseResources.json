@@ -4,84 +4,12 @@
         "source": "site.loophole.twa.app-main-26:/drawable-xxhdpi/splash.png"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-xxhdpi_ic_notification_icon.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-xxhdpi/ic_notification_icon.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/raw_web_app_manifest.json.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/raw/web_app_manifest.json"
-    },
-    {
         "merged": "site.loophole.twa.app-release-25:/drawable-hdpi_ic_notification_icon.png.flat",
         "source": "site.loophole.twa.app-main-26:/drawable-hdpi/ic_notification_icon.png"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/mipmap-xhdpi_ic_launcher.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/mipmap-xhdpi/ic_launcher.png"
-    },
-    {
-        "merged": "site.loophole.twa.app-release-25:/drawable-xhdpi_ic_notification_icon.png.flat",
-        "source": "site.loophole.twa.app-main-26:/drawable-xhdpi/ic_notification_icon.png"
-    },
-    {
-        "merged": "site.loophole.twa.app-release-25:/drawable-mdpi_ic_notification_icon.png.flat",
-        "source": "site.loophole.twa.app-main-26:/drawable-mdpi/ic_notification_icon.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-xxxhdpi_ic_notification_icon.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-xxxhdpi/ic_notification_icon.png"
-    },
-    {
-        "merged": "site.loophole.twa.app-release-25:/drawable-xxhdpi_ic_notification_icon.png.flat",
-        "source": "site.loophole.twa.app-main-26:/drawable-xxhdpi/ic_notification_icon.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/xml_shortcuts.xml.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/xml/shortcuts.xml"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/mipmap-xxxhdpi/ic_launcher.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/mipmap-hdpi_ic_launcher.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/mipmap-hdpi/ic_launcher.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-anydpi_shortcut_legacy_background.xml.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-anydpi/shortcut_legacy_background.xml"
-    },
-    {
-        "merged": "site.loophole.twa.app-release-25:/drawable-xxxhdpi_ic_notification_icon.png.flat",
-        "source": "site.loophole.twa.app-main-26:/drawable-xxxhdpi/ic_notification_icon.png"
-    },
-    {
-        "merged": "site.loophole.twa.app-release-25:/mipmap-hdpi_ic_launcher.png.flat",
-        "source": "site.loophole.twa.app-main-26:/mipmap-hdpi/ic_launcher.png"
-    },
-    {
-        "merged": "site.loophole.twa.app-release-25:/mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "site.loophole.twa.app-main-26:/mipmap-xxhdpi/ic_launcher.png"
-    },
-    {
-        "merged": "site.loophole.twa.app-release-25:/mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "site.loophole.twa.app-main-26:/mipmap-xxxhdpi/ic_launcher.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-hdpi_splash.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-hdpi/splash.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-mdpi_splash.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-mdpi/splash.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-xxxhdpi_splash.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-xxxhdpi/splash.png"
-    },
-    {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/mipmap-xxhdpi/ic_launcher.png"
+        "merged": "site.loophole.twa.app-release-25:/xml_filepaths.xml.flat",
+        "source": "site.loophole.twa.app-main-26:/xml/filepaths.xml"
     },
     {
         "merged": "site.loophole.twa.app-release-25:/drawable-xxxhdpi_splash.png.flat",
@@ -92,44 +20,56 @@
         "source": "site.loophole.twa.app-main-26:/drawable-mdpi/splash.png"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-xhdpi_splash.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-xhdpi/splash.png"
+        "merged": "site.loophole.twa.app-release-25:/drawable-xhdpi_ic_notification_icon.png.flat",
+        "source": "site.loophole.twa.app-main-26:/drawable-xhdpi/ic_notification_icon.png"
+    },
+    {
+        "merged": "site.loophole.twa.app-release-25:/xml_shortcuts.xml.flat",
+        "source": "site.loophole.twa.app-main-26:/xml/shortcuts.xml"
+    },
+    {
+        "merged": "site.loophole.twa.app-release-25:/drawable-mdpi_ic_notification_icon.png.flat",
+        "source": "site.loophole.twa.app-main-26:/drawable-mdpi/ic_notification_icon.png"
     },
     {
         "merged": "site.loophole.twa.app-release-25:/drawable-hdpi_splash.png.flat",
         "source": "site.loophole.twa.app-main-26:/drawable-hdpi/splash.png"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-mdpi_ic_notification_icon.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-mdpi/ic_notification_icon.png"
+        "merged": "site.loophole.twa.app-release-25:/drawable-xxhdpi_ic_notification_icon.png.flat",
+        "source": "site.loophole.twa.app-main-26:/drawable-xxhdpi/ic_notification_icon.png"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-xxhdpi_splash.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-xxhdpi/splash.png"
+        "merged": "site.loophole.twa.app-release-25:/raw_web_app_manifest.json.flat",
+        "source": "site.loophole.twa.app-main-26:/raw/web_app_manifest.json"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-hdpi_ic_notification_icon.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-hdpi/ic_notification_icon.png"
+        "merged": "site.loophole.twa.app-release-25:/drawable-xxxhdpi_ic_notification_icon.png.flat",
+        "source": "site.loophole.twa.app-main-26:/drawable-xxxhdpi/ic_notification_icon.png"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/drawable-xhdpi_ic_notification_icon.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/drawable-xhdpi/ic_notification_icon.png"
+        "merged": "site.loophole.twa.app-release-25:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "site.loophole.twa.app-main-26:/mipmap-hdpi/ic_launcher.png"
     },
     {
         "merged": "site.loophole.twa.app-release-25:/drawable-xhdpi_splash.png.flat",
         "source": "site.loophole.twa.app-main-26:/drawable-xhdpi/splash.png"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/xml_filepaths.xml.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/xml/filepaths.xml"
+        "merged": "site.loophole.twa.app-release-25:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "site.loophole.twa.app-main-26:/mipmap-xxhdpi/ic_launcher.png"
     },
     {
-        "merged": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-release-25:/mipmap-mdpi_ic_launcher.png.flat",
-        "source": "/home/javiermar2000/.gradle/daemon/8.11.1/site.loophole.twa.app-main-26:/mipmap-mdpi/ic_launcher.png"
+        "merged": "site.loophole.twa.app-release-25:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "site.loophole.twa.app-main-26:/mipmap-xxxhdpi/ic_launcher.png"
     },
     {
         "merged": "site.loophole.twa.app-release-25:/mipmap-xhdpi_ic_launcher.png.flat",
         "source": "site.loophole.twa.app-main-26:/mipmap-xhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "site.loophole.twa.app-release-25:/drawable-anydpi_shortcut_legacy_background.xml.flat",
+        "source": "site.loophole.twa.app-main-26:/drawable-anydpi/shortcut_legacy_background.xml"
     },
     {
         "merged": "site.loophole.twa.app-release-25:/mipmap-mdpi_ic_launcher.png.flat",

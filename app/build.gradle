@@ -22,7 +22,7 @@ plugins {
 
 def twaManifest = [
     applicationId: 'site.loophole.twa',
-    hostName: '73d253ab45de12e76734dde42c16d11a.loophole.site', // The domain being opened in the TWA.
+    hostName: '0153ab31cce0995acf345955165d56d5.loophole.site', // The domain being opened in the TWA.
     launchUrl: '/', // The start path for the TWA. Must be relative to the domain.
     name: 'Match Coffee', // The application name.
     launcherName: 'Match Coffee', // The name shown on the Android Launcher.
@@ -76,12 +76,12 @@ android {
             // The URL the Web Manifest for the Progressive Web App that the TWA points to. This
             // is used by Chrome OS and Meta Quest to open the Web version of the PWA instead of
             // the TWA, as it will probably give a better user experience for non-mobile devices.
-            resValue "string", "webManifestUrl", 'https://73d253ab45de12e76734dde42c16d11a.loophole.site/manifest.webmanifest'
+            resValue "string", "webManifestUrl", 'https://0153ab31cce0995acf345955165d56d5.loophole.site/manifest.webmanifest'
         
 
         
             // This is used by Meta Quest.
-            resValue "string", "fullScopeUrl", 'https://73d253ab45de12e76734dde42c16d11a.loophole.site/'
+            resValue "string", "fullScopeUrl", 'https://0153ab31cce0995acf345955165d56d5.loophole.site/'
         
 
         

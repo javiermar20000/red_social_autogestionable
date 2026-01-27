@@ -34,7 +34,7 @@
         \"relation\": [\"delegate_permission/common.handle_all_urls\"],
         \"target\": {
             \"namespace\": \"web\",
-            \"site\": \"https://73d253ab45de12e76734dde42c16d11a.loophole.site\"
+            \"site\": \"https://0153ab31cce0995acf345955165d56d5.loophole.site\"
         }
     }]
     

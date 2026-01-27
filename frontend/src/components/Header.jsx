@@ -3,7 +3,7 @@ import { Search, Heart, Bell, User, LogOut, PlusCircle, Menu, X } from 'lucide-r
 import { Button } from './ui/Button.jsx';
 import { Input } from './ui/Input.jsx';
 import { cn } from '../lib/cn.js';
-import logo from '../assets/logo_gastrohub.png';
+import logo from '../assets/logo_matchcoffee.png';
 
 const Header = ({
   search,
@@ -33,7 +33,7 @@ const Header = ({
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="container relative flex h-16 items-center justify-between px-4 gap-3">
         <div className="flex items-center gap-4">
-          <img src={logo} alt="GastroHub" className="h-10 w-auto" />
+          <img src={logo} alt="GastroHub" className="h-12 w-auto" />
           <nav className="hidden items-center gap-2 md:flex">
             <Button
               variant="ghost"
@@ -130,7 +130,7 @@ const Header = ({
                       </p>
                     </>
                   ) : (
-                    <p className="text-sm font-medium text-center">Bienvenido a GastroHub</p>
+                    <p className="text-sm font-medium text-center">Bienvenido a Match Coffee</p>
                   )}
                 </div>
                 <div className="flex flex-col gap-1 p-2">

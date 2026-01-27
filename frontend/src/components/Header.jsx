@@ -3,7 +3,7 @@ import { Search, Heart, Bell, User, LogOut, PlusCircle, Menu, X } from 'lucide-r
 import { Button } from './ui/Button.jsx';
 import { Input } from './ui/Input.jsx';
 import { cn } from '../lib/cn.js';
-import logo from '../assets/logo_matchcoffee.png';
+import logo from '../assets/logo_matchcoffee_real.png';
 
 const Header = ({
   search,

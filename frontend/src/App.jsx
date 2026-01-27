@@ -118,6 +118,59 @@ const categoriesByBusinessType = {
 };
 
 const defaultBusinessTypes = ['RESTAURANTE', 'CAFETERIA', 'FOODTRUCK', 'BAR'];
+const oferenteAdPlans = [
+  {
+    id: 'inicio',
+    name: 'Plan Inicio',
+    description: 'Presencia básica para comenzar a destacar.',
+    price: 19990,
+    presence: 35,
+    presenceLabel: 'Baja',
+    benefits: [
+      'Aparición básica en espacios publicitarios.',
+      '1 publicación destacada en rotación.',
+      'Impulso inicial dentro del feed.',
+    ],
+    badge: '',
+    accentClass: 'border-border bg-card',
+    barClass: 'bg-slate-400',
+    buttonVariant: 'outline',
+  },
+  {
+    id: 'impulso',
+    name: 'Plan Impulso',
+    description: 'Mayor frecuencia y alcance sostenido.',
+    price: 49990,
+    presence: 65,
+    presenceLabel: 'Media',
+    benefits: [
+      'Más apariciones en carruseles y banners.',
+      'Prioridad media en resultados y listados.',
+      '2 publicaciones destacadas en rotación.',
+    ],
+    badge: 'Más popular',
+    accentClass: 'border-primary/40 bg-primary/5',
+    barClass: 'bg-amber-500',
+    buttonVariant: 'default',
+  },
+  {
+    id: 'dominio',
+    name: 'Plan Dominio',
+    description: 'Máxima presencia para ser el primero.',
+    price: 89990,
+    presence: 100,
+    presenceLabel: 'Alta',
+    benefits: [
+      'Aparición frecuente en espacios premium.',
+      'Prioridad alta en portada y resultados.',
+      '3 publicaciones destacadas en rotación.',
+    ],
+    badge: 'Máxima presencia',
+    accentClass: 'border-emerald-500/40 bg-emerald-500/5',
+    barClass: 'bg-emerald-500',
+    buttonVariant: 'secondary',
+  },
+];
 const defaultCategoryTypes = defaultBusinessTypes.flatMap((type) => categoriesByBusinessType[type] || []);
 const defaultFilters = {
   search: '',
@@ -2210,7 +2263,7 @@ function App() {
                 <p className="text-sm text-muted-foreground">
                   {isAdmin
                     ? 'Administra publicaciones, publicidad y validaciones en un solo lugar.'
-                    : 'Actualiza tu perfil, publicaciones y catálogo de forma clara.'}
+                    : 'Actualiza tu perfil, publicaciones, catálogo y publicidad de forma clara.'}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -2233,8 +2286,8 @@ function App() {
             <Tabs value={adminPanelTab} onValueChange={setAdminPanelTab} className="mt-5">
               <TabsList
                 className={cn(
-                  'grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-3',
-                  isAdmin ? 'xl:grid-cols-5' : 'xl:grid-cols-3'
+                  'grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0',
+                  isAdmin ? 'sm:grid-cols-3 xl:grid-cols-5' : 'sm:grid-cols-4 xl:grid-cols-4'
                 )}
               >
                 <TabsTrigger
@@ -2261,6 +2314,20 @@ function App() {
                     <span className="text-xs text-muted-foreground">Crear, editar y revisar</span>
                   </span>
                 </TabsTrigger>
+                {isOferente && !isAdmin && (
+                  <TabsTrigger
+                    value="publicidad"
+                    className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                      <Megaphone className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="flex flex-col">
+                      <span className="text-sm font-semibold">Publicidad</span>
+                      <span className="text-xs text-muted-foreground">Planes y visibilidad</span>
+                    </span>
+                  </TabsTrigger>
+                )}
                 <TabsTrigger
                   value="estadisticas"
                   className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
@@ -2691,6 +2758,85 @@ function App() {
                         })}
                       </div>
                     </div>
+                  </div>
+                </TabsContent>
+              )}
+
+              {isOferente && !isAdmin && (
+                <TabsContent value="publicidad" className="mt-6 space-y-6">
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                          <Megaphone className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Planes de publicidad</p>
+                          <h4 className="text-lg font-semibold">Elige el nivel de visibilidad de tu negocio</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Mientras más alto el plan, más presencia tendrás en la webapp.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+                        Precios en pesos chilenos (CLP)
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                      {oferenteAdPlans.map((plan) => (
+                        <div
+                          key={plan.id}
+                          className={cn(
+                            'relative flex h-full flex-col rounded-2xl border p-4 shadow-soft',
+                            plan.accentClass
+                          )}
+                        >
+                          {plan.badge ? (
+                            <span className="absolute right-4 top-4 rounded-full bg-background/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground shadow-soft">
+                              {plan.badge}
+                            </span>
+                          ) : null}
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Plan</p>
+                              <h5 className="text-lg font-semibold">{plan.name}</h5>
+                              <p className="text-sm text-muted-foreground">{plan.description}</p>
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <p className="text-3xl font-semibold">$ {formatNumber(plan.price)}</p>
+                            <p className="text-xs text-muted-foreground">CLP / mes</p>
+                          </div>
+                          <div className="mt-4">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>Nivel de presencia</span>
+                              <span>{plan.presenceLabel}</span>
+                            </div>
+                            <div className="mt-2 h-2 rounded-full bg-muted">
+                              <div className={cn('h-full rounded-full', plan.barClass)} style={{ width: `${plan.presence}%` }} />
+                            </div>
+                          </div>
+                          <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+                            {plan.benefits.map((benefit) => (
+                              <li key={benefit} className="flex items-start gap-2">
+                                <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                                <span>{benefit}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="mt-5">
+                            <Button type="button" variant={plan.buttonVariant} className="w-full">
+                              Comprar
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="mt-4 text-xs text-muted-foreground">
+                      La compra se habilitará más adelante. Por ahora esta sección es solo visual.
+                    </p>
                   </div>
                 </TabsContent>
               )}

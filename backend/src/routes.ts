@@ -9,6 +9,7 @@ import { Publication, PublicacionEstado, PublicacionTipo } from './entities/Publ
 import { Media, MediaTipo } from './entities/Media.js';
 import { PublicationCategory } from './entities/PublicationCategory.js';
 import { PublicationReview, RevisionResultado } from './entities/PublicationReview.js';
+import { Comment, ComentarioEstado } from './entities/Comment.js';
 import { In } from 'typeorm';
 import { runWithContext } from './utils/rls.js';
 
@@ -1397,6 +1398,106 @@ router.post(
       });
     });
     res.json({ message: 'Publicación rechazada' });
+  })
+);
+
+router.get(
+  '/publications/:id/comments',
+  optionalAuthMiddleware,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const publicationId = req.params.id;
+    const isAdmin = !!req.auth?.isAdminGlobal;
+    const comments = await runWithContext({ isAdmin: true }, async (manager) => {
+      const publicationRepo = manager.getRepository(Publication);
+      const publication = await publicationRepo.findOne({ where: { id: publicationId } });
+      if (!publication) throw new Error('Publicación no encontrada');
+      if (!isAdmin && publication.estado !== PublicacionEstado.PUBLICADA) {
+        throw new Error('Publicación no disponible');
+      }
+
+      const commentRepo = manager.getRepository(Comment);
+      const commentWhere = isAdmin
+        ? { publicationId }
+        : { publicationId, estado: ComentarioEstado.VISIBLE };
+      const rows = await commentRepo.find({
+        where: commentWhere,
+        order: { fechaCreacion: 'ASC' },
+      });
+      if (!rows.length) return [];
+      const userIds = Array.from(new Set(rows.map((row) => row.userId).filter(Boolean)));
+      const users = userIds.length ? await manager.getRepository(User).find({ where: { id: In(userIds) } }) : [];
+      const userMap = users.reduce<Record<string, User>>((acc, user) => {
+        acc[user.id] = user;
+        return acc;
+      }, {});
+      return rows.map((comment) => ({
+        id: comment.id,
+        publicationId: comment.publicationId,
+        userId: comment.userId,
+        userName: userMap[comment.userId]?.nombre || 'Usuario',
+        contenido: comment.contenido,
+        parentId: comment.parentId,
+        fechaCreacion: comment.fechaCreacion,
+      }));
+    });
+    res.json({ comments });
+  })
+);
+
+router.post(
+  '/publications/:id/comments',
+  authMiddleware,
+  requireRole([RolUsuario.CLIENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const publicationId = req.params.id;
+    const user = req.auth?.user;
+    if (!user) return res.status(401).json({ message: 'No autenticado' });
+    ensureUserReady(user, { requireTenant: false });
+
+    const contenido = typeof req.body?.contenido === 'string' ? req.body.contenido.trim() : '';
+    if (!contenido) return res.status(400).json({ message: 'El comentario es obligatorio' });
+    const parentIdRaw = req.body?.parentId;
+    const parentId = parentIdRaw ? String(parentIdRaw) : null;
+
+    const created = await runWithContext({ isAdmin: true }, async (manager) => {
+      const publicationRepo = manager.getRepository(Publication);
+      const publication = await publicationRepo.findOne({ where: { id: publicationId } });
+      if (!publication) throw new Error('Publicación no encontrada');
+      if (publication.estado !== PublicacionEstado.PUBLICADA) {
+        throw new Error('Publicación no disponible');
+      }
+
+      let parent: Comment | null = null;
+      if (parentId) {
+        parent = await manager.getRepository(Comment).findOne({ where: { id: parentId } });
+        if (!parent) throw new Error('Comentario padre no encontrado');
+        if (String(parent.publicationId) !== String(publicationId)) {
+          throw new Error('El comentario padre pertenece a otra publicación');
+        }
+      }
+
+      const commentRepo = manager.getRepository(Comment);
+      const record = commentRepo.create({
+        publicationId,
+        userId: user.id,
+        parentId: parent?.id ?? null,
+        contenido,
+        estado: ComentarioEstado.VISIBLE,
+      });
+      return commentRepo.save(record);
+    });
+
+    res.json({
+      comment: {
+        id: created.id,
+        publicationId: created.publicationId,
+        userId: created.userId,
+        userName: user.nombre,
+        contenido: created.contenido,
+        parentId: created.parentId,
+        fechaCreacion: created.fechaCreacion,
+      },
+    });
   })
 );
 

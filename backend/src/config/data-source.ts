@@ -9,6 +9,7 @@ import { Media } from '../entities/Media.js';
 import { PublicationCategory } from '../entities/PublicationCategory.js';
 import { PublicationReview } from '../entities/PublicationReview.js';
 import { AdminGlobal } from '../entities/AdminGlobal.js';
+import { Comment } from '../entities/Comment.js';
 
 const {
   DB_HOST = 'db',
@@ -26,7 +27,7 @@ export const AppDataSource = new DataSource({
   password: DB_PASSWORD,
   database: DB_NAME,
   schema: 'public',
-  entities: [AdminGlobal, User, Tenant, Business, Category, Publication, Media, PublicationCategory, PublicationReview],
+  entities: [AdminGlobal, User, Tenant, Business, Category, Publication, Media, PublicationCategory, PublicationReview, Comment],
   synchronize: false,
   logging: false,
 });

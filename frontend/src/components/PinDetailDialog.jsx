@@ -23,9 +23,18 @@ const PinDetailDialog = ({
   liked = false,
   onViewBusiness,
   businessLogoUrl = '',
+  comments = [],
+  commentsLoading = false,
+  commentSubmitting = false,
+  onLoadComments,
+  onSubmitComment,
+  onEnsureCommentAccess,
 }) => {
   const lastVisitedId = useRef(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [replyTarget, setReplyTarget] = useState(null);
   const publicationId = publication?.id ? String(publication.id) : null;
 
   useEffect(() => {
@@ -39,6 +48,23 @@ const PinDetailDialog = ({
     lastVisitedId.current = publicationId;
     onRegisterVisit(publication);
   }, [open, publication, publicationId, onRegisterVisit]);
+
+  useEffect(() => {
+    if (!open) {
+      setCommentsOpen(false);
+      setCommentText('');
+      setReplyTarget(null);
+      return;
+    }
+    setCommentText('');
+    setReplyTarget(null);
+    setCommentsOpen(false);
+  }, [open, publicationId]);
+
+  useEffect(() => {
+    if (!open || !commentsOpen || !publicationId) return;
+    onLoadComments?.(publicationId);
+  }, [open, commentsOpen, publicationId, onLoadComments]);
 
   if (!publication) return null;
   const {
@@ -151,6 +177,45 @@ const PinDetailDialog = ({
       name: business?.name || businessName,
       imageUrl: business?.imageUrl || businessAvatarSrc,
     });
+  };
+  const commentsList = Array.isArray(comments) ? comments : [];
+  const commentsByParent = commentsList.reduce((acc, comment) => {
+    const key = comment.parentId ? String(comment.parentId) : 'root';
+    acc[key] = acc[key] || [];
+    acc[key].push(comment);
+    return acc;
+  }, {});
+  const rootComments = commentsByParent.root || [];
+  const formatCommentDate = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' });
+  };
+  const handleToggleComments = (event) => {
+    event.stopPropagation();
+    setCommentsOpen((prev) => !prev);
+  };
+  const handleReplyStart = (comment) => {
+    if (onEnsureCommentAccess && !onEnsureCommentAccess()) return;
+    setCommentsOpen(true);
+    setReplyTarget(comment);
+  };
+  const handleCancelReply = () => setReplyTarget(null);
+  const handleSubmitComment = async (event) => {
+    event.preventDefault();
+    const text = commentText.trim();
+    if (!text) return;
+    if (onEnsureCommentAccess && !onEnsureCommentAccess()) return;
+    const result = await onSubmitComment?.({
+      publicationId,
+      contenido: text,
+      parentId: replyTarget?.id ?? null,
+    });
+    if (result !== false) {
+      setCommentText('');
+      setReplyTarget(null);
+    }
   };
 
   return (
@@ -325,7 +390,90 @@ const PinDetailDialog = ({
               >
                 <MapPin className="h-5 w-5" />
               </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="rounded-full"
+                aria-label={commentsOpen ? 'Ocultar comentarios' : 'Ver comentarios'}
+                title={commentsOpen ? 'Ocultar comentarios' : 'Ver comentarios'}
+                onClick={handleToggleComments}
+              >
+                <MessageCircle className="h-5 w-5" />
+              </Button>
             </div>
+
+            {commentsOpen && (
+              <div className="mt-6 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold">Comentarios públicos</h4>
+                  <span className="text-xs text-muted-foreground">{commentsList.length} en total</span>
+                </div>
+
+                <form onSubmit={handleSubmitComment} className="mt-3 space-y-2">
+                  {replyTarget && (
+                    <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                      <span>Respondiendo a {replyTarget.userName || 'usuario'}</span>
+                      <button type="button" className="text-primary hover:underline" onClick={handleCancelReply}>
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                  <textarea
+                    className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Escribe tu comentario..."
+                    value={commentText}
+                    onChange={(event) => setCommentText(event.target.value)}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      {currentUser?.rol === 'CLIENTE'
+                        ? 'Comparte tu opinión con la comunidad.'
+                        : 'Para comentar debes iniciar sesión como cliente.'}
+                    </p>
+                    <Button type="submit" size="sm" disabled={commentSubmitting || !commentText.trim()}>
+                      {commentSubmitting ? 'Enviando...' : 'Comentar'}
+                    </Button>
+                  </div>
+                </form>
+
+                <div className="mt-4 space-y-4">
+                  {commentsLoading && <p className="text-sm text-muted-foreground">Cargando comentarios...</p>}
+                  {!commentsLoading && rootComments.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Aún no hay comentarios. ¡Sé el primero en comentar!</p>
+                  )}
+                  {!commentsLoading &&
+                    rootComments.map((comment) => (
+                      <div key={comment.id} className="rounded-lg border border-border/60 bg-background/80 p-3 shadow-soft">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground">{comment.userName || 'Usuario'}</span>
+                          <span>{formatCommentDate(comment.fechaCreacion)}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-foreground/90">{comment.contenido}</p>
+                        <button
+                          type="button"
+                          className="mt-2 text-xs font-semibold text-primary hover:underline"
+                          onClick={() => handleReplyStart(comment)}
+                        >
+                          Responder
+                        </button>
+                        {(commentsByParent[String(comment.id)] || []).length > 0 && (
+                          <div className="mt-3 space-y-2 border-l border-primary/20 pl-3">
+                            {commentsByParent[String(comment.id)].map((reply) => (
+                              <div key={reply.id} className="rounded-md bg-muted/40 px-3 py-2">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span className="font-semibold text-foreground">{reply.userName || 'Usuario'}</span>
+                                  <span>{formatCommentDate(reply.fechaCreacion)}</span>
+                                </div>
+                                <p className="mt-1 text-sm text-foreground/90">{reply.contenido}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>

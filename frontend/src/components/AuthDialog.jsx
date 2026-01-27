@@ -31,7 +31,7 @@ const AuthDialog = ({ open, onOpenChange, onLogin, onRegister, loading = false }
         <DialogHeader>
           <DialogTitle className="text-center text-2xl font-bold">Bienvenido a GastroHub</DialogTitle>
           <DialogDescription className="text-center">
-            Inicia sesión para crear negocios y publicaciones gastronómicas.
+            Inicia sesión para comentar o crear negocios y publicaciones gastronómicas.
           </DialogDescription>
         </DialogHeader>
 
@@ -116,6 +116,7 @@ const AuthDialog = ({ open, onOpenChange, onLogin, onRegister, loading = false }
                   onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
                 >
                   <option value="OFERENTE">Oferente</option>
+                  <option value="CLIENTE">Cliente</option>
                   <option value="VISITANTE">Visitante</option>
                   <option value="admin">Admin global</option>
                 </select>

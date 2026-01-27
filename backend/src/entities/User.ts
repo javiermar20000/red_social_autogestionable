@@ -3,6 +3,7 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeor
 export enum RolUsuario {
   OFERENTE = 'OFERENTE',
   VISITANTE = 'VISITANTE',
+  CLIENTE = 'CLIENTE',
 }
 
 export enum EstadoRegistroUsuario {

@@ -52,7 +52,8 @@ CREATE TYPE tenant_estado_enum AS ENUM (
 
 CREATE TYPE rol_usuario_enum AS ENUM (
   'OFERENTE',
-  'VISITANTE'
+  'VISITANTE',
+  'CLIENTE'
 );
 
 CREATE TYPE usuario_estado_registro_enum AS ENUM (
@@ -298,6 +299,7 @@ CREATE TABLE comentario (
   id             BIGSERIAL PRIMARY KEY,
   publicacion_id BIGINT NOT NULL,
   usuario_id     BIGINT NOT NULL,
+  comentario_padre_id BIGINT,
   contenido      TEXT NOT NULL,
   estado         comentario_estado_enum NOT NULL DEFAULT 'VISIBLE',
   fecha_creacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -306,6 +308,9 @@ CREATE TABLE comentario (
     ON DELETE CASCADE,
   CONSTRAINT fk_comentario_usuario
     FOREIGN KEY (usuario_id) REFERENCES usuario(id)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_comentario_padre
+    FOREIGN KEY (comentario_padre_id) REFERENCES comentario(id)
     ON DELETE SET NULL
 );
 
@@ -366,6 +371,7 @@ CREATE INDEX idx_media_publicacion_id ON media (publicacion_id);
 CREATE INDEX idx_categoria_tenant_id ON categoria (tenant_id);
 CREATE INDEX idx_comentario_publicacion_id ON comentario (publicacion_id);
 CREATE INDEX idx_comentario_usuario_id ON comentario (usuario_id);
+CREATE INDEX idx_comentario_padre_id ON comentario (comentario_padre_id);
 CREATE INDEX idx_favorito_usuario_id ON favorito (usuario_id);
 CREATE INDEX idx_favorito_publicacion_id ON favorito (publicacion_id);
 CREATE INDEX idx_notificacion_usuario_id ON notificacion (usuario_id);

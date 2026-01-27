@@ -808,6 +808,9 @@ function App() {
   const [likedById, setLikedById] = useState(() => readSessionLikes());
 
   const [selectedPublication, setSelectedPublication] = useState(null);
+  const [commentsByPublication, setCommentsByPublication] = useState({});
+  const [commentsLoadingByPublication, setCommentsLoadingByPublication] = useState({});
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [similarItems, setSimilarItems] = useState([]);
   const [similarSource, setSimilarSource] = useState(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -1725,6 +1728,66 @@ function App() {
     }
   };
 
+  const ensureClientAccess = () => {
+    if (!currentUser) {
+      notify('warning', 'Para comentar primero debes registrarte como cliente.');
+      setAuthOpen(true);
+      return false;
+    }
+    if (currentUser.rol !== 'CLIENTE') {
+      notify('warning', 'Para comentar primero debes registrarte como cliente.');
+      return false;
+    }
+    return true;
+  };
+
+  const loadPublicationComments = async (publicationId, { force = false } = {}) => {
+    if (!publicationId) return;
+    const key = String(publicationId);
+    if (!force && commentsByPublication[key]) return;
+    setCommentsLoadingByPublication((prev) => ({ ...prev, [key]: true }));
+    try {
+      const data = await fetchJson(`/publications/${key}/comments`, { headers: authHeaders });
+      const list = Array.isArray(data?.comments) ? data.comments : Array.isArray(data) ? data : [];
+      setCommentsByPublication((prev) => ({ ...prev, [key]: list }));
+    } catch (err) {
+      notify('danger', err.message);
+    } finally {
+      setCommentsLoadingByPublication((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleSubmitComment = async ({ publicationId, contenido, parentId }) => {
+    if (!publicationId || !currentUser || currentUser.rol !== 'CLIENTE') return false;
+    if (!contenido || !contenido.trim()) return false;
+    if (commentSubmitting) return false;
+    setCommentSubmitting(true);
+    try {
+      const payload = { contenido: contenido.trim(), parentId: parentId || null };
+      const data = await fetchJson(`/publications/${publicationId}/comments`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      });
+      const comment = data?.comment || null;
+      if (comment) {
+        const key = String(publicationId);
+        setCommentsByPublication((prev) => ({
+          ...prev,
+          [key]: [...(prev[key] || []), comment],
+        }));
+      } else {
+        await loadPublicationComments(publicationId, { force: true });
+      }
+      return true;
+    } catch (err) {
+      notify('danger', err.message);
+      return false;
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
+
   const handleSelectPublication = (publication) => {
     if (!publication) return;
     setSelectedPublication(publication);
@@ -2238,6 +2301,11 @@ function App() {
   const similarNotificationsLabel = hasSimilarNotifications ? (similarItems.length > 9 ? '9+' : similarItems.length) : null;
   const showFeedLoading = loadingFeed && feed.length === 0;
   const showAdsLoading = loadingAds && adsWithDecorations.length === 0;
+  const selectedPublicationId = selectedPublication?.id ? String(selectedPublication.id) : null;
+  const selectedPublicationComments = selectedPublicationId ? commentsByPublication[selectedPublicationId] || [] : [];
+  const selectedPublicationCommentsLoading = selectedPublicationId
+    ? Boolean(commentsLoadingByPublication[selectedPublicationId])
+    : false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -3736,6 +3804,12 @@ function App() {
           }
         }}
         currentUser={currentUser}
+        comments={selectedPublicationComments}
+        commentsLoading={selectedPublicationCommentsLoading}
+        commentSubmitting={commentSubmitting}
+        onLoadComments={loadPublicationComments}
+        onSubmitComment={handleSubmitComment}
+        onEnsureCommentAccess={ensureClientAccess}
       />
 
       <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">

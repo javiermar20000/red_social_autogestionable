@@ -2,10 +2,12 @@
 services:
   db:
     image: postgres:15.6-alpine
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-red_social}
+      POSTGRES_USER: ${DB_USER:?DB_USER requerido}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD requerido}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME requerido}
     ports:
       - "5432:5432"
     volumes:
@@ -13,7 +15,7 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-red_social}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:?DB_USER requerido} -d ${DB_NAME:?DB_NAME requerido}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,7 +25,11 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: db
+      DB_HOST: ${DB_HOST:?DB_HOST requerido}
+      DB_PORT: ${DB_PORT:?DB_PORT requerido}
+      DB_USER: ${DB_USER:?DB_USER requerido}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD requerido}
+      DB_NAME: ${DB_NAME:?DB_NAME requerido}
     depends_on:
       - db
     volumes:
@@ -38,7 +44,11 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: db
+      DB_HOST: ${DB_HOST:?DB_HOST requerido}
+      DB_PORT: ${DB_PORT:?DB_PORT requerido}
+      DB_USER: ${DB_USER:?DB_USER requerido}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD requerido}
+      DB_NAME: ${DB_NAME:?DB_NAME requerido}
     depends_on:
       - db
     volumes:
@@ -57,6 +67,14 @@ services:
     build: ./backend
     env_file:
       - .env
+    environment:
+      DB_HOST: ${DB_HOST:?DB_HOST requerido}
+      DB_PORT: ${DB_PORT:?DB_PORT requerido}
+      DB_USER: ${DB_USER:?DB_USER requerido}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD requerido}
+      DB_NAME: ${DB_NAME:?DB_NAME requerido}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL requerido}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requerido}
     depends_on:
       - db
       - redis

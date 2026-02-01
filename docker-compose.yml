@@ -31,6 +31,7 @@ services:
       - ./db/init.sql:/init/init.sql:ro
       - pgbackups:/backups
     entrypoint: ["/bin/sh", "/init/db-init.sh"]
+    restart: unless-stopped
 
   db-backup:
     image: postgres:15.6-alpine

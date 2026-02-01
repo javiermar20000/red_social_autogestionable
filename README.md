@@ -20,6 +20,9 @@ docker compose up --build
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379
 - Si cambias el host/puerto del frontend, ajusta `FRONTEND_ORIGIN` en `.env` (puedes poner varios separados por coma).
+- Persistencia de DB: por defecto el volumen es `red_social_autogestionable_pgdata` (nombre estándar de Compose). Para fijar un nombre estable entre re-deploys, define `PGDATA_VOLUME_NAME=red_social_pgdata` en `.env`.
+- No uses `docker compose down -v` ni borres el volumen si quieres conservar datos.
+- En producción, usa un volumen externo o una DB gestionada (RDS, Cloud SQL, etc.) para evitar pérdida de datos por reinicios o re-deploys.
 
 ## Scripts locales (sin Docker)
 ```bash

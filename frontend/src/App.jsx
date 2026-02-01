@@ -51,6 +51,8 @@ const CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
 const FEED_MEDIA_PREFETCH_LIMIT = 36;
 const ADS_MEDIA_PREFETCH_LIMIT = 14;
 const MEDIA_PREFETCH_TIMEOUT_MS = 3500;
+const PUBLICATION_IMAGE_MAX_DIMENSION = 1600;
+const PUBLICATION_IMAGE_QUALITY = 0.82;
 const numberFormatter = new Intl.NumberFormat('es-CL');
 const formatNumber = (value) => numberFormatter.format(value);
 
@@ -62,6 +64,41 @@ const fetchJson = async (path, options = {}) => {
     throw new Error(data.message || 'Error de servidor');
   }
   return data;
+};
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+
+const loadImageFromDataUrl = (dataUrl) =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+    img.src = dataUrl;
+  });
+
+const compressImageFile = async (
+  file,
+  { maxDimension = PUBLICATION_IMAGE_MAX_DIMENSION, quality = PUBLICATION_IMAGE_QUALITY, mimeType = 'image/jpeg' } = {}
+) => {
+  const dataUrl = await readFileAsDataUrl(file);
+  if (!dataUrl) return '';
+  const img = await loadImageFromDataUrl(dataUrl);
+  const ratio = Math.min(maxDimension / img.width, maxDimension / img.height, 1);
+  const width = Math.max(1, Math.round(img.width * ratio));
+  const height = Math.max(1, Math.round(img.height * ratio));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL(mimeType, quality);
 };
 
 const getLocalStorage = () => {
@@ -934,12 +971,25 @@ function App() {
     setPublicationForm((prev) => ({ ...prev, mediaUrl: value, mediaType }));
   };
 
-  const handleMediaFileChange = (file) => {
+  const handleMediaFileChange = async (file) => {
     if (!file) return;
     const isVideo = file.type.startsWith('video/');
     const isImage = file.type.startsWith('image/');
     if (!isImage && !isVideo) {
       notify('danger', 'Solo se permiten imágenes o videos cortos');
+      return;
+    }
+    if (isImage) {
+      try {
+        const compressed = await compressImageFile(file);
+        if (!compressed) {
+          notify('danger', 'No se pudo procesar la imagen');
+          return;
+        }
+        handleMediaUrlChange(compressed);
+      } catch {
+        notify('danger', 'No se pudo procesar la imagen');
+      }
       return;
     }
     const reader = new FileReader();
@@ -3510,7 +3560,7 @@ function App() {
                           Subir archivo
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Acepta imagen o video corto. Se enviará como enlace o base64 al backend.
+                          Acepta imagen o video corto. La imagen se comprimira antes de enviarse al backend.
                         </p>
                       </div>
                       {publicationForm.mediaUrl && (

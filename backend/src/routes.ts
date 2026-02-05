@@ -10,7 +10,7 @@ import { Media, MediaTipo } from './entities/Media.js';
 import { PublicationCategory } from './entities/PublicationCategory.js';
 import { PublicationReview, RevisionResultado } from './entities/PublicationReview.js';
 import { Comment, ComentarioEstado } from './entities/Comment.js';
-import { In } from 'typeorm';
+import { EntityManager, In } from 'typeorm';
 import { runWithContext } from './utils/rls.js';
 
 const router = Router();
@@ -85,6 +85,77 @@ const ensureUserReady = (user: User, options: { requireTenant?: boolean } = {}) 
   if (requireTenant && !user.tenantId) {
     throw new Error('Debes tener un tenant asignado');
   }
+};
+
+const parseNumeric = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const fetchPublicationRatingSummary = async (
+  manager: EntityManager,
+  publicationIds: string[],
+  userId?: string | null
+) => {
+  if (!publicationIds.length) {
+    return {
+      summaryByPublication: {} as Record<string, { ratingAverage: number | null; ratingCount: number }>,
+      userRatingsByPublication: {} as Record<string, number>,
+    };
+  }
+
+  const ratingRows = await manager
+    .getRepository(Comment)
+    .createQueryBuilder('c')
+    .select('c.publicationId', 'publicationId')
+    .addSelect('AVG(c.calificacion)', 'ratingAverage')
+    .addSelect('COUNT(*)', 'ratingCount')
+    .where('c.publicationId IN (:...ids)', { ids: publicationIds })
+    .andWhere('c.esCalificacion = true')
+    .andWhere('c.estado = :estado', { estado: ComentarioEstado.VISIBLE })
+    .groupBy('c.publicationId')
+    .getRawMany();
+
+  const summaryByPublication = ratingRows.reduce<Record<string, { ratingAverage: number | null; ratingCount: number }>>(
+    (acc, row) => {
+      const id = String(row.publicationId);
+      const avg = parseNumeric(row.ratingAverage ?? row.ratingaverage);
+      const countValue = parseNumeric(row.ratingCount ?? row.ratingcount);
+      const count = Number.isFinite(countValue ?? NaN) ? Math.max(0, Math.floor(countValue as number)) : 0;
+      acc[id] = {
+        ratingAverage: avg,
+        ratingCount: count,
+      };
+      return acc;
+    },
+    {}
+  );
+
+  let userRatingsByPublication: Record<string, number> = {};
+  if (userId) {
+    const userRows = await manager
+      .getRepository(Comment)
+      .createQueryBuilder('c')
+      .select('c.publicationId', 'publicationId')
+      .addSelect('c.calificacion', 'calificacion')
+      .where('c.publicationId IN (:...ids)', { ids: publicationIds })
+      .andWhere('c.userId = :userId', { userId })
+      .andWhere('c.esCalificacion = true')
+      .andWhere('c.estado = :estado', { estado: ComentarioEstado.VISIBLE })
+      .getRawMany();
+
+    userRatingsByPublication = userRows.reduce<Record<string, number>>((acc, row) => {
+      const id = String(row.publicationId);
+      const value = parseNumeric(row.calificacion);
+      if (Number.isFinite(value ?? NaN)) {
+        acc[id] = Math.max(1, Math.min(5, Math.floor(value as number)));
+      }
+      return acc;
+    }, {});
+  }
+
+  return { summaryByPublication, userRatingsByPublication };
 };
 
 const BUSINESS_AMENITIES = new Set([
@@ -736,6 +807,11 @@ router.get(
       if (!rows.length) return [];
 
       const publicationIds = rows.map((p) => p.id);
+      const { summaryByPublication, userRatingsByPublication } = await fetchPublicationRatingSummary(
+        manager,
+        publicationIds,
+        null
+      );
       const linkRepo = manager.getRepository(PublicationCategory);
       const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
       const mediaRepo = manager.getRepository(Media);
@@ -764,14 +840,20 @@ router.get(
         return acc;
       }, {});
 
-      return rows.map((p) => ({
-        ...p,
-        categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
-        categories: categoriesByPublication[p.id] || [],
-        business: businessMap[p.businessId],
-        coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
-        coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
-      }));
+      return rows.map((p) => {
+        const ratingSummary = summaryByPublication[p.id] || { ratingAverage: null, ratingCount: 0 };
+        return {
+          ...p,
+          categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
+          categories: categoriesByPublication[p.id] || [],
+          business: businessMap[p.businessId],
+          coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
+          coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+          ratingAverage: ratingSummary.ratingAverage,
+          ratingCount: ratingSummary.ratingCount,
+          userRating: userRatingsByPublication[p.id] ?? null,
+        };
+      });
     });
 
     res.json(publications);
@@ -793,6 +875,7 @@ router.get(
     const user = requester?.user;
     const isAdmin = !!requester?.isAdminGlobal;
     const businessId = req.params.id;
+    const ratingUserId = user?.rol === RolUsuario.CLIENTE ? user.id : null;
 
     const publications = await runWithContext({ tenantId, isAdmin }, async (manager) => {
       const business = await manager.getRepository(Business).findOne({ where: { id: businessId } });
@@ -811,6 +894,11 @@ router.get(
       });
       if (!rows.length) return [];
       const publicationIds = rows.map((p) => p.id);
+      const { summaryByPublication, userRatingsByPublication } = await fetchPublicationRatingSummary(
+        manager,
+        publicationIds,
+        ratingUserId
+      );
       const linkRepo = manager.getRepository(PublicationCategory);
       const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
       const mediaRepo = manager.getRepository(Media);
@@ -838,13 +926,19 @@ router.get(
         return acc;
       }, {});
 
-      return rows.map((p) => ({
-        ...p,
-        categoryIds: grouped[p.id] || [],
-        categories: categoriesByPublication[p.id] || [],
-        coverUrl: mediaGrouped[p.id]?.[0]?.url || null,
-        coverType: mediaGrouped[p.id]?.[0]?.tipo || null,
-      }));
+      return rows.map((p) => {
+        const ratingSummary = summaryByPublication[p.id] || { ratingAverage: null, ratingCount: 0 };
+        return {
+          ...p,
+          categoryIds: grouped[p.id] || [],
+          categories: categoriesByPublication[p.id] || [],
+          coverUrl: mediaGrouped[p.id]?.[0]?.url || null,
+          coverType: mediaGrouped[p.id]?.[0]?.tipo || null,
+          ratingAverage: ratingSummary.ratingAverage,
+          ratingCount: ratingSummary.ratingCount,
+          userRating: userRatingsByPublication[p.id] ?? null,
+        };
+      });
     });
     res.json(publications);
   })
@@ -872,6 +966,7 @@ router.get(
     const searchTerm = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
     const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : null;
     const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : null;
+    const ratingUserId = req.auth?.user?.rol === RolUsuario.CLIENTE ? req.auth.user.id : null;
 
     const fetchPublications = async (ctxTenantId: string | null, authorId?: string | null) =>
       runWithContext({ tenantId: ctxTenantId ?? undefined, isAdmin: ctxTenantId ? ctxIsAdmin : true }, async (manager) => {
@@ -914,6 +1009,11 @@ router.get(
         if (!rows.length) return [];
 
         const publicationIds = rows.map((p) => p.id);
+        const { summaryByPublication, userRatingsByPublication } = await fetchPublicationRatingSummary(
+          manager,
+          publicationIds,
+          ratingUserId
+        );
         const linkRepo = manager.getRepository(PublicationCategory);
         const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
         const mediaRepo = manager.getRepository(Media);
@@ -942,14 +1042,20 @@ router.get(
           return acc;
         }, {});
 
-        return rows.map((p) => ({
-          ...p,
-          categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
-          categories: categoriesByPublication[p.id] || [],
-          business: businessMap[p.businessId],
-          coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
-          coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
-        }));
+        return rows.map((p) => {
+          const ratingSummary = summaryByPublication[p.id] || { ratingAverage: null, ratingCount: 0 };
+          return {
+            ...p,
+            categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
+            categories: categoriesByPublication[p.id] || [],
+            business: businessMap[p.businessId],
+            coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
+            coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+            ratingAverage: ratingSummary.ratingAverage,
+            ratingCount: ratingSummary.ratingCount,
+            userRating: userRatingsByPublication[p.id] ?? null,
+          };
+        });
       });
 
     if (mine && !authorIdFilter) {
@@ -974,6 +1080,7 @@ router.get(
       return res.status(400).json({ message: (err as Error).message });
     }
     const ctxIsAdmin = !!req.auth?.isAdminGlobal;
+    const ratingUserId = req.auth?.user?.rol === RolUsuario.CLIENTE ? req.auth.user.id : null;
 
     const fetchAds = async (ctxTenantId: string | null) =>
       runWithContext({ tenantId: ctxTenantId ?? undefined, isAdmin: ctxTenantId ? ctxIsAdmin : true }, async (manager) => {
@@ -996,6 +1103,11 @@ router.get(
         if (!rows.length) return [];
 
         const publicationIds = rows.map((p) => p.id);
+        const { summaryByPublication, userRatingsByPublication } = await fetchPublicationRatingSummary(
+          manager,
+          publicationIds,
+          ratingUserId
+        );
         const linkRepo = manager.getRepository(PublicationCategory);
         const links = await linkRepo.find({ where: { publicationId: In(publicationIds) } });
         const mediaRepo = manager.getRepository(Media);
@@ -1024,14 +1136,20 @@ router.get(
           return acc;
         }, {});
 
-        return rows.map((p) => ({
-          ...p,
-          categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
-          categories: categoriesByPublication[p.id] || [],
-          business: businessMap[p.businessId],
-          coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
-          coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
-        }));
+        return rows.map((p) => {
+          const ratingSummary = summaryByPublication[p.id] || { ratingAverage: null, ratingCount: 0 };
+          return {
+            ...p,
+            categoryIds: categoriesByPublication[p.id]?.map((c) => c.id) || [],
+            categories: categoriesByPublication[p.id] || [],
+            business: businessMap[p.businessId],
+            coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
+            coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+            ratingAverage: ratingSummary.ratingAverage,
+            ratingCount: ratingSummary.ratingCount,
+            userRating: userRatingsByPublication[p.id] ?? null,
+          };
+        });
       });
 
     const publications = tenantId ? await fetchAds(tenantId) : await fetchAds(null);
@@ -1438,6 +1556,8 @@ router.get(
         contenido: comment.contenido,
         parentId: comment.parentId,
         fechaCreacion: comment.fechaCreacion,
+        esCalificacion: comment.esCalificacion,
+        calificacion: comment.calificacion,
       }));
     });
     res.json({ comments });
@@ -1483,6 +1603,8 @@ router.post(
         parentId: parent?.id ?? null,
         contenido,
         estado: ComentarioEstado.VISIBLE,
+        esCalificacion: false,
+        calificacion: null,
       });
       return commentRepo.save(record);
     });
@@ -1496,7 +1618,90 @@ router.post(
         contenido: created.contenido,
         parentId: created.parentId,
         fechaCreacion: created.fechaCreacion,
+        esCalificacion: created.esCalificacion,
+        calificacion: created.calificacion,
       },
+    });
+  })
+);
+
+router.post(
+  '/publications/:id/ratings',
+  authMiddleware,
+  requireRole([RolUsuario.CLIENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const publicationId = req.params.id;
+    const user = req.auth?.user;
+    if (!user) return res.status(401).json({ message: 'No autenticado' });
+    ensureUserReady(user, { requireTenant: false });
+
+    const contenido = typeof req.body?.contenido === 'string' ? req.body.contenido.trim() : '';
+    const ratingRaw = req.body?.calificacion;
+    const ratingValue = Number(ratingRaw);
+    if (!contenido) return res.status(400).json({ message: 'La opinión es obligatoria' });
+    if (!Number.isInteger(ratingValue) || ratingValue < 1 || ratingValue > 5) {
+      return res.status(400).json({ message: 'La calificación debe estar entre 1 y 5' });
+    }
+
+    const created = await runWithContext({ isAdmin: true }, async (manager) => {
+      const publicationRepo = manager.getRepository(Publication);
+      const publication = await publicationRepo.findOne({ where: { id: publicationId } });
+      if (!publication) throw new Error('Publicación no encontrada');
+      if (publication.estado !== PublicacionEstado.PUBLICADA) {
+        throw new Error('Publicación no disponible');
+      }
+
+      const commentRepo = manager.getRepository(Comment);
+      const existing = await commentRepo.findOne({
+        where: { publicationId, userId: user.id, esCalificacion: true },
+      });
+      if (existing) throw new Error('Ya calificaste esta publicación');
+
+      const record = commentRepo.create({
+        publicationId,
+        userId: user.id,
+        parentId: null,
+        contenido,
+        estado: ComentarioEstado.VISIBLE,
+        esCalificacion: true,
+        calificacion: ratingValue,
+      });
+      const saved = await commentRepo.save(record);
+
+      const summaryRow = await commentRepo
+        .createQueryBuilder('c')
+        .select('AVG(c.calificacion)', 'ratingAverage')
+        .addSelect('COUNT(*)', 'ratingCount')
+        .where('c.publicationId = :publicationId', { publicationId })
+        .andWhere('c.esCalificacion = true')
+        .andWhere('c.estado = :estado', { estado: ComentarioEstado.VISIBLE })
+        .getRawOne();
+      const ratingAverage = parseNumeric(summaryRow?.ratingAverage ?? summaryRow?.ratingaverage);
+      const ratingCountValue = parseNumeric(summaryRow?.ratingCount ?? summaryRow?.ratingcount);
+      const ratingCount = Number.isFinite(ratingCountValue ?? NaN)
+        ? Math.max(0, Math.floor(ratingCountValue as number))
+        : 0;
+
+      return { saved, ratingAverage, ratingCount };
+    });
+
+    res.json({
+      comment: {
+        id: created.saved.id,
+        publicationId: created.saved.publicationId,
+        userId: created.saved.userId,
+        userName: user.nombre,
+        contenido: created.saved.contenido,
+        parentId: created.saved.parentId,
+        fechaCreacion: created.saved.fechaCreacion,
+        esCalificacion: created.saved.esCalificacion,
+        calificacion: created.saved.calificacion,
+      },
+      ratingSummary: {
+        ratingAverage: created.ratingAverage,
+        ratingCount: created.ratingCount,
+      },
+      userRating: created.saved.calificacion,
     });
   })
 );

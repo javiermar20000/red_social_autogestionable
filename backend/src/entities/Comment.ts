@@ -23,6 +23,12 @@ export class Comment {
   @Column({ type: 'text' })
   contenido!: string;
 
+  @Column({ name: 'es_calificacion', type: 'boolean', default: false })
+  esCalificacion!: boolean;
+
+  @Column({ name: 'calificacion', type: 'smallint', nullable: true })
+  calificacion!: number | null;
+
   @Column({
     name: 'estado',
     type: 'enum',

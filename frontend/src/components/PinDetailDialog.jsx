@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Heart, Share2, Download, MoreHorizontal, Facebook, Instagram, Twitter, MessageCircle, MapPin } from 'lucide-react';
+import { Heart, Share2, Download, MoreHorizontal, Facebook, Instagram, Twitter, MessageCircle, MapPin, Star } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/Dialog.jsx';
 import { Button } from './ui/Button.jsx';
 import { Avatar, AvatarFallback } from './ui/Avatar.jsx';
@@ -29,12 +29,18 @@ const PinDetailDialog = ({
   onLoadComments,
   onSubmitComment,
   onEnsureCommentAccess,
+  onSubmitRating,
+  ratingSubmitting = false,
 }) => {
   const lastVisitedId = useRef(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [replyTarget, setReplyTarget] = useState(null);
+  const [ratingOpen, setRatingOpen] = useState(false);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingHover, setRatingHover] = useState(0);
+  const [ratingText, setRatingText] = useState('');
   const publicationId = publication?.id ? String(publication.id) : null;
 
   useEffect(() => {
@@ -54,11 +60,19 @@ const PinDetailDialog = ({
       setCommentsOpen(false);
       setCommentText('');
       setReplyTarget(null);
+      setRatingOpen(false);
+      setRatingValue(0);
+      setRatingHover(0);
+      setRatingText('');
       return;
     }
     setCommentText('');
     setReplyTarget(null);
     setCommentsOpen(false);
+    setRatingOpen(false);
+    setRatingValue(0);
+    setRatingHover(0);
+    setRatingText('');
   }, [open, publicationId]);
 
   useEffect(() => {
@@ -81,6 +95,10 @@ const PinDetailDialog = ({
     precio,
     placeholder,
   } = publication;
+  const userRatingRaw = publication.userRating;
+  const userRatingValue = userRatingRaw === null || userRatingRaw === undefined ? null : Number(userRatingRaw);
+  const hasUserRating = Number.isFinite(userRatingValue ?? NaN);
+  const canRatePublication = estado === 'PUBLICADA';
   const mediaSrc = coverUrl || placeholder || placeholderImg;
   const canManage =
     (currentUser?.rol === 'OFERENTE' && publication.authorId && publication.authorId === currentUser.id) ||
@@ -218,6 +236,34 @@ const PinDetailDialog = ({
     }
   };
 
+  const handleOpenRating = (event) => {
+    event.stopPropagation();
+    if (!canRatePublication || hasUserRating) return;
+    if (onEnsureCommentAccess && !onEnsureCommentAccess()) return;
+    setRatingOpen(true);
+  };
+
+  const handleSubmitRating = async (event) => {
+    event.preventDefault();
+    if (!publicationId) return;
+    if (!ratingValue || ratingValue < 1) return;
+    const text = ratingText.trim();
+    if (!text) return;
+    if (onEnsureCommentAccess && !onEnsureCommentAccess()) return;
+    const result = await onSubmitRating?.({
+      publicationId,
+      contenido: text,
+      calificacion: ratingValue,
+    });
+    if (result !== false) {
+      setRatingOpen(false);
+      setRatingValue(0);
+      setRatingHover(0);
+      setRatingText('');
+      setCommentsOpen(true);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
@@ -256,23 +302,47 @@ const PinDetailDialog = ({
               </div>
             )}
 
-            <button
-              type="button"
-              className={`mt-6 flex items-center gap-3 text-left ${canOpenBusiness ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
-              onClick={handleOpenBusinessProfile}
-              disabled={!canOpenBusiness}
-              aria-label={`Ver perfil de ${businessName}`}
-            >
-              <Avatar src={businessAvatarSrc} alt={`Logo de ${businessName}`}>
-                <AvatarFallback className="bg-primary text-primary-foreground">
-                  {businessName[0]}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="font-semibold">{businessName}</p>
-                <p className="text-sm text-muted-foreground">{visitas} visitas</p>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                className={`flex items-center gap-3 text-left ${canOpenBusiness ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
+                onClick={handleOpenBusinessProfile}
+                disabled={!canOpenBusiness}
+                aria-label={`Ver perfil de ${businessName}`}
+              >
+                <Avatar src={businessAvatarSrc} alt={`Logo de ${businessName}`}>
+                  <AvatarFallback className="bg-primary text-primary-foreground">
+                    {businessName[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-semibold">{businessName}</p>
+                  <p className="text-sm text-muted-foreground">{visitas} visitas</p>
+                </div>
+              </button>
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenRating}
+                  disabled={!canRatePublication || hasUserRating}
+                  title={
+                    !canRatePublication
+                      ? 'Solo publicaciones publicadas pueden calificarse'
+                      : hasUserRating
+                      ? 'Ya calificaste esta publicación'
+                      : 'Calificar publicación'
+                  }
+                >
+                  ¿Desea calificar?
+                </Button>
+                {hasUserRating && (
+                  <span className="text-[0.7rem] text-muted-foreground">
+                    Ya calificaste con {userRatingValue} estrellas.
+                  </span>
+                )}
               </div>
-            </button>
+            </div>
 
             <br></br>
             <div className="flex flex-wrap justify-between">
@@ -442,41 +512,115 @@ const PinDetailDialog = ({
                     <p className="text-sm text-muted-foreground">Aún no hay comentarios. ¡Sé el primero en comentar!</p>
                   )}
                   {!commentsLoading &&
-                    rootComments.map((comment) => (
-                      <div key={comment.id} className="rounded-lg border border-border/60 bg-background/80 p-3 shadow-soft">
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="font-semibold text-foreground">{comment.userName || 'Usuario'}</span>
-                          <span>{formatCommentDate(comment.fechaCreacion)}</span>
-                        </div>
-                        <p className="mt-2 text-sm text-foreground/90">{comment.contenido}</p>
-                        <button
-                          type="button"
-                          className="mt-2 text-xs font-semibold text-primary hover:underline"
-                          onClick={() => handleReplyStart(comment)}
+                    rootComments.map((comment) => {
+                      const isRatingComment = Boolean(comment.esCalificacion) || Number.isFinite(Number(comment.calificacion));
+                      const ratingDisplay = Number.isFinite(Number(comment.calificacion)) ? Number(comment.calificacion) : null;
+                      return (
+                        <div
+                          key={comment.id}
+                          className={`rounded-lg border p-3 shadow-soft ${
+                            isRatingComment ? 'border-amber-200 bg-amber-50/80' : 'border-border/60 bg-background/80'
+                          }`}
                         >
-                          Responder
-                        </button>
-                        {(commentsByParent[String(comment.id)] || []).length > 0 && (
-                          <div className="mt-3 space-y-2 border-l border-primary/20 pl-3">
-                            {commentsByParent[String(comment.id)].map((reply) => (
-                              <div key={reply.id} className="rounded-md bg-muted/40 px-3 py-2">
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                  <span className="font-semibold text-foreground">{reply.userName || 'Usuario'}</span>
-                                  <span>{formatCommentDate(reply.fechaCreacion)}</span>
-                                </div>
-                                <p className="mt-1 text-sm text-foreground/90">{reply.contenido}</p>
-                              </div>
-                            ))}
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-foreground">{comment.userName || 'Usuario'}</span>
+                              {isRatingComment && ratingDisplay !== null && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700">
+                                  <Star className="h-3 w-3 text-amber-500" fill="currentColor" />
+                                  {ratingDisplay}
+                                </span>
+                              )}
+                            </div>
+                            <span>{formatCommentDate(comment.fechaCreacion)}</span>
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          <p className="mt-2 text-sm text-foreground/90">{comment.contenido}</p>
+                          <button
+                            type="button"
+                            className="mt-2 text-xs font-semibold text-primary hover:underline"
+                            onClick={() => handleReplyStart(comment)}
+                          >
+                            Responder
+                          </button>
+                          {(commentsByParent[String(comment.id)] || []).length > 0 && (
+                            <div className="mt-3 space-y-2 border-l border-primary/20 pl-3">
+                              {commentsByParent[String(comment.id)].map((reply) => (
+                                <div key={reply.id} className="rounded-md bg-muted/40 px-3 py-2">
+                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span className="font-semibold text-foreground">{reply.userName || 'Usuario'}</span>
+                                    <span>{formatCommentDate(reply.fechaCreacion)}</span>
+                                  </div>
+                                  <p className="mt-1 text-sm text-foreground/90">{reply.contenido}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             )}
           </div>
         </div>
       </DialogContent>
+
+      <Dialog open={ratingOpen} onOpenChange={setRatingOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader className="items-start text-left">
+            <DialogTitle>Califica esta publicación</DialogTitle>
+            <DialogDescription>
+              Comparte tu opinión sobre {titulo || 'este alimento'}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmitRating} className="mt-4 space-y-4">
+            <div>
+              <p className="text-sm font-semibold">Tu calificación</p>
+              <div className="mt-2 flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((value) => {
+                  const active = (ratingHover || ratingValue) >= value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      className="rounded-full p-1 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                      onClick={() => setRatingValue(value)}
+                      onMouseEnter={() => setRatingHover(value)}
+                      onMouseLeave={() => setRatingHover(0)}
+                      aria-label={`Calificar con ${value} estrellas`}
+                    >
+                      <Star className={`h-6 w-6 ${active ? 'text-amber-500' : 'text-muted-foreground'}`} fill="currentColor" />
+                    </button>
+                  );
+                })}
+                <span className="text-xs text-muted-foreground">
+                  {ratingValue ? `${ratingValue} de 5` : 'Selecciona una calificación'}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold">Tu opinión</p>
+              <textarea
+                className="mt-2 min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Escribe tu opinión sobre esta publicación..."
+                value={ratingText}
+                onChange={(event) => setRatingText(event.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setRatingOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={ratingSubmitting || !ratingText.trim() || ratingValue < 1}>
+                {ratingSubmitting ? 'Enviando...' : 'Confirmar'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };

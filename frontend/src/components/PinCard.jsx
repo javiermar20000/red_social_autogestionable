@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Heart, Share2, Facebook, Instagram, Twitter, MessageCircle, Pencil, Trash2 } from 'lucide-react';
+import { Heart, Share2, Facebook, Instagram, Twitter, MessageCircle, Pencil, Trash2, Star } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
 import { cn } from '../lib/cn.js';
 import placeholderImg from '../assets/pin2.jpg';
@@ -64,6 +64,30 @@ const PinCard = ({
   const likesNumber = Number(likesCount);
   const safeLikesNumber = Number.isFinite(likesNumber) ? likesNumber : 0;
   const formattedLikes = formatCompactLikes(safeLikesNumber);
+  const ratingAverageRaw =
+    publication.ratingAverage ??
+    publication.ratingAvg ??
+    publication.calificacionPromedio ??
+    publication.promedioCalificacion ??
+    publication.rating ??
+    null;
+  const ratingCountRaw =
+    publication.ratingCount ??
+    publication.calificacionCount ??
+    publication.totalCalificaciones ??
+    0;
+  const ratingAverageNumber = Number(ratingAverageRaw);
+  const ratingCountNumber = Number(ratingCountRaw);
+  const hasRating =
+    Number.isFinite(ratingAverageNumber) &&
+    (Number.isFinite(ratingCountNumber) ? ratingCountNumber > 0 : ratingAverageNumber > 0);
+  const normalizedRating = hasRating ? Math.max(1, Math.min(5, ratingAverageNumber)) : null;
+  const formattedRating = hasRating
+    ? new Intl.NumberFormat('es-CL', {
+        minimumFractionDigits: normalizedRating % 1 ? 1 : 0,
+        maximumFractionDigits: 1,
+      }).format(normalizedRating)
+    : '';
   const normalize = (val) => (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   const promoKeywords = ['EN_PROMOCION', 'PROMOCION', 'PROMO'];
   const isPromoCategory = categories.some((cat) => {
@@ -124,6 +148,11 @@ const PinCard = ({
     'rounded-full bg-orange-500 font-semibold text-white',
     isCompact ? 'px-2.5 py-0.5 text-[0.7rem]' : 'px-3 py-1 text-xs'
   );
+  const ratingBadgeClassName = cn(
+    'inline-flex items-center gap-1 rounded-full bg-white/90 font-semibold text-slate-900 shadow-sm',
+    isCompact ? 'px-2 py-0.5 text-[0.7rem]' : 'px-2.5 py-1 text-xs'
+  );
+  const ratingIconClassName = isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5';
   const businessTypeBadgeClassName = cn(
     'rounded-full bg-white/90 font-semibold text-slate-800',
     isCompact ? 'px-2.5 py-0.5 text-[0.7rem]' : 'px-3 py-1 text-xs'
@@ -276,6 +305,12 @@ const PinCard = ({
         </div>
 
         <div className="pointer-events-none absolute left-3 top-3 z-20 flex flex-wrap items-center gap-2">
+          {hasRating && (
+            <span className={ratingBadgeClassName}>
+              <Star className={cn(ratingIconClassName, 'text-amber-500')} fill="currentColor" />
+              {formattedRating}
+            </span>
+          )}
           {showOfferBadge && (
             <span className={offerBadgeClassName}>Oferta</span>
           )}

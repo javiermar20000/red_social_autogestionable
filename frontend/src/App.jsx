@@ -848,6 +848,7 @@ function App() {
   const [commentsByPublication, setCommentsByPublication] = useState({});
   const [commentsLoadingByPublication, setCommentsLoadingByPublication] = useState({});
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
   const [similarItems, setSimilarItems] = useState([]);
   const [similarSource, setSimilarSource] = useState(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -1838,6 +1839,47 @@ function App() {
     }
   };
 
+  const handleSubmitRating = async ({ publicationId, contenido, calificacion }) => {
+    if (!publicationId || !currentUser || currentUser.rol !== 'CLIENTE') return false;
+    if (!contenido || !contenido.trim()) return false;
+    const ratingValue = Number(calificacion);
+    if (!Number.isFinite(ratingValue) || ratingValue < 1 || ratingValue > 5) return false;
+    if (ratingSubmitting) return false;
+    setRatingSubmitting(true);
+    try {
+      const payload = { contenido: contenido.trim(), calificacion: Math.floor(ratingValue) };
+      const data = await fetchJson(`/publications/${publicationId}/ratings`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      });
+      const comment = data?.comment || null;
+      if (comment) {
+        const key = String(publicationId);
+        setCommentsByPublication((prev) => {
+          const current = prev[key] || [];
+          if (current.some((entry) => String(entry.id) === String(comment.id))) return prev;
+          return { ...prev, [key]: [...current, comment] };
+        });
+      } else {
+        await loadPublicationComments(publicationId, { force: true });
+      }
+
+      const summary = data?.ratingSummary || null;
+      if (summary) {
+        applyRatingUpdate(String(publicationId), summary.ratingAverage, summary.ratingCount, data?.userRating ?? ratingValue);
+      } else {
+        applyRatingUpdate(String(publicationId), null, null, data?.userRating ?? ratingValue);
+      }
+      return true;
+    } catch (err) {
+      notify('danger', err.message);
+      return false;
+    } finally {
+      setRatingSubmitting(false);
+    }
+  };
+
   const handleSelectPublication = (publication) => {
     if (!publication) return;
     setSelectedPublication(publication);
@@ -2094,6 +2136,34 @@ function App() {
     return changed ? updated : items;
   };
 
+  const normalizeRatingAverage = (value) => {
+    if (value === null || value === undefined) return null;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    return Math.max(1, Math.min(5, num));
+  };
+
+  const normalizeRatingCount = (value) => {
+    if (value === null || value === undefined) return 0;
+    const num = Number(value);
+    return Number.isFinite(num) ? Math.max(0, Math.floor(num)) : 0;
+  };
+
+  const updatePublicationRatings = (items, publicationId, ratingAverage, ratingCount, userRating) => {
+    if (!Array.isArray(items) || !items.length) return items;
+    let changed = false;
+    const updated = items.map((item) => {
+      if (String(item.id) !== publicationId) return item;
+      changed = true;
+      const next = { ...item };
+      if (ratingAverage !== undefined) next.ratingAverage = ratingAverage;
+      if (ratingCount !== undefined) next.ratingCount = ratingCount;
+      if (userRating !== undefined) next.userRating = userRating;
+      return next;
+    });
+    return changed ? updated : items;
+  };
+
   const applyLikesUpdate = (publicationId, nextLikes) => {
     const normalized = Math.max(0, Math.floor(Number(nextLikes) || 0));
     setFeed((prev) => {
@@ -2119,6 +2189,30 @@ function App() {
     setSelectedPublication((prev) => {
       if (!prev || String(prev.id) !== publicationId) return prev;
       return { ...prev, visitas: normalized };
+    });
+  };
+
+  const applyRatingUpdate = (publicationId, ratingAverage, ratingCount, userRating) => {
+    const normalizedAverage = normalizeRatingAverage(ratingAverage);
+    const normalizedCount = normalizeRatingCount(ratingCount);
+    setFeed((prev) => {
+      const updated = updatePublicationRatings(prev, publicationId, normalizedAverage, normalizedCount, userRating);
+      if (updated !== prev) syncFeedCache(updated);
+      return updated;
+    });
+    setMyPublications((prev) => updatePublicationRatings(prev, publicationId, normalizedAverage, normalizedCount, userRating));
+    setBusinessProfilePublications((prev) =>
+      updatePublicationRatings(prev, publicationId, normalizedAverage, normalizedCount, userRating)
+    );
+    setAdminAdPublications((prev) => updatePublicationRatings(prev, publicationId, normalizedAverage, normalizedCount, userRating));
+    setSelectedPublication((prev) => {
+      if (!prev || String(prev.id) !== publicationId) return prev;
+      return {
+        ...prev,
+        ratingAverage: normalizedAverage,
+        ratingCount: normalizedCount,
+        userRating: userRating ?? prev.userRating,
+      };
     });
   };
 
@@ -3859,6 +3953,8 @@ function App() {
         commentSubmitting={commentSubmitting}
         onLoadComments={loadPublicationComments}
         onSubmitComment={handleSubmitComment}
+        onSubmitRating={handleSubmitRating}
+        ratingSubmitting={ratingSubmitting}
         onEnsureCommentAccess={ensureClientAccess}
       />
 

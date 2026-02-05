@@ -301,6 +301,8 @@ CREATE TABLE comentario (
   usuario_id     BIGINT NOT NULL,
   comentario_padre_id BIGINT,
   contenido      TEXT NOT NULL,
+  es_calificacion BOOLEAN NOT NULL DEFAULT FALSE,
+  calificacion   SMALLINT,
   estado         comentario_estado_enum NOT NULL DEFAULT 'VISIBLE',
   fecha_creacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   CONSTRAINT fk_comentario_publicacion
@@ -313,6 +315,14 @@ CREATE TABLE comentario (
     FOREIGN KEY (comentario_padre_id) REFERENCES comentario(id)
     ON DELETE SET NULL
 );
+
+ALTER TABLE comentario
+  ADD CONSTRAINT chk_comentario_calificacion
+  CHECK (calificacion IS NULL OR (calificacion >= 1 AND calificacion <= 5));
+
+CREATE UNIQUE INDEX uq_comentario_calificacion_usuario
+  ON comentario (publicacion_id, usuario_id)
+  WHERE es_calificacion = TRUE;
 
 -- FAVORITO
 CREATE TABLE favorito (

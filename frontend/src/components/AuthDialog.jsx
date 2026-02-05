@@ -26,7 +26,7 @@ const AuthDialog = ({ open, onOpenChange, onLogin, onRegister, loading = false }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} overlayClassName="z-[70]">
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle className="text-center text-2xl font-bold">Bienvenido a GastroHub</DialogTitle>

@@ -513,8 +513,10 @@ const PinDetailDialog = ({
                   )}
                   {!commentsLoading &&
                     rootComments.map((comment) => {
-                      const isRatingComment = Boolean(comment.esCalificacion) || Number.isFinite(Number(comment.calificacion));
-                      const ratingDisplay = Number.isFinite(Number(comment.calificacion)) ? Number(comment.calificacion) : null;
+                      const ratingValue = Number(comment.calificacion);
+                      const hasRatingValue = Number.isFinite(ratingValue) && ratingValue >= 1;
+                      const isRatingComment = Boolean(comment.esCalificacion) && hasRatingValue;
+                      const ratingDisplay = hasRatingValue ? ratingValue : null;
                       return (
                         <div
                           key={comment.id}

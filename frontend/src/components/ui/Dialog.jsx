@@ -3,13 +3,13 @@ import { cn } from '../../lib/cn.js';
 
 const DialogContext = createContext({ onClose: () => {} });
 
-export const Dialog = ({ open, onOpenChange, children }) => {
+export const Dialog = ({ open, onOpenChange, children, overlayClassName = '' }) => {
   if (!open) return null;
   const handleClose = () => onOpenChange?.(false);
   return (
     <DialogContext.Provider value={{ onClose: handleClose }}>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+        className={cn('fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4', overlayClassName)}
         onMouseDown={handleClose}
       >
         <div

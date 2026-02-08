@@ -2,16 +2,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Building2,
+  CalendarDays,
   CheckCircle2,
   Bell,
   ChevronLeft,
   ChevronUp,
+  CreditCard,
+  Download,
   Eye,
   EyeOff,
   FileText,
+  Heart,
   Mail,
   Megaphone,
   MessageCircle,
+  QrCode,
   RefreshCw,
   ShieldCheck,
   User,
@@ -39,6 +44,7 @@ import pin5 from './assets/pin5.jpg';
 import pin6 from './assets/pin6.jpg';
 import pin7 from './assets/pin7.jpg';
 import pin8 from './assets/pin8.jpg';
+import matchCoffeeLogo from './assets/logo_matchcoffee_real.png';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
@@ -55,6 +61,145 @@ const PUBLICATION_IMAGE_MAX_DIMENSION = 1600;
 const PUBLICATION_IMAGE_QUALITY = 0.82;
 const numberFormatter = new Intl.NumberFormat('es-CL');
 const formatNumber = (value) => numberFormatter.format(value);
+const RESERVATION_PRICE = 5000;
+const CLIENT_COMMENTS_STORAGE_KEY = 'gastrohub-client-comments-v1';
+const CLIENT_SAVED_PUBLICATIONS_STORAGE_KEY = 'gastrohub-client-saved-publications-v1';
+const TABLE_STATUS_OPTIONS = [
+  {
+    value: 'DISPONIBLE',
+    label: 'Disponible',
+    badgeClass: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+  },
+  {
+    value: 'OCUPADA',
+    label: 'Ocupada',
+    badgeClass: 'border-rose-200 bg-rose-100 text-rose-700',
+  },
+  {
+    value: 'MANTENIMIENTO',
+    label: 'Mantenimiento',
+    badgeClass: 'border-amber-200 bg-amber-100 text-amber-700',
+  },
+];
+const RESERVATION_SCHEDULE_OPTIONS = [
+  { value: 'DESAYUNO', label: 'Desayuno' },
+  { value: 'ALMUERZO', label: 'Almuerzo' },
+  { value: 'ONCE', label: 'Once' },
+  { value: 'CENA', label: 'Cena' },
+];
+const RESERVATION_TIME_STEP_MINUTES = 30;
+
+const getTableStatusMeta = (status) =>
+  TABLE_STATUS_OPTIONS.find((option) => option.value === status) || TABLE_STATUS_OPTIONS[0];
+
+const parseTimeToMinutes = (value) => {
+  if (!value) return null;
+  const match = String(value).trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const formatMinutesToTime = (minutes) => {
+  if (!Number.isFinite(minutes)) return '';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const getBusinessTimeRanges = (business) => {
+  const ranges = [];
+  const morningStart = parseTimeToMinutes(business?.morningStart);
+  const morningEnd = parseTimeToMinutes(business?.morningEnd);
+  const afternoonStart = parseTimeToMinutes(business?.afternoonStart);
+  const afternoonEnd = parseTimeToMinutes(business?.afternoonEnd);
+
+  if (morningStart !== null && morningEnd !== null && morningStart <= morningEnd) {
+    ranges.push({ start: morningStart, end: morningEnd });
+  }
+  if (afternoonStart !== null && afternoonEnd !== null && afternoonStart <= afternoonEnd) {
+    ranges.push({ start: afternoonStart, end: afternoonEnd });
+  }
+  return ranges;
+};
+
+const isTimeAllowedForBusiness = (business, value) => {
+  const ranges = getBusinessTimeRanges(business);
+  if (!ranges.length) return true;
+  const minutes = parseTimeToMinutes(value);
+  if (minutes === null) return false;
+  return ranges.some((range) => minutes >= range.start && minutes <= range.end);
+};
+
+const buildReservationTimeOptions = (business) => {
+  const ranges = getBusinessTimeRanges(business);
+  if (!ranges.length) return [];
+  const slots = [];
+  ranges.forEach((range) => {
+    for (let value = range.start; value <= range.end; value += RESERVATION_TIME_STEP_MINUTES) {
+      slots.push(formatMinutesToTime(value));
+    }
+  });
+  return Array.from(new Set(slots)).filter(Boolean);
+};
+
+const getImageFormatFromDataUrl = (dataUrl) => {
+  const match = /^data:image\/(png|jpeg|jpg);/i.exec(dataUrl || '');
+  if (!match) return 'PNG';
+  const ext = match[1].toLowerCase();
+  if (ext === 'jpg') return 'JPEG';
+  return ext.toUpperCase();
+};
+
+const loadImageAsDataUrl = async (url) => {
+  if (!url) return '';
+  if (url.startsWith('data:')) return url;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return '';
+    const blob = await response.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return '';
+  }
+};
+
+const buildReservationQrPayload = (reservation) => {
+  if (!reservation?.code) return '';
+  return `MCF|${reservation.code}`;
+};
+
+const extractReservationCode = (payload = '') => {
+  const raw = String(payload || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('MCF|')) return raw.slice(4);
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.code) return String(parsed.code);
+  } catch {
+    // ignore
+  }
+  const codeMatch = raw.match(/code=([^&]+)/i);
+  if (codeMatch) return decodeURIComponent(codeMatch[1]);
+  return raw;
+};
+
+const resolveScheduleForTime = (timeValue) => {
+  const minutes = parseTimeToMinutes(timeValue);
+  if (minutes === null) return RESERVATION_SCHEDULE_OPTIONS[1]?.value || 'ALMUERZO';
+  if (minutes < 11 * 60) return 'DESAYUNO';
+  if (minutes < 16 * 60) return 'ALMUERZO';
+  if (minutes < 20 * 60) return 'ONCE';
+  return 'CENA';
+};
 
 const fetchJson = async (path, options = {}) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -107,6 +252,29 @@ const getLocalStorage = () => {
     return window.localStorage;
   } catch {
     return null;
+  }
+};
+
+const readStorageJson = (storageKey, fallback) => {
+  const storage = getLocalStorage();
+  if (!storage) return fallback;
+  try {
+    const raw = storage.getItem(storageKey);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const writeStorageJson = (storageKey, value) => {
+  const storage = getLocalStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(storageKey, JSON.stringify(value));
+  } catch {
+    // ignore storage failures
   }
 };
 
@@ -797,6 +965,196 @@ const detectMediaTypeFromUrl = (value = '') => {
   return 'IMAGEN';
 };
 
+const normalizeRutInput = (value = '') => String(value || '').replace(/[^0-9kK]/g, '').toUpperCase();
+
+const formatRut = (value = '') => {
+  const clean = normalizeRutInput(value);
+  if (clean.length < 2) return clean;
+  return `${clean.slice(0, -1)}-${clean.slice(-1)}`;
+};
+
+const isValidRut = (value = '') => {
+  const clean = normalizeRutInput(value);
+  if (clean.length < 2) return false;
+  const body = clean.slice(0, -1);
+  const dv = clean.slice(-1);
+  let sum = 0;
+  let factor = 2;
+  for (let i = body.length - 1; i >= 0; i -= 1) {
+    sum += Number(body[i]) * factor;
+    factor = factor === 7 ? 2 : factor + 1;
+  }
+  const mod = 11 - (sum % 11);
+  const expected = mod === 11 ? '0' : mod === 10 ? 'K' : String(mod);
+  return expected === dv;
+};
+
+const sanitizePdfText = (value = '') =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim();
+
+const escapePdfText = (value = '') =>
+  sanitizePdfText(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+
+const buildPdfBlobFromLines = (lines = []) => {
+  const safeLines = lines.map((line) => escapePdfText(line));
+  const content = [
+    'BT',
+    '/F1 12 Tf',
+    '14 TL',
+    '50 780 Td',
+    safeLines.map((line, index) => (index === 0 ? `(${line}) Tj` : `T* (${line}) Tj`)).join('\n'),
+    'ET',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const encoder = new TextEncoder();
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> >>\nendobj',
+    `4 0 obj\n<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream\nendobj`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj',
+  ];
+
+  const parts = [];
+  let offset = 0;
+  const offsets = [0];
+  const pushPart = (value) => {
+    parts.push(value);
+    offset += encoder.encode(value).length;
+  };
+
+  pushPart('%PDF-1.3\n');
+  objects.forEach((obj) => {
+    offsets.push(offset);
+    pushPart(`${obj}\n`);
+  });
+
+  const xrefOffset = offset;
+  let xref = `xref\n0 ${objects.length + 1}\n`;
+  xref += '0000000000 65535 f \n';
+  for (let i = 1; i < offsets.length; i += 1) {
+    xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  xref += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  pushPart(xref);
+
+  return new Blob(parts, { type: 'application/pdf' });
+};
+
+const buildReservationPdfBlob = async (reservation) => {
+  if (!reservation) return null;
+  const [{ jsPDF }, qrModule] = await Promise.all([import('jspdf'), import('qrcode')]);
+  const QRCode = qrModule?.default || qrModule;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(248, 243, 236);
+  doc.rect(0, 0, pageWidth, 130, 'F');
+  doc.setDrawColor(232, 226, 218);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(32, 110, pageWidth - 64, pageHeight - 170, 12, 12, 'FD');
+
+  const matchLogo = await loadImageAsDataUrl(matchCoffeeLogo);
+  if (matchLogo) {
+    doc.addImage(matchLogo, getImageFormatFromDataUrl(matchLogo), 40, 26, 84, 84);
+  }
+
+  const businessLogo = await loadImageAsDataUrl(reservation.businessLogo || reservation.businessImage || '');
+  if (businessLogo) {
+    doc.addImage(businessLogo, getImageFormatFromDataUrl(businessLogo), pageWidth - 124, 30, 72, 72);
+  }
+
+  doc.setTextColor(38, 38, 38);
+  doc.setFontSize(20);
+  doc.text('Comprobante de reserva', 150, 60);
+  doc.setFontSize(11);
+  doc.setTextColor(95, 95, 95);
+  doc.text('Match Coffee', 150, 78);
+  doc.setFontSize(13);
+  doc.setTextColor(30, 30, 30);
+  doc.text(`Código: ${reservation.code || '--'}`, 150, 102);
+
+  let y = 165;
+  const labelX = 60;
+  const valueX = 170;
+  const labelColor = [120, 120, 120];
+  const valueColor = [30, 30, 30];
+  const valueWidth = pageWidth - valueX - 210;
+
+  const addLine = (label, value) => {
+    const safeValue = value ? String(value) : '-';
+    doc.setFontSize(11);
+    doc.setTextColor(...labelColor);
+    doc.text(label, labelX, y);
+    doc.setTextColor(...valueColor);
+    const lines = doc.splitTextToSize(safeValue, valueWidth);
+    doc.text(lines, valueX, y);
+    y += 16 * Math.max(lines.length, 1);
+  };
+
+  addLine('Local', reservation.businessName || '');
+  addLine('Tipo', reservation.businessType || '');
+  addLine('Fecha', reservation.date || '');
+  addLine('Hora', reservation.time || '');
+  addLine(
+    'Mesas',
+    Array.isArray(reservation.tables) ? reservation.tables.map((t) => t.label).join(', ') : ''
+  );
+  addLine('Sillas', reservation.totalSeats ? String(reservation.totalSeats) : '');
+  addLine('Titular', reservation.holderName || reservation.guestName || '');
+  if (reservation.guestRut) {
+    addLine('RUT', reservation.guestRut);
+  }
+  addLine('Monto', `$${formatNumber(reservation.totalPrice ?? RESERVATION_PRICE)}`);
+  if (reservation.notes) {
+    addLine('Notas', reservation.notes);
+  }
+
+  const qrPayload = buildReservationQrPayload(reservation);
+  if (qrPayload && QRCode?.toDataURL) {
+    const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 160 });
+    const qrX = pageWidth - 200;
+    const qrY = 210;
+    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, 150, 150);
+    doc.setFontSize(9);
+    doc.setTextColor(110, 110, 110);
+    doc.text('Escanea para verificar', qrX, qrY + 170);
+  }
+
+  doc.setFontSize(10);
+  doc.setTextColor(110, 110, 110);
+  doc.text('Presenta este comprobante al llegar al negocio.', 60, pageHeight - 60);
+
+  return doc.output('blob');
+};
+
+const downloadReservationPdf = async (reservation) => {
+  if (typeof document === 'undefined') return;
+  try {
+    const blob = await buildReservationPdfBlob(reservation);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `reserva-${reservation?.code || 'match-coffee'}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch {
+    // silent
+  }
+};
+
 function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [exploreOpen, setExploreOpen] = useState(false);
@@ -807,6 +1165,8 @@ function App() {
   const publicFeedRef = useRef(null);
   const feedCacheKeyRef = useRef('');
   const adsCacheKeyRef = useRef('');
+  const reservationScanVideoRef = useRef(null);
+  const reservationScannerRef = useRef(null);
 
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -817,6 +1177,37 @@ function App() {
   });
 
   const [alerts, setAlerts] = useState([]);
+  const [reservationOpen, setReservationOpen] = useState(false);
+  const [reservationStep, setReservationStep] = useState('mode');
+  const [reservationMode, setReservationMode] = useState('');
+  const [reservationGuest, setReservationGuest] = useState({ nombre: '', apellido: '', rut: '' });
+  const [reservationType, setReservationType] = useState(defaultBusinessTypes[0]);
+  const [reservationSearch, setReservationSearch] = useState('');
+  const [reservationBusinessId, setReservationBusinessId] = useState('');
+  const [reservationTableSelection, setReservationTableSelection] = useState([]);
+  const [reservationDate, setReservationDate] = useState('');
+  const [reservationTime, setReservationTime] = useState('');
+  const [reservationNotes, setReservationNotes] = useState('');
+  const [reservationPayment, setReservationPayment] = useState({
+    name: '',
+    number: '',
+    expiry: '',
+    cvv: '',
+  });
+  const [reservationSuccess, setReservationSuccess] = useState(null);
+  const [reservationPendingAuth, setReservationPendingAuth] = useState(false);
+  const [reservationTablesByBusiness, setReservationTablesByBusiness] = useState({});
+  const [reservationTablesLoading, setReservationTablesLoading] = useState(false);
+  const [reservations, setReservations] = useState([]);
+  const [clientCommentsByUser, setClientCommentsByUser] = useState(() =>
+    readStorageJson(CLIENT_COMMENTS_STORAGE_KEY, {})
+  );
+  const [savedPublicationsByUser, setSavedPublicationsByUser] = useState(() =>
+    readStorageJson(CLIENT_SAVED_PUBLICATIONS_STORAGE_KEY, {})
+  );
+  const [clientPortalOpen, setClientPortalOpen] = useState(false);
+  const [clientPortalTab, setClientPortalTab] = useState('reservas');
+  const [clientCommentsRefreshing, setClientCommentsRefreshing] = useState(false);
 
   const [tenants, setTenants] = useState([]);
   const [selectedTenantId, setSelectedTenantId] = useState(() => localStorage.getItem('tenantId') || '');
@@ -902,6 +1293,27 @@ function App() {
     imageUrl: '',
     phone: '',
   });
+  const [reservationAdminBusinessId, setReservationAdminBusinessId] = useState('');
+  const [reservationTableDraft, setReservationTableDraft] = useState({
+    label: '',
+    seats: 4,
+    status: 'DISPONIBLE',
+  });
+  const [reservationAdminReservations, setReservationAdminReservations] = useState([]);
+  const [reservationAdminReservationsLoading, setReservationAdminReservationsLoading] = useState(false);
+  const [reservationAdminDetail, setReservationAdminDetail] = useState(null);
+  const [reservationAdminDetailOpen, setReservationAdminDetailOpen] = useState(false);
+  const [reservationHoursDraft, setReservationHoursDraft] = useState({
+    morningStart: '',
+    morningEnd: '',
+    afternoonStart: '',
+    afternoonEnd: '',
+  });
+  const [reservationHoursSaving, setReservationHoursSaving] = useState(false);
+  const [reservationScanOpen, setReservationScanOpen] = useState(false);
+  const [reservationScanStatus, setReservationScanStatus] = useState('idle');
+  const [reservationScanError, setReservationScanError] = useState('');
+  const [reservationScanResult, setReservationScanResult] = useState(null);
 
   const resetPublicationForm = () => {
     setPublicationForm({
@@ -943,6 +1355,336 @@ function App() {
   const notify = (variant, message) => {
     setAlerts((prev) => [...prev, { id: crypto.randomUUID(), variant, message }]);
     setTimeout(() => setAlerts((prev) => prev.slice(1)), 4000);
+  };
+
+  const resetReservationFlow = () => {
+    setReservationStep('mode');
+    setReservationMode('');
+    setReservationGuest({ nombre: '', apellido: '', rut: '' });
+    setReservationType(defaultBusinessTypes[0]);
+    setReservationSearch('');
+    setReservationBusinessId('');
+    setReservationTableSelection([]);
+    setReservationDate('');
+    setReservationTime('');
+    setReservationNotes('');
+    setReservationPayment({ name: '', number: '', expiry: '', cvv: '' });
+    setReservationSuccess(null);
+    setReservationPendingAuth(false);
+  };
+
+  const openReservationDialog = () => {
+    resetReservationFlow();
+    setReservationOpen(true);
+  };
+
+  const getReservationTablesForBusiness = (businessId) => {
+    if (!businessId) return [];
+    const tables = reservationTablesByBusiness?.[String(businessId)];
+    return Array.isArray(tables) ? tables : [];
+  };
+
+  const setReservationTablesForBusiness = (businessId, tables) => {
+    if (!businessId) return;
+    const key = String(businessId);
+    setReservationTablesByBusiness((prev) => ({ ...prev, [key]: Array.isArray(tables) ? tables : [] }));
+  };
+
+  const loadReservationTables = async (businessId, { force = false } = {}) => {
+    if (!businessId) return [];
+    const key = String(businessId);
+    const cached = reservationTablesByBusiness?.[key];
+    if (!force && Array.isArray(cached) && cached.length) return cached;
+    setReservationTablesLoading(true);
+    try {
+      const data = await fetchJson(`/businesses/${key}/tables`, { headers: authHeaders });
+      const tables = Array.isArray(data) ? data : [];
+      setReservationTablesForBusiness(key, tables);
+      return tables;
+    } catch (err) {
+      notify('danger', err.message);
+      return [];
+    } finally {
+      setReservationTablesLoading(false);
+    }
+  };
+
+  const handleReservationRegisteredStart = () => {
+    setReservationMode('registered');
+    if (!currentUser) {
+      setReservationPendingAuth(true);
+      setAuthOpen(true);
+      return;
+    }
+    if (currentUser.rol !== 'CLIENTE') {
+      notify('warning', 'Para reservar con registro debes iniciar sesión como cliente.');
+      return;
+    }
+    setReservationStep('business');
+  };
+
+  const handleReservationGuestStart = () => {
+    setReservationMode('guest');
+    setReservationStep('guest');
+  };
+
+  const handleReservationGuestSubmit = (event) => {
+    event?.preventDefault?.();
+    const nombre = reservationGuest.nombre.trim();
+    const apellido = reservationGuest.apellido.trim();
+    const rut = reservationGuest.rut.trim();
+    if (!nombre || !apellido || !rut) {
+      notify('warning', 'Completa nombre, apellido y RUT para continuar.');
+      return;
+    }
+    if (!isValidRut(rut)) {
+      notify('warning', 'El RUT ingresado no es válido.');
+      return;
+    }
+    setReservationStep('business');
+  };
+
+  const handleReservationBusinessSelect = (businessId) => {
+    if (!businessId) return;
+    setReservationBusinessId(String(businessId));
+    setReservationTableSelection([]);
+    setReservationTime('');
+    setReservationStep('tables');
+    loadReservationTables(businessId, { force: true });
+  };
+
+  const handleReservationTableToggle = (tableId) => {
+    setReservationTableSelection((prev) => {
+      const set = new Set(prev.map(String));
+      const key = String(tableId);
+      if (set.has(key)) {
+        set.delete(key);
+      } else {
+        set.add(key);
+      }
+      return Array.from(set);
+    });
+  };
+
+  const handleReservationToPayment = () => {
+    if (!reservationBusinessId) {
+      notify('warning', 'Selecciona un local para continuar.');
+      return;
+    }
+    if (!reservationTableSelection.length) {
+      notify('warning', 'Selecciona al menos una mesa disponible.');
+      return;
+    }
+    if (!reservationDate || !reservationTime) {
+      notify('warning', 'Completa la fecha y hora de la reserva.');
+      return;
+    }
+    const business = reservationBusiness || businesses.find((b) => String(b.id) === String(reservationBusinessId));
+    if (business && !isTimeAllowedForBusiness(business, reservationTime)) {
+      notify('warning', 'La hora seleccionada no está dentro del horario de funcionamiento.');
+      return;
+    }
+    setReservationStep('payment');
+  };
+
+  const handleConfirmReservation = async () => {
+    if (reservationMode === 'registered' && currentUser?.rol !== 'CLIENTE') {
+      notify('warning', 'Debes iniciar sesión como cliente para completar la reserva.');
+      return;
+    }
+    const tables = getReservationTablesForBusiness(reservationBusinessId);
+    const selectedTables = tables.filter((table) => reservationTableSelection.includes(String(table.id)));
+    const unavailable = selectedTables.some((table) => (table.status || 'DISPONIBLE') !== 'DISPONIBLE');
+    if (unavailable) {
+      notify('warning', 'Algunas mesas ya no están disponibles.');
+      return;
+    }
+    if (!selectedTables.length) {
+      notify('warning', 'Selecciona al menos una mesa disponible.');
+      return;
+    }
+    if (!reservationDate || !reservationTime) {
+      notify('warning', 'Completa la fecha y hora de la reserva.');
+      return;
+    }
+    const payment = {
+      name: reservationPayment.name.trim(),
+      number: reservationPayment.number.replace(/\s+/g, ''),
+      expiry: reservationPayment.expiry.trim(),
+      cvv: reservationPayment.cvv.trim(),
+    };
+    if (!payment.name || !payment.number || !payment.expiry || !payment.cvv) {
+      notify('warning', 'Completa los datos de la tarjeta para continuar.');
+      return;
+    }
+
+    const business = businesses.find((b) => String(b.id) === String(reservationBusinessId));
+    if (!business) {
+      notify('warning', 'No se pudo encontrar el local seleccionado.');
+      return;
+    }
+    if (!isTimeAllowedForBusiness(business, reservationTime)) {
+      notify('warning', 'La hora seleccionada no está dentro del horario de funcionamiento.');
+      return;
+    }
+    try {
+      const schedule = resolveScheduleForTime(reservationTime);
+      const payload = {
+        businessId: String(business.id),
+        tableIds: reservationTableSelection,
+        date: reservationDate,
+        time: reservationTime,
+        schedule,
+        notes: reservationNotes.trim(),
+        amount: RESERVATION_PRICE,
+        guest:
+          reservationMode === 'guest'
+            ? {
+                nombre: reservationGuest.nombre.trim(),
+                apellido: reservationGuest.apellido.trim(),
+                rut: formatRut(reservationGuest.rut),
+              }
+            : undefined,
+      };
+      const data = await fetchJson('/reservations', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      });
+      setReservationSuccess({ ...data, businessLogo: business.imageUrl || '' });
+      setReservationStep('success');
+      if (reservationMode === 'registered') {
+        loadMyReservations();
+      }
+      loadReservationTables(reservationBusinessId, { force: true });
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
+  const handleReservationAdminAddTable = async () => {
+    if (!reservationAdminBusinessId) return;
+    const label = reservationTableDraft.label.trim();
+    const seats = Math.max(1, Number(reservationTableDraft.seats) || 1);
+    const status = reservationTableDraft.status || 'DISPONIBLE';
+    const current = getReservationTablesForBusiness(reservationAdminBusinessId);
+    const nextLabel = label || `Mesa ${current.length + 1}`;
+    try {
+      const created = await fetchJson(`/businesses/${reservationAdminBusinessId}/tables`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          label: nextLabel,
+          seats,
+          status,
+        }),
+      });
+      setReservationTablesForBusiness(reservationAdminBusinessId, [...current, created]);
+      setReservationTableDraft((prev) => ({ ...prev, label: '', seats: prev.seats }));
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
+  const handleSaveReservationHours = async () => {
+    if (!reservationAdminBusinessId) return;
+    const morningStartMinutes = parseTimeToMinutes(reservationHoursDraft.morningStart);
+    const morningEndMinutes = parseTimeToMinutes(reservationHoursDraft.morningEnd);
+    const afternoonStartMinutes = parseTimeToMinutes(reservationHoursDraft.afternoonStart);
+    const afternoonEndMinutes = parseTimeToMinutes(reservationHoursDraft.afternoonEnd);
+
+    if (
+      reservationHoursDraft.morningStart &&
+      reservationHoursDraft.morningEnd &&
+      morningStartMinutes !== null &&
+      morningEndMinutes !== null &&
+      morningStartMinutes >= morningEndMinutes
+    ) {
+      notify('warning', 'El horario de mañana debe terminar después del inicio.');
+      return;
+    }
+    if (
+      reservationHoursDraft.afternoonStart &&
+      reservationHoursDraft.afternoonEnd &&
+      afternoonStartMinutes !== null &&
+      afternoonEndMinutes !== null &&
+      afternoonStartMinutes >= afternoonEndMinutes
+    ) {
+      notify('warning', 'El horario de tarde debe terminar después del inicio.');
+      return;
+    }
+    setReservationHoursSaving(true);
+    try {
+      await fetchJson(`/businesses/${reservationAdminBusinessId}`, {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({
+          morningStart: reservationHoursDraft.morningStart || null,
+          morningEnd: reservationHoursDraft.morningEnd || null,
+          afternoonStart: reservationHoursDraft.afternoonStart || null,
+          afternoonEnd: reservationHoursDraft.afternoonEnd || null,
+        }),
+      });
+      notify('success', 'Horario actualizado');
+      loadBusinesses();
+    } catch (err) {
+      notify('danger', err.message);
+    } finally {
+      setReservationHoursSaving(false);
+    }
+  };
+
+  const handleReservationAdminUpdateTable = async (tableId, patch) => {
+    if (!reservationAdminBusinessId) return;
+    try {
+      const updated = await fetchJson(`/tables/${tableId}`, {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify(patch),
+      });
+      const current = getReservationTablesForBusiness(reservationAdminBusinessId);
+      setReservationTablesForBusiness(
+        reservationAdminBusinessId,
+        current.map((table) => (String(table.id) === String(tableId) ? { ...table, ...updated } : table))
+      );
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
+  const handleReservationAdminRemoveTable = async (tableId) => {
+    if (!reservationAdminBusinessId) return;
+    try {
+      await fetchJson(`/tables/${tableId}`, {
+        method: 'DELETE',
+        headers: authHeaders,
+      });
+      const current = getReservationTablesForBusiness(reservationAdminBusinessId);
+      setReservationTablesForBusiness(
+        reservationAdminBusinessId,
+        current.filter((table) => String(table.id) !== String(tableId))
+      );
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
+  const verifyReservationByCode = async (code) => {
+    if (!code) {
+      setReservationScanError('No se pudo leer el código de la reserva.');
+      setReservationScanStatus('error');
+      return;
+    }
+    setReservationScanStatus('verifying');
+    setReservationScanError('');
+    try {
+      const data = await fetchJson(`/reservations/verify?code=${encodeURIComponent(code)}`, { headers: authHeaders });
+      setReservationScanResult(data);
+      setReservationScanStatus('success');
+    } catch (err) {
+      setReservationScanError(err.message || 'No se pudo verificar la reserva.');
+      setReservationScanStatus('error');
+    }
   };
 
   const buildFeedCacheKey = (query) => {
@@ -1095,6 +1837,37 @@ function App() {
     }
   };
 
+  const loadMyReservations = async () => {
+    if (!currentUser || currentUser.rol !== 'CLIENTE') {
+      setReservations([]);
+      return;
+    }
+    try {
+      const data = await fetchJson('/reservations/mine', { headers: authHeaders });
+      setReservations(Array.isArray(data) ? data : []);
+    } catch (err) {
+      notify('danger', err.message);
+      setReservations([]);
+    }
+  };
+
+  const loadReservationAdminReservations = async (businessId) => {
+    if (!businessId) {
+      setReservationAdminReservations([]);
+      return;
+    }
+    setReservationAdminReservationsLoading(true);
+    try {
+      const data = await fetchJson(`/businesses/${businessId}/reservations`, { headers: authHeaders });
+      setReservationAdminReservations(Array.isArray(data) ? data : []);
+    } catch (err) {
+      notify('danger', err.message);
+      setReservationAdminReservations([]);
+    } finally {
+      setReservationAdminReservationsLoading(false);
+    }
+  };
+
   const loadFeed = async () => {
     const params = new URLSearchParams();
     const categoryIdsForFilter = resolveCategoryIdsForFilter(filters.categoryId);
@@ -1104,7 +1877,8 @@ function App() {
       params.set('categoryId', numericCategoryIds[0]);
     }
     if (filters.businessId) params.set('businessId', filters.businessId);
-    if (currentUser?.rol === 'OFERENTE') params.set('mine', 'true');
+    const canUseMineFeed = currentUser?.rol === 'OFERENTE' && Boolean(selectedTenantId || currentUser?.tenantId);
+    if (canUseMineFeed) params.set('mine', 'true');
     const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : '';
     if (tenantParam) params.set('tenantId', tenantParam);
     const query = params.toString();
@@ -1210,6 +1984,11 @@ function App() {
 
   const loadMyPublications = async () => {
     if (!isOferente) {
+      setMyPublications([]);
+      setLoadingMyPublications(false);
+      return;
+    }
+    if (!selectedTenantId && !currentUser?.tenantId) {
       setMyPublications([]);
       setLoadingMyPublications(false);
       return;
@@ -1381,6 +2160,109 @@ function App() {
     }
   }, [isOferente, selectedTenantId]);
 
+  useEffect(() => {
+    if (currentUser?.rol === 'CLIENTE') {
+      loadMyReservations();
+    } else {
+      setReservations([]);
+    }
+  }, [currentUser, token]);
+
+  useEffect(() => {
+    if (reservationAdminBusinessId) {
+      loadReservationTables(reservationAdminBusinessId, { force: true });
+      loadReservationAdminReservations(reservationAdminBusinessId);
+    }
+  }, [reservationAdminBusinessId]);
+
+  useEffect(() => {
+    if (reservationBusinessId && reservationOpen) {
+      loadReservationTables(reservationBusinessId, { force: true });
+    }
+  }, [reservationBusinessId, reservationOpen]);
+
+  useEffect(() => {
+    if (!reservationBusinessId) return;
+    const business =
+      businesses.find((b) => String(b.id) === String(reservationBusinessId)) || null;
+    if (!business) return;
+    if (reservationTime && !isTimeAllowedForBusiness(business, reservationTime)) {
+      setReservationTime('');
+    }
+  }, [businesses, reservationBusinessId, reservationTime]);
+
+  useEffect(() => {
+    if (!reservationScanOpen) {
+      if (reservationScannerRef.current) {
+        reservationScannerRef.current.stop?.();
+        reservationScannerRef.current = null;
+      }
+      return;
+    }
+    let active = true;
+    setReservationScanStatus('scanning');
+    setReservationScanError('');
+    setReservationScanResult(null);
+
+    const startScanner = async () => {
+      try {
+        const module = await import('@zxing/browser');
+        if (!active) return;
+        const Reader = module?.BrowserQRCodeReader;
+        if (!Reader) {
+          setReservationScanError('No se pudo iniciar el lector de QR.');
+          setReservationScanStatus('error');
+          return;
+        }
+
+        const codeReader = new Reader();
+        const videoElement = reservationScanVideoRef.current;
+
+        if (!videoElement) {
+          setReservationScanError('No se pudo iniciar la cámara.');
+          setReservationScanStatus('error');
+          return;
+        }
+
+        const controls = await codeReader.decodeFromVideoDevice(null, videoElement, (result, error, controls) => {
+          if (!active) {
+            controls?.stop?.();
+            return;
+          }
+          if (error) {
+            return;
+          }
+          if (!result) return;
+          active = false;
+          controls?.stop?.();
+          reservationScannerRef.current = null;
+          const payload = typeof result.getText === 'function' ? result.getText() : result.text || '';
+          const code = extractReservationCode(payload);
+          verifyReservationByCode(code);
+        });
+        if (!active) {
+          controls?.stop?.();
+          return;
+        }
+        reservationScannerRef.current = controls;
+      } catch (err) {
+        if (!active) return;
+        setReservationScanError(err.message || 'No se pudo cargar el lector de QR.');
+        setReservationScanStatus('error');
+      }
+    };
+
+    startScanner();
+
+    return () => {
+      active = false;
+      if (reservationScannerRef.current) {
+        reservationScannerRef.current.stop?.();
+        reservationScannerRef.current = null;
+      }
+    };
+  }, [reservationScanOpen]);
+
   const myBusinesses = useMemo(() => {
     if (isAdmin) return businesses;
     if (!currentUser) return [];
@@ -1388,6 +2270,84 @@ function App() {
   }, [businesses, isAdmin, currentUser]);
 
   const businessListForForms = isAdmin ? businesses : myBusinesses;
+  const showClientBottomNav = currentUser?.rol === 'CLIENTE';
+  const reservationsForUser = useMemo(() => {
+    if (!currentUser?.id) return [];
+    return (Array.isArray(reservations) ? reservations : []).filter(
+      (reservation) => String(reservation.userId) === String(currentUser.id)
+    );
+  }, [reservations, currentUser]);
+  const clientComments = useMemo(() => {
+    if (!currentUser?.id) return [];
+    const list = clientCommentsByUser?.[String(currentUser.id)];
+    return Array.isArray(list) ? list : [];
+  }, [clientCommentsByUser, currentUser]);
+  const reservationBusiness = useMemo(() => {
+    if (!reservationBusinessId) return null;
+    return businesses.find((b) => String(b.id) === String(reservationBusinessId)) || null;
+  }, [businesses, reservationBusinessId]);
+  const reservationBusinessOptions = useMemo(() => {
+    const searchValue = normalizeSearchValue(reservationSearch);
+    return (Array.isArray(businesses) ? businesses : [])
+      .filter((business) => (!reservationType ? true : business.type === reservationType))
+      .filter((business) => {
+        if (!searchValue) return true;
+        return normalizeSearchValue(business.name || '').includes(searchValue);
+      });
+  }, [businesses, reservationSearch, reservationType]);
+  const reservationTablesForSelectedBusiness = useMemo(
+    () => getReservationTablesForBusiness(reservationBusinessId),
+    [reservationBusinessId, reservationTablesByBusiness]
+  );
+  const reservationSelectedTables = useMemo(() => {
+    if (!reservationTablesForSelectedBusiness.length || !reservationTableSelection.length) return [];
+    return reservationTablesForSelectedBusiness.filter((table) =>
+      reservationTableSelection.includes(String(table.id))
+    );
+  }, [reservationTablesForSelectedBusiness, reservationTableSelection]);
+  const reservationAdminTables = useMemo(
+    () => getReservationTablesForBusiness(reservationAdminBusinessId),
+    [reservationAdminBusinessId, reservationTablesByBusiness]
+  );
+  const reservationTimeOptions = useMemo(
+    () => buildReservationTimeOptions(reservationBusiness),
+    [reservationBusiness]
+  );
+  const reservationHoursLabel = useMemo(() => {
+    const ranges = getBusinessTimeRanges(reservationBusiness);
+    if (!ranges.length) return '';
+    const formatted = ranges.map((range) => `${formatMinutesToTime(range.start)} - ${formatMinutesToTime(range.end)}`);
+    if (formatted.length === 2) return `Mañana ${formatted[0]} · Tarde ${formatted[1]}`;
+    return `Horario ${formatted[0]}`;
+  }, [reservationBusiness]);
+
+  const savedPublicationIdsForUser = useMemo(() => {
+    if (!currentUser?.id) return [];
+    const list = savedPublicationsByUser?.[String(currentUser.id)];
+    return Array.isArray(list) ? list.map((id) => String(id)) : [];
+  }, [savedPublicationsByUser, currentUser]);
+  const savedPublicationIdSet = useMemo(
+    () => new Set(savedPublicationIdsForUser),
+    [savedPublicationIdsForUser]
+  );
+  const savedPublicationsLookup = useMemo(() => {
+    const map = new Map();
+    const sources = [feed, adPublications, businessProfilePublications, myPublications];
+    sources.forEach((list) => {
+      if (!Array.isArray(list)) return;
+      list.forEach((pub) => {
+        if (!pub?.id) return;
+        map.set(String(pub.id), pub);
+      });
+    });
+    return map;
+  }, [feed, adPublications, businessProfilePublications, myPublications]);
+  const savedLikedPublications = useMemo(() => {
+    const items = savedPublicationIdsForUser
+      .map((id) => savedPublicationsLookup.get(id))
+      .filter(Boolean);
+    return items.filter((pub) => likedById[String(pub.id)]);
+  }, [savedPublicationIdsForUser, savedPublicationsLookup, likedById]);
 
   const activePublicationBusinessId = useMemo(() => {
     return publicationForm.businessId || filters.businessId || businessListForForms[0]?.id || '';
@@ -1432,6 +2392,32 @@ function App() {
   }, [likedById]);
 
   useEffect(() => {
+    writeStorageJson(CLIENT_COMMENTS_STORAGE_KEY, clientCommentsByUser);
+  }, [clientCommentsByUser]);
+
+  useEffect(() => {
+    writeStorageJson(CLIENT_SAVED_PUBLICATIONS_STORAGE_KEY, savedPublicationsByUser);
+  }, [savedPublicationsByUser]);
+
+  useEffect(() => {
+    if (!reservationPendingAuth) return;
+    if (currentUser) {
+      if (currentUser.rol === 'CLIENTE') {
+        setReservationStep('business');
+      } else {
+        notify('warning', 'Para reservar con registro necesitas ingresar como cliente.');
+      }
+      setReservationPendingAuth(false);
+    }
+  }, [reservationPendingAuth, currentUser]);
+
+  useEffect(() => {
+    if (!authOpen && reservationPendingAuth && !currentUser) {
+      setReservationPendingAuth(false);
+    }
+  }, [authOpen, reservationPendingAuth, currentUser]);
+
+  useEffect(() => {
     if (!businessListForForms.length) {
       setProfileBusinessId('');
       return;
@@ -1456,6 +2442,31 @@ function App() {
       phone: selected.phone || '',
     }));
   }, [businessListForForms, profileBusinessId]);
+
+  useEffect(() => {
+    if (!businessListForForms.length) {
+      setReservationAdminBusinessId('');
+      setReservationAdminReservations([]);
+      return;
+    }
+    if (
+      !reservationAdminBusinessId ||
+      !businessListForForms.some((b) => String(b.id) === String(reservationAdminBusinessId))
+    ) {
+      setReservationAdminBusinessId(String(businessListForForms[0].id));
+    }
+  }, [businessListForForms, reservationAdminBusinessId]);
+
+  useEffect(() => {
+    const selected = businessListForForms.find((b) => String(b.id) === String(reservationAdminBusinessId));
+    if (!selected) return;
+    setReservationHoursDraft({
+      morningStart: selected.morningStart || '',
+      morningEnd: selected.morningEnd || '',
+      afternoonStart: selected.afternoonStart || '',
+      afternoonEnd: selected.afternoonEnd || '',
+    });
+  }, [businessListForForms, reservationAdminBusinessId]);
 
   const handleLogin = async (credentials) => {
     setAuthLoading(true);
@@ -1801,10 +2812,80 @@ function App() {
       const data = await fetchJson(`/publications/${key}/comments`, { headers: authHeaders });
       const list = Array.isArray(data?.comments) ? data.comments : Array.isArray(data) ? data : [];
       setCommentsByPublication((prev) => ({ ...prev, [key]: list }));
+      return list;
     } catch (err) {
       notify('danger', err.message);
+      return [];
     } finally {
       setCommentsLoadingByPublication((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const resolvePublicationTitle = (publicationId) => {
+    const targetId = String(publicationId);
+    if (selectedPublication && String(selectedPublication.id) === targetId) {
+      return selectedPublication.titulo || selectedPublication.title || 'Publicación';
+    }
+    const sources = [
+      ...(Array.isArray(feed) ? feed : []),
+      ...(Array.isArray(businessProfilePublications) ? businessProfilePublications : []),
+      ...(Array.isArray(myPublications) ? myPublications : []),
+    ];
+    const found = sources.find((item) => String(item?.id) === targetId);
+    return found?.titulo || found?.title || 'Publicación';
+  };
+
+  const trackClientComment = (comment, publicationId) => {
+    if (!comment || !currentUser?.id || currentUser.rol !== 'CLIENTE') return;
+    const key = String(currentUser.id);
+    const entry = {
+      id: comment.id,
+      publicationId: String(publicationId),
+      publicationTitle: resolvePublicationTitle(publicationId),
+      content: comment.contenido,
+      createdAt: comment.fechaCreacion || new Date().toISOString(),
+      replyCount: 0,
+    };
+    setClientCommentsByUser((prev) => {
+      const currentList = Array.isArray(prev?.[key]) ? prev[key] : [];
+      if (currentList.some((item) => String(item.id) === String(entry.id))) {
+        return prev;
+      }
+      return { ...prev, [key]: [entry, ...currentList] };
+    });
+  };
+
+  const refreshClientCommentReplies = async () => {
+    if (!currentUser?.id) return;
+    const key = String(currentUser.id);
+    const list = Array.isArray(clientCommentsByUser?.[key]) ? clientCommentsByUser[key] : [];
+    if (!list.length) return;
+    const publicationIds = Array.from(new Set(list.map((item) => String(item.publicationId))));
+    if (!publicationIds.length) return;
+    setClientCommentsRefreshing(true);
+    try {
+      const results = await Promise.all(
+        publicationIds.map((publicationId) => loadPublicationComments(publicationId, { force: true }))
+      );
+      const byPublication = publicationIds.reduce((acc, publicationId, index) => {
+        acc[publicationId] = Array.isArray(results[index]) ? results[index] : [];
+        return acc;
+      }, {});
+      setClientCommentsByUser((prev) => {
+        const current = Array.isArray(prev?.[key]) ? prev[key] : [];
+        const updated = current.map((item) => {
+          const comments = byPublication[String(item.publicationId)] || [];
+          const replies = comments.filter((comment) => String(comment.parentId) === String(item.id));
+          return {
+            ...item,
+            replyCount: replies.length,
+            lastReplyAt: replies.length ? replies[replies.length - 1]?.fechaCreacion : item.lastReplyAt,
+          };
+        });
+        return { ...prev, [key]: updated };
+      });
+    } finally {
+      setClientCommentsRefreshing(false);
     }
   };
 
@@ -1827,6 +2908,7 @@ function App() {
           ...prev,
           [key]: [...(prev[key] || []), comment],
         }));
+        trackClientComment(comment, publicationId);
       } else {
         await loadPublicationComments(publicationId, { force: true });
       }
@@ -2245,6 +3327,25 @@ function App() {
     }
   };
 
+  const handleSavePublication = (publication) => {
+    if (!publication?.id) return;
+    if (!currentUser || currentUser.rol !== 'CLIENTE') {
+      notify('warning', 'Debes iniciar sesión como cliente para guardar publicaciones.');
+      return;
+    }
+    const userKey = String(currentUser.id);
+    const publicationId = String(publication.id);
+    const isAlreadySaved = savedPublicationIdSet.has(publicationId);
+    setSavedPublicationsByUser((prev) => {
+      const current = Array.isArray(prev?.[userKey]) ? prev[userKey].map((id) => String(id)) : [];
+      const next = isAlreadySaved
+        ? current.filter((id) => id !== publicationId)
+        : Array.from(new Set([...current, publicationId]));
+      return { ...prev, [userKey]: next };
+    });
+    notify('success', isAlreadySaved ? 'Publicación quitada de guardados.' : 'Publicación guardada.');
+  };
+
   const extractCategoryKeys = (pub) => {
     if (!pub) return [];
     const keys = new Set();
@@ -2450,6 +3551,10 @@ function App() {
   const selectedPublicationCommentsLoading = selectedPublicationId
     ? Boolean(commentsLoadingByPublication[selectedPublicationId])
     : false;
+  const reservationTotalSelectedSeats = reservationSelectedTables.reduce(
+    (acc, table) => acc + (Number(table.seats) || 0),
+    0
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -2457,6 +3562,7 @@ function App() {
         search={filters.search}
         onSearchChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
         onExplore={() => setExploreOpen(true)}
+        onReservations={openReservationDialog}
         onTopHearts={handleTopHearts}
         onNotifications={handleOpenNotifications}
         hasNotifications={hasNewSimilar}
@@ -2468,7 +3574,7 @@ function App() {
         currentUser={currentUser}
       />
 
-      <main className="container px-4 py-6 space-y-6">
+      <main className={cn('container px-4 py-6 space-y-6', showClientBottomNav && 'pb-24')}>
         {showBusinessProfile ? (
           <section className="space-y-6">
             <div className="rounded-2xl bg-card p-6 shadow-soft">
@@ -2560,9 +3666,11 @@ function App() {
         ) : (
           <>
             {shouldShowPublicFeed && (
-          <section className="relative" ref={publicFeedRef}>
-            <div className={cn('flex flex-col gap-6 lg:flex-row lg:items-start', isAdPanelExpanded && 'lg:gap-4')}>
-              <div className={cn('min-w-0 flex-1', isAdPanelNarrow && !adPanelOpen && 'pr-20')}>
+              <div className="space-y-6">
+                <section className="relative" ref={publicFeedRef}>
+                  <div className="sr-only">Feed de publicaciones</div>
+                  <div className={cn('flex flex-col gap-6 lg:flex-row lg:items-start', isAdPanelExpanded && 'lg:gap-4')}>
+                    <div className={cn('min-w-0 flex-1', isAdPanelNarrow && !adPanelOpen && 'pr-20')}>
                 {showFeedLoading ? (
                   <div className="flex items-center justify-center rounded-2xl border border-dashed border-border p-8 text-muted-foreground">
                     Cargando feed...
@@ -2649,7 +3757,8 @@ function App() {
             <button
               type="button"
               className={cn(
-                'fixed bottom-20 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-card/95 text-foreground shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60 md:hidden',
+                'fixed right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-card/95 text-foreground shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60 md:hidden',
+                showClientBottomNav ? 'bottom-32' : 'bottom-20',
                 hasNewSimilar && 'notification-attention bg-rose-100 text-rose-600'
               )}
               onClick={handleOpenNotifications}
@@ -2665,7 +3774,10 @@ function App() {
             </button>
             <button
               type="button"
-              className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/60"
+              className={cn(
+                'fixed right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/60',
+                showClientBottomNav ? 'bottom-24' : 'bottom-6'
+              )}
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
               aria-label="Volver arriba"
               title="Volver arriba"
@@ -2673,7 +3785,8 @@ function App() {
               <ChevronUp className="h-5 w-5" />
             </button>
           </section>
-        )}
+        </div>
+      )}
         {(isOferente || isAdmin) && (
           <section className="rounded-2xl bg-card p-5 shadow-soft">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -2707,7 +3820,7 @@ function App() {
               <TabsList
                 className={cn(
                   'grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0',
-                  isAdmin ? 'sm:grid-cols-3 xl:grid-cols-5' : 'sm:grid-cols-4 xl:grid-cols-4'
+                  isAdmin ? 'sm:grid-cols-4 xl:grid-cols-6' : 'sm:grid-cols-5 xl:grid-cols-5'
                 )}
               >
                 <TabsTrigger
@@ -2758,6 +3871,18 @@ function App() {
                   <span className="flex flex-col">
                     <span className="text-sm font-semibold">Estadísticas</span>
                     <span className="text-xs text-muted-foreground">Rendimiento y visitas</span>
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="reservas"
+                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                    <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="text-sm font-semibold">Reservas</span>
+                    <span className="text-xs text-muted-foreground">Mesas y disponibilidad</span>
                   </span>
                 </TabsTrigger>
                 {isAdmin && (
@@ -3351,6 +4476,301 @@ function App() {
                   </div>
                 </div>
               </TabsContent>
+
+              <TabsContent value="reservas" className="mt-6 space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                    <CalendarDays className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Gestión de reservas</p>
+                    <h4 className="text-lg font-semibold">Mesas y disponibilidad</h4>
+                  </div>
+                </div>
+                {businessListForForms.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    Necesitas crear un negocio antes de configurar mesas.
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                      <Label>Negocio</Label>
+                      <select
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        value={reservationAdminBusinessId}
+                        onChange={(e) => setReservationAdminBusinessId(e.target.value)}
+                      >
+                        {businessListForForms.map((business) => (
+                          <option key={business.id} value={business.id}>
+                            {business.name} · {business.type}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                        <div>
+                          <h5 className="font-semibold">Agregar mesas</h5>
+                          <p className="text-xs text-muted-foreground">
+                            Define la cantidad de sillas y el estado inicial.
+                          </p>
+                        </div>
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">Mesa individual</p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Nombre de la mesa</Label>
+                                <Input
+                                  placeholder="Ej: Mesa 1"
+                                  value={reservationTableDraft.label}
+                                  aria-label="Nombre de la mesa"
+                                  onChange={(e) =>
+                                    setReservationTableDraft((prev) => ({ ...prev, label: e.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Cantidad de sillas</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  placeholder="Ej: 4"
+                                  value={reservationTableDraft.seats}
+                                  aria-label="Cantidad de sillas"
+                                  onChange={(e) =>
+                                    setReservationTableDraft((prev) => ({ ...prev, seats: e.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Estado inicial</Label>
+                                <select
+                                  className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                                  value={reservationTableDraft.status}
+                                  onChange={(e) =>
+                                    setReservationTableDraft((prev) => ({ ...prev, status: e.target.value }))
+                                  }
+                                >
+                                  {TABLE_STATUS_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <Button type="button" variant="outline" className="mt-3" onClick={handleReservationAdminAddTable}>
+                              Agregar mesa
+                            </Button>
+                          </div>
+
+                          <div className="border-t border-border/70 pt-4 space-y-3">
+                            <div>
+                              <h6 className="font-semibold">Horario de funcionamiento</h6>
+                              <p className="text-xs text-muted-foreground">
+                                Define los rangos en los que el local acepta reservas.
+                              </p>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Mañana desde</Label>
+                                <Input
+                                  type="time"
+                                  value={reservationHoursDraft.morningStart}
+                                  onChange={(e) =>
+                                    setReservationHoursDraft((prev) => ({ ...prev, morningStart: e.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Mañana hasta</Label>
+                                <Input
+                                  type="time"
+                                  value={reservationHoursDraft.morningEnd}
+                                  onChange={(e) =>
+                                    setReservationHoursDraft((prev) => ({ ...prev, morningEnd: e.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Tarde desde</Label>
+                                <Input
+                                  type="time"
+                                  value={reservationHoursDraft.afternoonStart}
+                                  onChange={(e) =>
+                                    setReservationHoursDraft((prev) => ({ ...prev, afternoonStart: e.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Tarde hasta</Label>
+                                <Input
+                                  type="time"
+                                  value={reservationHoursDraft.afternoonEnd}
+                                  onChange={(e) =>
+                                    setReservationHoursDraft((prev) => ({ ...prev, afternoonEnd: e.target.value }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                disabled={reservationHoursSaving}
+                                onClick={handleSaveReservationHours}
+                              >
+                                {reservationHoursSaving ? 'Guardando...' : 'Guardar horarios'}
+                              </Button>
+                              <p className="text-xs text-muted-foreground">
+                                Si dejas un rango vacío, no se considerará en la disponibilidad.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-border/70 pt-4 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <h6 className="font-semibold">Reservas realizadas</h6>
+                                <p className="text-xs text-muted-foreground">
+                                  Revisa quién reservó y abre el detalle completo con el ícono del ojo.
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => loadReservationAdminReservations(reservationAdminBusinessId)}
+                              >
+                                Actualizar
+                              </Button>
+                            </div>
+                            {reservationAdminReservationsLoading ? (
+                              <p className="text-sm text-muted-foreground">Cargando reservas...</p>
+                            ) : reservationAdminReservations.length ? (
+                              <div className="space-y-2">
+                                {reservationAdminReservations.map((reservation) => (
+                                  <div
+                                    key={reservation.id}
+                                    className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/30 p-3"
+                                  >
+                                    <div>
+                                      <p className="text-sm font-semibold">
+                                        {reservation.holderName ||
+                                          reservation.guestName ||
+                                          reservation.userName ||
+                                          'Cliente'}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">Código: {reservation.code || '--'}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {reservation.date} · {reservation.time}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      aria-label="Ver detalles de la reserva"
+                                      onClick={() => {
+                                        setReservationAdminDetail(reservation);
+                                        setReservationAdminDetailOpen(true);
+                                      }}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Aún no hay reservas para este negocio.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                        <div>
+                          <h5 className="font-semibold">Mesas configuradas</h5>
+                          <p className="text-xs text-muted-foreground">
+                            Cambia el estado para marcar disponibles, ocupadas o en mantenimiento.
+                          </p>
+                        </div>
+                        {reservationTablesLoading && !reservationAdminTables.length ? (
+                          <p className="text-sm text-muted-foreground">Cargando mesas...</p>
+                        ) : reservationAdminTables.length ? (
+                          <div className="space-y-2">
+                            {reservationAdminTables.map((table) => {
+                              const statusMeta = getTableStatusMeta(table.status);
+                              return (
+                                <div
+                                  key={table.id}
+                                  className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/30 p-3 md:flex-row md:items-center"
+                                >
+                                  <Input
+                                    className="md:max-w-[200px]"
+                                    value={table.label}
+                                    placeholder="Nombre de mesa"
+                                    aria-label="Nombre de la mesa"
+                                    onChange={(e) =>
+                                      handleReservationAdminUpdateTable(table.id, { label: e.target.value })
+                                    }
+                                  />
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    className="md:w-24"
+                                    value={table.seats}
+                                    aria-label="Cantidad de sillas"
+                                    onChange={(e) =>
+                                      handleReservationAdminUpdateTable(table.id, {
+                                        seats: Math.max(1, Number(e.target.value) || 1),
+                                      })
+                                    }
+                                  />
+                                  <select
+                                    className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                                    value={table.status}
+                                    onChange={(e) =>
+                                      handleReservationAdminUpdateTable(table.id, { status: e.target.value })
+                                    }
+                                  >
+                                    {TABLE_STATUS_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <span
+                                    className={cn(
+                                      'rounded-full border px-2 py-1 text-xs font-semibold',
+                                      statusMeta?.badgeClass
+                                    )}
+                                  >
+                                    {statusMeta?.label}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleReservationAdminRemoveTable(table.id)}
+                                  >
+                                    Eliminar
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Aún no hay mesas configuradas.</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </TabsContent>
+
             </Tabs>
           </section>
         )}
@@ -3360,16 +4780,28 @@ function App() {
       </main>
 
       {(isOferente || isAdmin) && (
-        <Button
-          size="lg"
-          className="fixed bottom-6 right-6 z-40 rounded-full px-6 shadow-soft hover:shadow-hover"
-          onClick={() => setContactOpen(true)}
-          aria-label="Abrir contacto"
-          variant="danger"
-        >
-          ¡Contáctenos!
-          <User className="h-4 w-4" aria-hidden="true" />
-        </Button>
+        <>
+          <Button
+            size="lg"
+            className="fixed bottom-20 right-6 z-40 rounded-full px-6 shadow-soft hover:shadow-hover"
+            onClick={() => setReservationScanOpen(true)}
+            aria-label="Escanear reserva"
+            variant="outline"
+          >
+            Escanea reserva
+            <QrCode className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button
+            size="lg"
+            className="fixed bottom-6 right-6 z-40 rounded-full px-6 shadow-soft hover:shadow-hover"
+            onClick={() => setContactOpen(true)}
+            aria-label="Abrir contacto"
+            variant="danger"
+          >
+            ¡Contáctenos!
+            <User className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </>
       )}
 
       <footer className="border-t border-border bg-card/80">
@@ -3387,6 +4819,59 @@ function App() {
           </div>
         </div>
       </footer>
+
+      {showClientBottomNav && (
+        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur">
+          <div className="container flex items-center justify-around px-4 py-3">
+            <button
+              type="button"
+              className={cn(
+                'flex flex-col items-center gap-1 text-xs font-semibold',
+                clientPortalTab === 'reservas' ? 'text-rose-600' : 'text-muted-foreground'
+              )}
+              onClick={() => {
+                setClientPortalTab('reservas');
+                setClientPortalOpen(true);
+              }}
+            >
+              <CalendarDays className="h-5 w-5" aria-hidden="true" />
+              Reservas
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'flex flex-col items-center gap-1 text-xs font-semibold',
+                clientPortalTab === 'comentarios' ? 'text-rose-600' : 'text-muted-foreground'
+              )}
+              onClick={() => {
+                setClientPortalTab('comentarios');
+                setClientPortalOpen(true);
+              }}
+            >
+              <MessageCircle className="h-5 w-5" aria-hidden="true" />
+              Comentarios
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'flex flex-col items-center gap-1 text-xs font-semibold',
+                clientPortalTab === 'guardadas' ? 'text-rose-600' : 'text-muted-foreground'
+              )}
+              onClick={() => {
+                setClientPortalTab('guardadas');
+                setClientPortalOpen(true);
+              }}
+            >
+              <span className="flex items-center gap-1">
+                <Heart className="h-5 w-5" aria-hidden="true" />
+                <span className="text-[10px] font-bold">/</span>
+                <Download className="h-5 w-5" aria-hidden="true" />
+              </span>
+              Publicaciones guardadas
+            </button>
+          </div>
+        </nav>
+      )}
 
       <AuthDialog
         open={authOpen}
@@ -3423,6 +4908,740 @@ function App() {
           }));
         }}
       />
+
+      <Dialog
+        open={reservationOpen}
+        onOpenChange={(open) => {
+          setReservationOpen(open);
+          if (!open) resetReservationFlow();
+        }}
+        overlayClassName="z-[60]"
+      >
+        <DialogContent className="sm:max-w-4xl">
+          {reservationStep === 'mode' && (
+            <>
+              <DialogHeader className="text-left">
+                <DialogTitle>Reservas</DialogTitle>
+                <DialogDescription>Elige la forma en que quieres reservar tu mesa.</DialogDescription>
+              </DialogHeader>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm uppercase tracking-wide text-muted-foreground">Con registro</p>
+                    <h4 className="text-lg font-semibold">Reservar como cliente</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Accede a tus reservas y notificaciones de confirmación.
+                    </p>
+                  </div>
+                  <Button type="button" variant="danger" onClick={handleReservationRegisteredStart} className="w-full">
+                    Reservar con registro
+                  </Button>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm uppercase tracking-wide text-muted-foreground">Sin registro</p>
+                    <h4 className="text-lg font-semibold">Reservar como invitado</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Completa tus datos básicos para asegurar la reserva.
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" onClick={handleReservationGuestStart} className="w-full">
+                    Reservar sin registro
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {reservationStep === 'guest' && (
+            <>
+              <DialogHeader className="text-left">
+                <DialogTitle>Reserva sin registro</DialogTitle>
+                <DialogDescription>Ingresa los datos de la persona que realizará la reserva.</DialogDescription>
+              </DialogHeader>
+              <form className="mt-6 space-y-4" onSubmit={handleReservationGuestSubmit}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Nombre</Label>
+                    <Input
+                      value={reservationGuest.nombre}
+                      onChange={(e) => setReservationGuest((prev) => ({ ...prev, nombre: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Apellido</Label>
+                    <Input
+                      value={reservationGuest.apellido}
+                      onChange={(e) => setReservationGuest((prev) => ({ ...prev, apellido: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>RUT</Label>
+                  <Input
+                    placeholder="12.345.678-9"
+                    value={reservationGuest.rut}
+                    onChange={(e) => setReservationGuest((prev) => ({ ...prev, rut: formatRut(e.target.value) }))}
+                    required
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <Button type="button" variant="outline" onClick={() => setReservationStep('mode')}>
+                    Volver
+                  </Button>
+                  <Button type="submit" variant="danger">
+                    Continuar
+                  </Button>
+                </div>
+              </form>
+            </>
+          )}
+
+          {reservationStep === 'business' && (
+            <>
+              <DialogHeader className="text-left">
+                <DialogTitle>Selecciona un local</DialogTitle>
+                <DialogDescription>Elige el tipo de local y el negocio donde deseas reservar.</DialogDescription>
+              </DialogHeader>
+              <div className="mt-5 space-y-4">
+                <div>
+                  <p className="text-sm font-semibold">¿En qué tipo de local desea reservar?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {defaultBusinessTypes.map((type) => (
+                      <Button
+                        key={type}
+                        type="button"
+                        variant={reservationType === type ? 'danger' : 'outline'}
+                        onClick={() => setReservationType(type)}
+                      >
+                        {humanizeCategoryType(type)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Buscar local</Label>
+                  <Input
+                    placeholder="Escribe el nombre del local"
+                    value={reservationSearch}
+                    onChange={(e) => setReservationSearch(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  {reservationBusinessOptions.length ? (
+                    reservationBusinessOptions.map((business) => (
+                      <button
+                        key={business.id}
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-xl border border-border bg-card/80 px-4 py-3 text-left transition hover:border-primary/40 hover:bg-muted/40"
+                        onClick={() => handleReservationBusinessSelect(business.id)}
+                      >
+                        <Avatar src={business.imageUrl} alt={business.name} className="h-10 w-10">
+                          <AvatarFallback className="bg-muted text-muted-foreground">
+                            {(business.name || 'N')[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <p className="font-semibold">{business.name}</p>
+                          <p className="text-xs text-muted-foreground">{humanizeCategoryType(business.type)}</p>
+                        </div>
+                        <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
+                          {business.city || business.region || 'Chile'}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                      No hay locales disponibles con los filtros seleccionados.
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setReservationStep(reservationMode === 'guest' ? 'guest' : 'mode')}
+                  >
+                    Volver
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {reservationStep === 'tables' && (
+            <>
+              <DialogHeader className="text-left">
+                <DialogTitle>Selecciona mesas y hora</DialogTitle>
+                <DialogDescription>
+                  {reservationBusiness
+                    ? `Reserva en ${reservationBusiness.name}`
+                    : 'Selecciona las mesas disponibles.'}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-5 space-y-4">
+                <div className="rounded-xl border border-border bg-muted/30 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold">Mesas disponibles</p>
+                    <span className="text-xs text-muted-foreground">
+                      {reservationTablesForSelectedBusiness.length} configuradas
+                    </span>
+                  </div>
+                  {reservationTablesLoading && !reservationTablesForSelectedBusiness.length ? (
+                    <p className="mt-3 text-sm text-muted-foreground">Cargando mesas...</p>
+                  ) : reservationTablesForSelectedBusiness.length ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {reservationTablesForSelectedBusiness.map((table) => {
+                        const statusValue = table.status || 'DISPONIBLE';
+                        const statusMeta = getTableStatusMeta(statusValue);
+                        const isAvailable = statusValue === 'DISPONIBLE';
+                        const isSelected = reservationTableSelection.includes(String(table.id));
+                        return (
+                          <button
+                            key={table.id}
+                            type="button"
+                            onClick={() => isAvailable && handleReservationTableToggle(table.id)}
+                            disabled={!isAvailable}
+                            className={cn(
+                              'flex flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition',
+                              isAvailable
+                                ? 'border-border bg-card hover:border-primary/40 hover:bg-muted/30'
+                                : 'cursor-not-allowed border-dashed border-border/70 bg-muted/40 text-muted-foreground',
+                              isSelected && 'ring-2 ring-rose-400/60'
+                            )}
+                          >
+                            <div className="flex w-full items-center justify-between">
+                              <p className="font-semibold">{table.label}</p>
+                              <span
+                                className={cn(
+                                  'rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                  statusMeta?.badgeClass
+                                )}
+                              >
+                                {statusMeta?.label}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{table.seats} sillas disponibles</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Este local aún no tiene mesas configuradas.
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Fecha</Label>
+                    <Input type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Hora</Label>
+                    {reservationTimeOptions.length ? (
+                      <select
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        value={reservationTime}
+                        onChange={(e) => setReservationTime(e.target.value)}
+                      >
+                        <option value="">Selecciona una hora</option>
+                        {reservationTimeOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        type="time"
+                        value={reservationTime}
+                        onChange={(e) => setReservationTime(e.target.value)}
+                      />
+                    )}
+                  </div>
+                </div>
+                {reservationHoursLabel && (
+                  <p className="text-xs text-muted-foreground">
+                    Horarios disponibles para reservas: {reservationHoursLabel}
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Notas adicionales (opcional)</Label>
+                  <textarea
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                    rows={3}
+                    value={reservationNotes}
+                    onChange={(e) => setReservationNotes(e.target.value)}
+                    placeholder="Ej: necesitamos silla de bebé, celebrar cumpleaños..."
+                  />
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
+                  <p className="font-semibold">Resumen</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {reservationTableSelection.length} mesas seleccionadas · {reservationTotalSelectedSeats} sillas
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <Button type="button" variant="outline" onClick={() => setReservationStep('business')}>
+                    Volver
+                  </Button>
+                  <Button type="button" variant="danger" onClick={handleReservationToPayment}>
+                    Continuar al pago
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {reservationStep === 'payment' && (
+            <>
+              <DialogHeader className="text-left">
+                <DialogTitle>Pasarela de pago</DialogTitle>
+                <DialogDescription>
+                  Se cobrará un monto fijo de $ {formatNumber(RESERVATION_PRICE)} por la reserva.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-5 space-y-4">
+                <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
+                  <p className="font-semibold">Resumen de la reserva</p>
+                  <div className="mt-2 space-y-1 text-muted-foreground">
+                    <p>
+                      <span className="font-semibold text-foreground">Local:</span>{' '}
+                      {reservationBusiness?.name || 'Sin seleccionar'}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-foreground">Mesas:</span>{' '}
+                      {reservationSelectedTables.map((table) => table.label).join(', ')}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-foreground">Fecha:</span> {reservationDate} · {reservationTime}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-foreground">Total sillas:</span>{' '}
+                      {reservationTotalSelectedSeats}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                    <p className="font-semibold">Pago con tarjeta (demo)</p>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="md:col-span-2 space-y-2">
+                      <Label>Nombre en la tarjeta</Label>
+                      <Input
+                        value={reservationPayment.name}
+                        onChange={(e) => setReservationPayment((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="Nombre completo"
+                      />
+                    </div>
+                    <div className="md:col-span-2 space-y-2">
+                      <Label>Número de tarjeta</Label>
+                      <Input
+                        value={reservationPayment.number}
+                        onChange={(e) => setReservationPayment((prev) => ({ ...prev, number: e.target.value }))}
+                        placeholder="0000 0000 0000 0000"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Vencimiento</Label>
+                      <Input
+                        value={reservationPayment.expiry}
+                        onChange={(e) => setReservationPayment((prev) => ({ ...prev, expiry: e.target.value }))}
+                        placeholder="MM/AA"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>CVV</Label>
+                      <Input
+                        value={reservationPayment.cvv}
+                        onChange={(e) => setReservationPayment((prev) => ({ ...prev, cvv: e.target.value }))}
+                        placeholder="123"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <Button type="button" variant="outline" onClick={() => setReservationStep('tables')}>
+                    Volver
+                  </Button>
+                  <Button type="button" variant="danger" onClick={handleConfirmReservation}>
+                    Confirmar y pagar $ {formatNumber(RESERVATION_PRICE)}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {reservationStep === 'success' && (
+            <>
+              <DialogHeader className="text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                  <CheckCircle2 className="h-8 w-8" aria-hidden="true" />
+                </div>
+                <DialogTitle>¡Felicidades! Su reserva se ha agendado con éxito</DialogTitle>
+                <DialogDescription>
+                  Guarda este comprobante y preséntalo cuando llegues al negocio.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-5 space-y-4">
+                <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
+                  <p className="font-semibold">Resumen</p>
+                  <div className="mt-2 space-y-1 text-muted-foreground">
+                    <p>
+                      <span className="font-semibold text-foreground">Código:</span>{' '}
+                      {reservationSuccess?.code || '--'}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-foreground">Local:</span>{' '}
+                      {reservationSuccess?.businessName || ''}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-foreground">Fecha:</span>{' '}
+                      {reservationSuccess?.date || ''} · {reservationSuccess?.time || ''}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-foreground">Mesas:</span>{' '}
+                      {Array.isArray(reservationSuccess?.tables)
+                        ? reservationSuccess.tables.map((table) => table.label).join(', ')
+                        : ''}
+                    </p>
+                    {reservationSuccess?.guestRut && (
+                      <p>
+                        <span className="font-semibold text-foreground">RUT:</span> {reservationSuccess.guestRut}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-4 text-sm">
+                  <p className="text-muted-foreground">
+                    Debe presentar este archivo al momento de presentarse al negocio.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3"
+                    onClick={() => downloadReservationPdf(reservationSuccess)}
+                  >
+                    Descargar reserva en PDF
+                  </Button>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {reservationMode === 'registered' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setClientPortalTab('reservas');
+                        setClientPortalOpen(true);
+                      }}
+                    >
+                      Ver mis reservas
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={() => {
+                      setReservationOpen(false);
+                      resetReservationFlow();
+                    }}
+                  >
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={reservationAdminDetailOpen}
+        onOpenChange={(open) => {
+          setReservationAdminDetailOpen(open);
+          if (!open) setReservationAdminDetail(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader className="text-left">
+            <DialogTitle>Detalle de reserva</DialogTitle>
+            <DialogDescription>Información completa del cliente y la reserva seleccionada.</DialogDescription>
+          </DialogHeader>
+          {reservationAdminDetail ? (
+            <div className="space-y-3 text-sm">
+              <div className="rounded-xl border border-border bg-muted/30 p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Reserva</p>
+                <div className="mt-2 space-y-1 text-muted-foreground">
+                  <p>
+                    <span className="font-semibold text-foreground">Código:</span> {reservationAdminDetail.code || '--'}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Local:</span> {reservationAdminDetail.businessName || '--'}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Fecha y hora:</span> {reservationAdminDetail.date} ·{' '}
+                    {reservationAdminDetail.time}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Mesas:</span>{' '}
+                    {Array.isArray(reservationAdminDetail.tables)
+                      ? reservationAdminDetail.tables.map((table) => table.label).join(', ')
+                      : 'Sin mesas'}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Sillas:</span> {reservationAdminDetail.totalSeats || 0}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Monto:</span> $
+                    {formatNumber(reservationAdminDetail.totalPrice ?? RESERVATION_PRICE)}
+                  </p>
+                  {reservationAdminDetail.notes && (
+                    <p>
+                      <span className="font-semibold text-foreground">Notas:</span> {reservationAdminDetail.notes}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Cliente</p>
+                {reservationAdminDetail.userId ? (
+                  <div className="mt-2 space-y-1 text-muted-foreground">
+                    <p>
+                      <span className="font-semibold text-foreground">Registrado:</span>{' '}
+                      {reservationAdminDetail.userName || reservationAdminDetail.holderName || 'Cliente'}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-foreground">Correo:</span>{' '}
+                      {reservationAdminDetail.userEmail || '--'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-1 text-muted-foreground">
+                    <p>
+                      <span className="font-semibold text-foreground">Invitado:</span>{' '}
+                      {reservationAdminDetail.guestName || reservationAdminDetail.holderName || 'Cliente'}
+                      {reservationAdminDetail.guestLastName ? ` ${reservationAdminDetail.guestLastName}` : ''}
+                    </p>
+                    {reservationAdminDetail.guestRut && (
+                      <p>
+                        <span className="font-semibold text-foreground">RUT:</span> {reservationAdminDetail.guestRut}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Selecciona una reserva para ver el detalle.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reservationScanOpen} onOpenChange={setReservationScanOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="text-left">
+            <DialogTitle>Escanea reserva</DialogTitle>
+            <DialogDescription>Apunta al QR del comprobante para validar la reserva.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-3">
+            <div className="aspect-video overflow-hidden rounded-xl border border-border bg-black/80">
+              <video ref={reservationScanVideoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
+            </div>
+            {reservationScanStatus === 'scanning' && (
+              <p className="text-xs text-muted-foreground">Apunta al QR para leer el código de la reserva.</p>
+            )}
+            {reservationScanStatus === 'verifying' && (
+              <p className="text-xs text-muted-foreground">Verificando la reserva...</p>
+            )}
+            {reservationScanStatus === 'error' && (
+              <p className="text-sm text-rose-600">{reservationScanError || 'No se pudo verificar la reserva.'}</p>
+            )}
+            {reservationScanStatus === 'success' && reservationScanResult?.reservation && (
+              <div className="rounded-xl border border-border bg-card p-4 text-sm space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold">
+                    {reservationScanResult.valid ? 'Reserva verificada' : 'Reserva no válida'}
+                  </p>
+                  <span
+                    className={cn(
+                      'rounded-full border px-2 py-1 text-xs font-semibold',
+                      reservationScanResult.valid
+                        ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                        : 'border-rose-200 bg-rose-100 text-rose-700'
+                    )}
+                  >
+                    {reservationScanResult.valid ? 'VÁLIDA' : 'NO VÁLIDA'}
+                  </span>
+                </div>
+                <p className="text-muted-foreground">
+                  <span className="font-semibold text-foreground">Código:</span>{' '}
+                  {reservationScanResult.reservation.code || '--'}
+                </p>
+                <p className="text-muted-foreground">
+                  <span className="font-semibold text-foreground">Cliente:</span>{' '}
+                  {reservationScanResult.reservation.userName ||
+                    reservationScanResult.reservation.guestName ||
+                    reservationScanResult.reservation.holderName ||
+                    'Cliente'}
+                </p>
+                <p className="text-muted-foreground">
+                  <span className="font-semibold text-foreground">Fecha:</span>{' '}
+                  {reservationScanResult.reservation.date} · {reservationScanResult.reservation.time}
+                </p>
+                <p className="text-muted-foreground">
+                  <span className="font-semibold text-foreground">Mesas:</span>{' '}
+                  {Array.isArray(reservationScanResult.reservation.tables)
+                    ? reservationScanResult.reservation.tables.map((table) => table.label).join(', ')
+                    : 'Sin mesas'}
+                </p>
+              </div>
+            )}
+            {reservationScanStatus === 'success' && !reservationScanResult?.reservation && (
+              <p className="text-sm text-muted-foreground">No se encontró información adicional de la reserva.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clientPortalOpen} onOpenChange={setClientPortalOpen}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader className="text-left">
+            <DialogTitle>Mi actividad</DialogTitle>
+            <DialogDescription>Revisa tus reservas, comentarios y publicaciones guardadas.</DialogDescription>
+          </DialogHeader>
+          <Tabs value={clientPortalTab} onValueChange={setClientPortalTab} className="mt-4">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="reservas">Reservas</TabsTrigger>
+              <TabsTrigger value="comentarios">Comentarios</TabsTrigger>
+              <TabsTrigger value="guardadas">Guardadas</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="reservas" className="mt-4 space-y-3">
+              {reservationsForUser.length ? (
+                reservationsForUser.map((reservation) => (
+                  <div key={reservation.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="font-semibold">{reservation.businessName}</p>
+                        <p className="text-xs text-muted-foreground">Código: {reservation.code || '--'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {reservation.date} · {reservation.time}
+                        </p>
+                      </div>
+                      <span className="rounded-full border px-3 py-1 text-xs font-semibold text-emerald-700 border-emerald-200 bg-emerald-100">
+                        {reservation.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Mesas:{' '}
+                      {Array.isArray(reservation.tables)
+                        ? reservation.tables.map((table) => table.label).join(', ')
+                        : 'Sin mesas'}{' '}
+                      · Sillas: {reservation.totalSeats || 0}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const business = businesses.find((b) => String(b.id) === String(reservation.businessId));
+                          downloadReservationPdf({
+                            ...reservation,
+                            businessLogo: reservation.businessLogo || business?.imageUrl || '',
+                          });
+                        }}
+                      >
+                        Descargar PDF
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  Aún no tienes reservas registradas.
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="comentarios" className="mt-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground">Tus comentarios más recientes.</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={refreshClientCommentReplies}
+                  disabled={clientCommentsRefreshing}
+                >
+                  {clientCommentsRefreshing ? 'Actualizando...' : 'Actualizar respuestas'}
+                </Button>
+              </div>
+              {clientComments.length ? (
+                clientComments.map((comment) => (
+                  <div key={comment.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                    <div className="flex flex-col gap-1">
+                      <p className="font-semibold">{comment.publicationTitle}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {comment.createdAt
+                          ? new Date(comment.createdAt).toLocaleString('es-CL', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                          : ''}
+                      </p>
+                    </div>
+                    <p className="text-sm">{comment.content}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Respuestas: {comment.replyCount || 0}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  Aún no tienes comentarios guardados.
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="guardadas" className="mt-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Heart className="h-4 w-4" aria-hidden="true" />
+                <span className="font-semibold">/</span>
+                <Download className="h-4 w-4" aria-hidden="true" />
+                <span>Publicaciones con me gusta y guardadas.</span>
+              </div>
+              {savedLikedPublications.length ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {savedLikedPublications.map((publication) => (
+                    <PinCard
+                      key={publication.id}
+                      publication={publication}
+                      likesCount={getHeartsValue(publication)}
+                      liked={hasLikedInSession(publication)}
+                      onLike={handleLike}
+                      onSelect={handleSelectPublication}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  Aún no tienes publicaciones guardadas con me gusta.
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       {(isOferente || isAdmin) && (
         <Dialog open={contactOpen} onOpenChange={setContactOpen}>
@@ -3933,6 +6152,8 @@ function App() {
         onRegisterVisit={handleRegisterVisit}
         onLike={handleLike}
         liked={hasLikedInSession(selectedPublication)}
+        saved={selectedPublication ? savedPublicationIdSet.has(String(selectedPublication.id)) : false}
+        onSave={handleSavePublication}
         businessLogoUrl={selectedBusinessLogoUrl}
         onViewBusiness={handleViewBusinessProfile}
         onEdit={(pub) => {

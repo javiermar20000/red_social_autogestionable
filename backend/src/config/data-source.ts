@@ -10,6 +10,9 @@ import { PublicationCategory } from '../entities/PublicationCategory.js';
 import { PublicationReview } from '../entities/PublicationReview.js';
 import { AdminGlobal } from '../entities/AdminGlobal.js';
 import { Comment } from '../entities/Comment.js';
+import { ReservationTable } from '../entities/ReservationTable.js';
+import { Reservation } from '../entities/Reservation.js';
+import { ReservationTableLink } from '../entities/ReservationTableLink.js';
 
 const {
   DB_HOST = 'db',
@@ -27,7 +30,21 @@ export const AppDataSource = new DataSource({
   password: DB_PASSWORD,
   database: DB_NAME,
   schema: 'public',
-  entities: [AdminGlobal, User, Tenant, Business, Category, Publication, Media, PublicationCategory, PublicationReview, Comment],
+  entities: [
+    AdminGlobal,
+    User,
+    Tenant,
+    Business,
+    Category,
+    Publication,
+    Media,
+    PublicationCategory,
+    PublicationReview,
+    Comment,
+    ReservationTable,
+    Reservation,
+    ReservationTableLink,
+  ],
   synchronize: false,
   logging: false,
 });

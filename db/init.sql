@@ -17,6 +17,9 @@ DROP TABLE IF EXISTS revision_publicacion CASCADE;
 DROP TABLE IF EXISTS notificacion CASCADE;
 DROP TABLE IF EXISTS favorito CASCADE;
 DROP TABLE IF EXISTS comentario CASCADE;
+DROP TABLE IF EXISTS reserva_mesa CASCADE;
+DROP TABLE IF EXISTS reserva CASCADE;
+DROP TABLE IF EXISTS mesa CASCADE;
 DROP TABLE IF EXISTS publicacion_categoria CASCADE;
 DROP TABLE IF EXISTS categoria CASCADE;
 DROP TABLE IF EXISTS media CASCADE;
@@ -29,6 +32,9 @@ DROP TABLE IF EXISTS tenant CASCADE;
 DROP TYPE IF EXISTS revision_resultado_enum CASCADE;
 DROP TYPE IF EXISTS notificacion_tipo_enum CASCADE;
 DROP TYPE IF EXISTS comentario_estado_enum CASCADE;
+DROP TYPE IF EXISTS reserva_estado_enum CASCADE;
+DROP TYPE IF EXISTS reserva_horario_enum CASCADE;
+DROP TYPE IF EXISTS mesa_estado_enum CASCADE;
 DROP TYPE IF EXISTS categoria_tipo_enum CASCADE;
 DROP TYPE IF EXISTS media_tipo_enum CASCADE;
 DROP TYPE IF EXISTS publicacion_estado_enum CASCADE;
@@ -142,6 +148,25 @@ CREATE TYPE comentario_estado_enum AS ENUM (
   'ELIMINADO'
 );
 
+CREATE TYPE mesa_estado_enum AS ENUM (
+  'DISPONIBLE',
+  'OCUPADA',
+  'MANTENIMIENTO'
+);
+
+CREATE TYPE reserva_horario_enum AS ENUM (
+  'DESAYUNO',
+  'ALMUERZO',
+  'ONCE',
+  'CENA'
+);
+
+CREATE TYPE reserva_estado_enum AS ENUM (
+  'CONFIRMADA',
+  'CANCELADA',
+  'COMPLETADA'
+);
+
 CREATE TYPE notificacion_tipo_enum AS ENUM (
   'SISTEMA',
   'PUBLICACION',
@@ -222,12 +247,70 @@ CREATE TABLE negocio (
   latitud        DECIMAL(9,6),
   longitud       DECIMAL(9,6),
   estado         negocio_estado_enum NOT NULL DEFAULT 'ACTIVO',
+  horario_manana_inicio TIME,
+  horario_manana_fin    TIME,
+  horario_tarde_inicio  TIME,
+  horario_tarde_fin     TIME,
   fecha_creacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   CONSTRAINT fk_negocio_tenant
     FOREIGN KEY (tenant_id) REFERENCES tenant(id)
     ON DELETE CASCADE,
   CONSTRAINT fk_negocio_owner
     FOREIGN KEY (owner_id) REFERENCES usuario(id)
+    ON DELETE RESTRICT
+);
+
+-- MESA (PARA RESERVAS)
+CREATE TABLE mesa (
+  id                BIGSERIAL PRIMARY KEY,
+  negocio_id        BIGINT NOT NULL,
+  nombre            VARCHAR(120) NOT NULL,
+  sillas            INTEGER NOT NULL DEFAULT 1,
+  estado            mesa_estado_enum NOT NULL DEFAULT 'DISPONIBLE',
+  fecha_creacion    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  fecha_actualizacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_mesa_negocio
+    FOREIGN KEY (negocio_id) REFERENCES negocio(id)
+    ON DELETE CASCADE
+);
+
+-- RESERVA
+CREATE TABLE reserva (
+  id              BIGSERIAL PRIMARY KEY,
+  negocio_id      BIGINT NOT NULL,
+  usuario_id      BIGINT,
+  codigo          VARCHAR(50) NOT NULL UNIQUE,
+  titular_nombre  VARCHAR(200),
+  nombre_invitado VARCHAR(150),
+  apellido_invitado VARCHAR(150),
+  rut_invitado    VARCHAR(20),
+  fecha_reserva   DATE NOT NULL,
+  hora_reserva    TIME NOT NULL,
+  horario         reserva_horario_enum NOT NULL,
+  notas           TEXT,
+  estado          reserva_estado_enum NOT NULL DEFAULT 'CONFIRMADA',
+  monto           NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  fecha_creacion  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_reserva_negocio
+    FOREIGN KEY (negocio_id) REFERENCES negocio(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reserva_usuario
+    FOREIGN KEY (usuario_id) REFERENCES usuario(id)
+    ON DELETE SET NULL
+);
+
+-- RESERVA - MESA (N:M)
+CREATE TABLE reserva_mesa (
+  reserva_id  BIGINT NOT NULL,
+  mesa_id     BIGINT NOT NULL,
+  mesa_nombre VARCHAR(120) NOT NULL,
+  mesa_sillas INTEGER NOT NULL,
+  PRIMARY KEY (reserva_id, mesa_id),
+  CONSTRAINT fk_reserva_mesa_reserva
+    FOREIGN KEY (reserva_id) REFERENCES reserva(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_reserva_mesa_mesa
+    FOREIGN KEY (mesa_id) REFERENCES mesa(id)
     ON DELETE RESTRICT
 );
 
@@ -375,6 +458,12 @@ CREATE TABLE revision_publicacion (
 CREATE INDEX idx_usuario_tenant_id ON usuario (tenant_id);
 CREATE INDEX idx_negocio_tenant_id ON negocio (tenant_id);
 CREATE INDEX idx_negocio_owner_id ON negocio (owner_id);
+CREATE INDEX idx_mesa_negocio_id ON mesa (negocio_id);
+CREATE INDEX idx_reserva_negocio_id ON reserva (negocio_id);
+CREATE INDEX idx_reserva_usuario_id ON reserva (usuario_id);
+CREATE INDEX idx_reserva_fecha_reserva ON reserva (fecha_reserva);
+CREATE INDEX idx_reserva_mesa_reserva_id ON reserva_mesa (reserva_id);
+CREATE INDEX idx_reserva_mesa_mesa_id ON reserva_mesa (mesa_id);
 CREATE INDEX idx_publicacion_negocio_id ON publicacion (negocio_id);
 CREATE INDEX idx_publicacion_autor_id ON publicacion (autor_id);
 CREATE INDEX idx_media_publicacion_id ON media (publicacion_id);
@@ -466,6 +555,9 @@ EXECUTE FUNCTION trg_publicacion_tenant_consistency();
 -- Habilitar RLS
 ALTER TABLE usuario               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE negocio               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mesa                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reserva               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reserva_mesa          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categoria             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE publicacion           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE media                 ENABLE ROW LEVEL SECURITY;
@@ -563,6 +655,107 @@ BEGIN
         OR (
           current_setting('app.tenant_id', true) IS NOT NULL
           AND tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      );
+    $pol$;
+  END IF;
+END$$;
+
+-- 4.1) mesa: por tenant del negocio
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'mesa'
+  ) THEN
+    EXECUTE $pol$
+      CREATE POLICY mesa_tenant_isolation ON mesa
+      USING (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR EXISTS (
+          SELECT 1
+          FROM negocio n
+          WHERE n.id = mesa.negocio_id
+            AND current_setting('app.tenant_id', true) IS NOT NULL
+            AND n.tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      )
+      WITH CHECK (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR EXISTS (
+          SELECT 1
+          FROM negocio n
+          WHERE n.id = mesa.negocio_id
+            AND current_setting('app.tenant_id', true) IS NOT NULL
+            AND n.tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      );
+    $pol$;
+  END IF;
+END$$;
+
+-- 4.2) reserva: por tenant del negocio
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'reserva'
+  ) THEN
+    EXECUTE $pol$
+      CREATE POLICY reserva_tenant_isolation ON reserva
+      USING (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR EXISTS (
+          SELECT 1
+          FROM negocio n
+          WHERE n.id = reserva.negocio_id
+            AND current_setting('app.tenant_id', true) IS NOT NULL
+            AND n.tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      )
+      WITH CHECK (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR EXISTS (
+          SELECT 1
+          FROM negocio n
+          WHERE n.id = reserva.negocio_id
+            AND current_setting('app.tenant_id', true) IS NOT NULL
+            AND n.tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      );
+    $pol$;
+  END IF;
+END$$;
+
+-- 4.3) reserva_mesa: por tenant del negocio via mesa
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'reserva_mesa'
+  ) THEN
+    EXECUTE $pol$
+      CREATE POLICY reserva_mesa_tenant_isolation ON reserva_mesa
+      USING (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR EXISTS (
+          SELECT 1
+          FROM mesa m
+          JOIN negocio n ON n.id = m.negocio_id
+          WHERE m.id = reserva_mesa.mesa_id
+            AND current_setting('app.tenant_id', true) IS NOT NULL
+            AND n.tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      )
+      WITH CHECK (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR EXISTS (
+          SELECT 1
+          FROM mesa m
+          JOIN negocio n ON n.id = m.negocio_id
+          WHERE m.id = reserva_mesa.mesa_id
+            AND current_setting('app.tenant_id', true) IS NOT NULL
+            AND n.tenant_id = current_setting('app.tenant_id')::BIGINT
         )
       );
     $pol$;

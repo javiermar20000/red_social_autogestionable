@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Heart, Bell, User, LogOut, PlusCircle, Menu, X } from 'lucide-react';
+import { Search, Heart, Bell, User, LogOut, PlusCircle, Menu, X, CalendarDays } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
 import { Input } from './ui/Input.jsx';
 import { cn } from '../lib/cn.js';
@@ -9,6 +9,7 @@ const Header = ({
   search,
   onSearchChange,
   onExplore,
+  onReservations,
   onTopHearts,
   onNotifications,
   hasNotifications = false,
@@ -22,6 +23,14 @@ const Header = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const hasNotificationBadge = notificationsCount > 0;
 
+  const handleHome = () => {
+    if (onHome) {
+      onHome();
+    } else {
+      onSearchChange('');
+    }
+  };
+
   const handleAndClose = (action) => {
     if (action) {
       action();
@@ -33,23 +42,15 @@ const Header = ({
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="container relative flex h-16 items-center justify-between px-4 gap-3">
         <div className="flex items-center gap-4">
-          <img src={logo} alt="GastroHub" className="h-12 w-auto" />
+          <button type="button" onClick={handleHome} className="flex items-center">
+            <img src={logo} alt="GastroHub" className="h-12 w-auto" />
+          </button>
           <nav className="hidden items-center gap-2 md:flex">
-            <Button
-              variant="ghost"
-              className="text-sm font-medium"
-              onClick={() => {
-                if (onHome) {
-                  onHome();
-                } else {
-                  onSearchChange('');
-                }
-              }}
-            >
-              Inicio
-            </Button>
             <Button variant="ghost" className="text-sm font-medium" onClick={onExplore}>
               Explorar
+            </Button>
+            <Button variant="ghost" className="text-sm font-medium" onClick={onReservations}>
+              Reservas
             </Button>
           </nav>
         </div>
@@ -169,6 +170,10 @@ const Header = ({
                   <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onExplore)}>
                     <Heart className="h-5 w-5" />
                     Explorar
+                  </Button>
+                  <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onReservations)}>
+                    <CalendarDays className="h-5 w-5" />
+                    Reservas
                   </Button>
                   {currentUser ? (
                     <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onLogout)}>

@@ -29,7 +29,7 @@ const AuthDialog = ({ open, onOpenChange, onLogin, onRegister, loading = false }
     <Dialog open={open} onOpenChange={onOpenChange} overlayClassName="z-[70]">
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle className="text-center text-2xl font-bold">Bienvenido a GastroHub</DialogTitle>
+          <DialogTitle className="text-center text-2xl font-bold">Bienvenido a Match Coffee</DialogTitle>
           <DialogDescription className="text-center">
             Inicia sesión para comentar o crear negocios y publicaciones gastronómicas.
           </DialogDescription>

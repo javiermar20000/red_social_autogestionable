@@ -59,6 +59,18 @@ export class Business {
   @Column({ name: 'estado', type: 'enum', enum: NegocioEstado, enumName: 'negocio_estado_enum', default: NegocioEstado.INACTIVO })
   status!: NegocioEstado;
 
+  @Column({ name: 'horario_manana_inicio', type: 'time', nullable: true })
+  morningStart!: string | null;
+
+  @Column({ name: 'horario_manana_fin', type: 'time', nullable: true })
+  morningEnd!: string | null;
+
+  @Column({ name: 'horario_tarde_inicio', type: 'time', nullable: true })
+  afternoonStart!: string | null;
+
+  @Column({ name: 'horario_tarde_fin', type: 'time', nullable: true })
+  afternoonEnd!: string | null;
+
   @CreateDateColumn({ name: 'fecha_creacion', type: 'timestamptz' })
   createdAt!: Date;
 }

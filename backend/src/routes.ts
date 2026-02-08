@@ -10,6 +10,9 @@ import { Media, MediaTipo } from './entities/Media.js';
 import { PublicationCategory } from './entities/PublicationCategory.js';
 import { PublicationReview, RevisionResultado } from './entities/PublicationReview.js';
 import { Comment, ComentarioEstado } from './entities/Comment.js';
+import { ReservationTable, MesaEstado } from './entities/ReservationTable.js';
+import { Reservation, ReservaEstado, ReservaHorario } from './entities/Reservation.js';
+import { ReservationTableLink } from './entities/ReservationTableLink.js';
 import { EntityManager, In } from 'typeorm';
 import { runWithContext } from './utils/rls.js';
 
@@ -19,6 +22,15 @@ const asyncHandler =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown) =>
   (req: Request, res: Response, next: NextFunction) =>
     Promise.resolve(fn(req, res, next)).catch(next);
+
+class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
 
 const getTenantIdFromRequest = (req: AuthRequest) => {
   const fromQuery = typeof req.query.tenantId === 'string' ? req.query.tenantId : undefined;
@@ -80,10 +92,10 @@ const ensureTenantIsActive = async (tenantId: string, options: { allowAutoActiva
 const ensureUserReady = (user: User, options: { requireTenant?: boolean } = {}) => {
   const { requireTenant = true } = options;
   if (user.estadoRegistro !== EstadoRegistroUsuario.ACTIVO) {
-    throw new Error('Tu cuenta aún no está activa');
+    throw new HttpError(403, 'Tu cuenta aún no está activa');
   }
   if (requireTenant && !user.tenantId) {
-    throw new Error('Debes tener un tenant asignado');
+    throw new HttpError(400, 'Debes tener un tenant asignado');
   }
 };
 
@@ -91,6 +103,62 @@ const parseNumeric = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+};
+
+const parsePositiveInt = (value: unknown, fallback = 1) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return Math.floor(num);
+};
+
+const parseTimeToMinutes = (value: unknown): number | null => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const normalizeTimeValue = (value: unknown): string | null => {
+  const minutes = parseTimeToMinutes(value);
+  if (minutes === null) return null;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const isTimeWithinBusinessHours = (business: Business, time: string): boolean => {
+  const timeMinutes = parseTimeToMinutes(time);
+  if (timeMinutes === null) return false;
+
+  const morningStart = parseTimeToMinutes(business.morningStart);
+  const morningEnd = parseTimeToMinutes(business.morningEnd);
+  const afternoonStart = parseTimeToMinutes(business.afternoonStart);
+  const afternoonEnd = parseTimeToMinutes(business.afternoonEnd);
+
+  const hasMorningRange = morningStart !== null && morningEnd !== null;
+  const hasAfternoonRange = afternoonStart !== null && afternoonEnd !== null;
+
+  if (!hasMorningRange && !hasAfternoonRange) return true;
+
+  const inMorning = hasMorningRange && timeMinutes >= morningStart! && timeMinutes <= morningEnd!;
+  const inAfternoon = hasAfternoonRange && timeMinutes >= afternoonStart! && timeMinutes <= afternoonEnd!;
+  return Boolean(inMorning || inAfternoon);
+};
+
+const normalizeReservationSchedule = (value: unknown): ReservaHorario => {
+  const raw = String(value || '').trim().toUpperCase();
+  const allowed = Object.values(ReservaHorario);
+  return (allowed.includes(raw as ReservaHorario) ? raw : ReservaHorario.ALMUERZO) as ReservaHorario;
+};
+
+const generateReservationCode = () => {
+  const random = Math.floor(100 + Math.random() * 900);
+  return `RSV-${Date.now().toString(36).toUpperCase()}-${random}`;
 };
 
 const fetchPublicationRatingSummary = async (
@@ -533,7 +601,21 @@ router.post(
   asyncHandler(async (req: AuthRequest, res) => {
     const user = req.auth!.user!;
     ensureUserReady(user, { requireTenant: false });
-    const { name, type, description, address, city, region, amenities, imageUrl, phone } = req.body;
+    const {
+      name,
+      type,
+      description,
+      address,
+      city,
+      region,
+      amenities,
+      imageUrl,
+      phone,
+      morningStart,
+      morningEnd,
+      afternoonStart,
+      afternoonEnd,
+    } = req.body;
     if (!name) return res.status(400).json({ message: 'Nombre es obligatorio' });
 
     let tenant = null as Tenant | null;
@@ -573,6 +655,10 @@ router.post(
         city: city || null,
         region: region || null,
         amenities: normalizeAmenities(amenities),
+        morningStart: normalizeTimeValue(morningStart),
+        morningEnd: normalizeTimeValue(morningEnd),
+        afternoonStart: normalizeTimeValue(afternoonStart),
+        afternoonEnd: normalizeTimeValue(afternoonEnd),
         status: NegocioEstado.ACTIVO,
       })
     );
@@ -635,7 +721,20 @@ router.put(
       return res.status(403).json({ message: 'No tienes permiso para editar este negocio' });
     }
 
-    const { name, description, address, city, region, amenities, imageUrl, phone } = req.body;
+    const {
+      name,
+      description,
+      address,
+      city,
+      region,
+      amenities,
+      imageUrl,
+      phone,
+      morningStart,
+      morningEnd,
+      afternoonStart,
+      afternoonEnd,
+    } = req.body;
     const updates: Partial<Business> = {};
     if (name !== undefined) updates.name = String(name).slice(0, 255);
     if (description !== undefined) updates.description = description || null;
@@ -645,6 +744,10 @@ router.put(
     if (city !== undefined) updates.city = city || null;
     if (region !== undefined) updates.region = region || null;
     if (amenities !== undefined) updates.amenities = normalizeAmenities(amenities);
+    if (morningStart !== undefined) updates.morningStart = normalizeTimeValue(morningStart);
+    if (morningEnd !== undefined) updates.morningEnd = normalizeTimeValue(morningEnd);
+    if (afternoonStart !== undefined) updates.afternoonStart = normalizeTimeValue(afternoonStart);
+    if (afternoonEnd !== undefined) updates.afternoonEnd = normalizeTimeValue(afternoonEnd);
 
     await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
       manager.getRepository(Business).update({ id: businessId }, updates)
@@ -679,6 +782,591 @@ router.post(
       manager.getRepository(Business).update({ id }, { status: NegocioEstado.ACTIVO })
     );
     res.json({ message: 'Negocio aprobado' });
+  })
+);
+
+// ========================
+// RESERVAS Y MESAS
+// ========================
+
+router.get(
+  '/businesses/:id/tables',
+  optionalAuthMiddleware,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const businessId = req.params.id;
+    const requester = req.auth;
+    const isAdmin = !!requester?.isAdminGlobal;
+    const owner = requester?.user;
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+
+    const isOwner = owner && business.ownerId === owner.id;
+    if (!isAdmin && !isOwner && business.status !== NegocioEstado.ACTIVO) {
+      return res.status(404).json({ message: 'Negocio no disponible' });
+    }
+
+    const tables = await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
+      manager.getRepository(ReservationTable).find({
+        where: { businessId: business.id },
+        order: { id: 'ASC' },
+      })
+    );
+    res.json(tables);
+  })
+);
+
+router.post(
+  '/businesses/:id/tables',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE, 'admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const businessId = req.params.id;
+    const requester = req.auth!;
+    const isAdmin = !!requester.isAdminGlobal;
+    const user = requester.user;
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== user!.id) {
+      return res.status(403).json({ message: 'No tienes permiso para este negocio' });
+    }
+
+    const label = String(req.body?.label || '').trim() || `Mesa ${Date.now()}`;
+    const seats = parsePositiveInt(req.body?.seats, 1);
+    const statusRaw = String(req.body?.status || MesaEstado.DISPONIBLE).toUpperCase();
+    const status = Object.values(MesaEstado).includes(statusRaw as MesaEstado)
+      ? (statusRaw as MesaEstado)
+      : MesaEstado.DISPONIBLE;
+
+    const created = await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) => {
+      const repo = manager.getRepository(ReservationTable);
+      const record = repo.create({
+        businessId: business.id,
+        label,
+        seats,
+        status,
+      });
+      return repo.save(record);
+    });
+
+    res.json(created);
+  })
+);
+
+router.post(
+  '/businesses/:id/tables/batch',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE, 'admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const businessId = req.params.id;
+    const requester = req.auth!;
+    const isAdmin = !!requester.isAdminGlobal;
+    const user = requester.user;
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== user!.id) {
+      return res.status(403).json({ message: 'No tienes permiso para este negocio' });
+    }
+
+    const count = parsePositiveInt(req.body?.count, 1);
+    const seats = parsePositiveInt(req.body?.seats, 1);
+    const statusRaw = String(req.body?.status || MesaEstado.DISPONIBLE).toUpperCase();
+    const status = Object.values(MesaEstado).includes(statusRaw as MesaEstado)
+      ? (statusRaw as MesaEstado)
+      : MesaEstado.DISPONIBLE;
+    const prefix = String(req.body?.prefix || 'Mesa').trim() || 'Mesa';
+
+    const created = await runWithContext({ tenantId: business.tenantId, isAdmin }, async (manager) => {
+      const repo = manager.getRepository(ReservationTable);
+      const existingCount = await repo.count({ where: { businessId: business.id } });
+      const startIndex = existingCount + 1;
+      const records = Array.from({ length: count }, (_, index) =>
+        repo.create({
+          businessId: business.id,
+          label: `${prefix} ${startIndex + index}`,
+          seats,
+          status,
+        })
+      );
+      return repo.save(records);
+    });
+
+    res.json(created);
+  })
+);
+
+router.put(
+  '/tables/:id',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE, 'admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const tableId = req.params.id;
+    const requester = req.auth!;
+    const isAdmin = !!requester.isAdminGlobal;
+    const user = requester.user;
+
+    const table = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(ReservationTable).findOne({ where: { id: tableId } })
+    );
+    if (!table) return res.status(404).json({ message: 'Mesa no encontrada' });
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: table.businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== user!.id) {
+      return res.status(403).json({ message: 'No tienes permiso para editar esta mesa' });
+    }
+
+    const updates: Partial<ReservationTable> = {};
+    if (req.body?.label !== undefined) {
+      updates.label = String(req.body.label || '').trim() || table.label;
+    }
+    if (req.body?.seats !== undefined) {
+      updates.seats = parsePositiveInt(req.body.seats, table.seats);
+    }
+    if (req.body?.status !== undefined) {
+      const statusRaw = String(req.body.status || '').toUpperCase();
+      if (Object.values(MesaEstado).includes(statusRaw as MesaEstado)) {
+        updates.status = statusRaw as MesaEstado;
+      }
+    }
+    updates.updatedAt = new Date();
+
+    await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
+      manager.getRepository(ReservationTable).update({ id: tableId }, updates)
+    );
+
+    const updated = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(ReservationTable).findOne({ where: { id: tableId } })
+    );
+    res.json(updated);
+  })
+);
+
+router.delete(
+  '/tables/:id',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE, 'admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const tableId = req.params.id;
+    const requester = req.auth!;
+    const isAdmin = !!requester.isAdminGlobal;
+    const user = requester.user;
+
+    const table = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(ReservationTable).findOne({ where: { id: tableId } })
+    );
+    if (!table) return res.status(404).json({ message: 'Mesa no encontrada' });
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: table.businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== user!.id) {
+      return res.status(403).json({ message: 'No tienes permiso para eliminar esta mesa' });
+    }
+
+    try {
+      await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
+        manager.getRepository(ReservationTable).delete({ id: tableId })
+      );
+      res.json({ message: 'Mesa eliminada' });
+    } catch (err) {
+      res.status(400).json({ message: 'No se pudo eliminar la mesa. Puede tener reservas asociadas.' });
+    }
+  })
+);
+
+router.get(
+  '/businesses/:id/reservations',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE, 'admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const businessId = req.params.id;
+    const requester = req.auth!;
+    const isAdmin = Boolean(requester.admin);
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== requester.user!.id) {
+      return res.status(403).json({ message: 'No tienes permiso para ver estas reservas' });
+    }
+
+    const list = await runWithContext({ tenantId: business.tenantId, isAdmin }, async (manager) => {
+      const reservationRepo = manager.getRepository(Reservation);
+      const reservations = await reservationRepo.find({
+        where: { businessId: business.id },
+        order: { createdAt: 'DESC' },
+      });
+      if (!reservations.length) return [];
+
+      const reservationIds = reservations.map((item) => String(item.id));
+      const links = await manager.getRepository(ReservationTableLink).find({
+        where: { reservationId: In(reservationIds) },
+      });
+      const linksByReservation = links.reduce<Record<string, ReservationTableLink[]>>((acc, link) => {
+        const key = String(link.reservationId);
+        acc[key] = acc[key] || [];
+        acc[key].push(link);
+        return acc;
+      }, {});
+
+      const userIds = reservations
+        .map((reservation) => reservation.userId)
+        .filter(Boolean)
+        .map((id) => String(id));
+      const users = userIds.length
+        ? await manager.getRepository(User).find({ where: { id: In(userIds) }, select: { id: true, nombre: true, email: true } })
+        : [];
+      const userMap = users.reduce<Record<string, User>>((acc, user) => {
+        acc[String(user.id)] = user;
+        return acc;
+      }, {});
+
+      return reservations.map((reservation) => {
+        const tables = (linksByReservation[String(reservation.id)] || []).map((link) => ({
+          id: link.tableId,
+          label: link.tableLabel,
+          seats: link.tableSeats,
+        }));
+        const totalSeats = tables.reduce((acc, table) => acc + (Number(table.seats) || 0), 0);
+        const userInfo = reservation.userId ? userMap[String(reservation.userId)] : null;
+        return {
+          id: reservation.id,
+          code: reservation.code,
+          businessId: reservation.businessId,
+          businessName: business.name,
+          businessType: business.type,
+          tables,
+          totalSeats,
+          date: reservation.date,
+          time: reservation.time,
+          schedule: reservation.schedule,
+          notes: reservation.notes,
+          status: reservation.status,
+          totalPrice: parseNumeric(reservation.amount) ?? 0,
+          userId: reservation.userId,
+          holderName: reservation.holderName,
+          guestName: reservation.guestName,
+          guestLastName: reservation.guestLastName,
+          guestRut: reservation.guestRut,
+          userName: userInfo?.nombre || null,
+          userEmail: userInfo?.email || null,
+          createdAt: reservation.createdAt,
+        };
+      });
+    });
+
+    res.json(list);
+  })
+);
+
+router.post(
+  '/reservations',
+  optionalAuthMiddleware,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const requester = req.auth;
+    const isAdmin = !!requester?.isAdminGlobal;
+    const user = requester?.user;
+
+    if (user && user.rol !== RolUsuario.CLIENTE) {
+      return res.status(403).json({ message: 'Solo clientes pueden reservar con registro' });
+    }
+
+    const businessId = String(req.body?.businessId || '').trim();
+    if (!businessId) return res.status(400).json({ message: 'Negocio es obligatorio' });
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: businessId } })
+    );
+    if (!business || business.status !== NegocioEstado.ACTIVO) {
+      return res.status(404).json({ message: 'Negocio no disponible' });
+    }
+
+    const tableIds = Array.isArray(req.body?.tableIds) ? req.body.tableIds.map(String) : [];
+    if (!tableIds.length) {
+      return res.status(400).json({ message: 'Selecciona al menos una mesa' });
+    }
+
+    const date = String(req.body?.date || '').trim();
+    const time = String(req.body?.time || '').trim();
+    if (!date || !time) {
+      return res.status(400).json({ message: 'Fecha y hora son obligatorias' });
+    }
+
+    const schedule = normalizeReservationSchedule(req.body?.schedule);
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+
+    if (!isTimeWithinBusinessHours(business, time)) {
+      return res.status(400).json({ message: 'La hora seleccionada no está dentro del horario de funcionamiento.' });
+    }
+
+    const guestName = String(req.body?.guest?.nombre || '').trim();
+    const guestLastName = String(req.body?.guest?.apellido || '').trim();
+    const guestRut = String(req.body?.guest?.rut || '').trim();
+    if (!user && (!guestName || !guestLastName || !guestRut)) {
+      return res.status(400).json({ message: 'Nombre, apellido y RUT son obligatorios' });
+    }
+
+    const amountRaw = parseNumeric(req.body?.amount);
+    const amountValue = amountRaw !== null && amountRaw >= 0 ? amountRaw : 5000;
+
+    const response = await runWithContext({ tenantId: business.tenantId, isAdmin }, async (manager) => {
+      const tableRepo = manager.getRepository(ReservationTable);
+      const reservationRepo = manager.getRepository(Reservation);
+      const linkRepo = manager.getRepository(ReservationTableLink);
+
+      const tables = await tableRepo
+        .createQueryBuilder('mesa')
+        .setLock('pessimistic_write')
+        .where('mesa.id IN (:...ids)', { ids: tableIds })
+        .andWhere('mesa.negocio_id = :businessId', { businessId: business.id })
+        .getMany();
+
+      if (tables.length !== tableIds.length) {
+        throw new Error('Alguna mesa no existe para este negocio');
+      }
+
+      const unavailable = tables.filter((table) => table.status !== MesaEstado.DISPONIBLE);
+      if (unavailable.length) {
+        throw new Error('Algunas mesas ya no están disponibles');
+      }
+
+      const holderName = user ? user.nombre : `${guestName} ${guestLastName}`.trim();
+
+      let saved: Reservation | null = null;
+      let attempts = 0;
+      while (!saved && attempts < 3) {
+        attempts += 1;
+        const code = generateReservationCode();
+        try {
+          saved = await reservationRepo.save(
+            reservationRepo.create({
+              businessId: business.id,
+              userId: user ? user.id : null,
+              code,
+              holderName: holderName || null,
+              guestName: user ? null : guestName || null,
+              guestLastName: user ? null : guestLastName || null,
+              guestRut: user ? null : guestRut || null,
+              date,
+              time,
+              schedule,
+              notes: notes || null,
+              status: ReservaEstado.CONFIRMADA,
+              amount: amountValue.toFixed(2),
+            })
+          );
+        } catch (err: any) {
+          if (err?.code !== '23505') throw err;
+        }
+      }
+      if (!saved) throw new Error('No se pudo generar el código de reserva');
+
+      const links = tables.map((table) =>
+        linkRepo.create({
+          reservationId: saved!.id,
+          tableId: table.id,
+          tableLabel: table.label,
+          tableSeats: table.seats,
+        })
+      );
+      await linkRepo.save(links);
+
+      await tableRepo.update(
+        { id: In(tableIds) },
+        { status: MesaEstado.OCUPADA, updatedAt: new Date() }
+      );
+
+      const totalSeats = tables.reduce((acc, table) => acc + (Number(table.seats) || 0), 0);
+
+      return {
+        reservation: saved,
+        tables,
+        totalSeats,
+      };
+    });
+
+    const tableSummaries = response.tables.map((table) => ({
+      id: table.id,
+      label: table.label,
+      seats: table.seats,
+    }));
+
+    res.json({
+      id: response.reservation.id,
+      code: response.reservation.code,
+      businessId: business.id,
+      businessName: business.name,
+      businessType: business.type,
+      tables: tableSummaries,
+      totalSeats: response.totalSeats,
+      date: response.reservation.date,
+      time: response.reservation.time,
+      schedule: response.reservation.schedule,
+      notes: response.reservation.notes,
+      status: response.reservation.status,
+      totalPrice: parseNumeric(response.reservation.amount) ?? amountValue,
+      userId: response.reservation.userId,
+      holderName: response.reservation.holderName,
+      guestName: response.reservation.guestName,
+      guestRut: response.reservation.guestRut,
+      createdAt: response.reservation.createdAt,
+    });
+  })
+);
+
+router.get(
+  '/reservations/verify',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE, 'admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const code = String(req.query.code || '').trim();
+    if (!code) return res.status(400).json({ message: 'Código es obligatorio' });
+
+    const requester = req.auth!;
+    const isAdmin = Boolean(requester.admin);
+
+    const reservation = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Reservation).findOne({ where: { code } })
+    );
+    if (!reservation) return res.status(404).json({ message: 'Reserva no encontrada' });
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: reservation.businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== requester.user!.id) {
+      return res.status(403).json({ message: 'No tienes permiso para ver esta reserva' });
+    }
+
+    const data = await runWithContext({ tenantId: business.tenantId, isAdmin }, async (manager) => {
+      const links = await manager.getRepository(ReservationTableLink).find({
+        where: { reservationId: reservation.id },
+      });
+      const tables = links.map((link) => ({
+        id: link.tableId,
+        label: link.tableLabel,
+        seats: link.tableSeats,
+      }));
+      const totalSeats = tables.reduce((acc, table) => acc + (Number(table.seats) || 0), 0);
+
+      const userInfo = reservation.userId
+        ? await manager.getRepository(User).findOne({
+            where: { id: reservation.userId },
+            select: { id: true, nombre: true, email: true },
+          })
+        : null;
+
+      return {
+        id: reservation.id,
+        code: reservation.code,
+        businessId: business.id,
+        businessName: business.name,
+        businessType: business.type,
+        tables,
+        totalSeats,
+        date: reservation.date,
+        time: reservation.time,
+        schedule: reservation.schedule,
+        notes: reservation.notes,
+        status: reservation.status,
+        totalPrice: parseNumeric(reservation.amount) ?? 0,
+        userId: reservation.userId,
+        holderName: reservation.holderName,
+        guestName: reservation.guestName,
+        guestLastName: reservation.guestLastName,
+        guestRut: reservation.guestRut,
+        userName: userInfo?.nombre || null,
+        userEmail: userInfo?.email || null,
+        createdAt: reservation.createdAt,
+      };
+    });
+
+    res.json({
+      valid: reservation.status === ReservaEstado.CONFIRMADA,
+      reservation: data,
+    });
+  })
+);
+
+router.get(
+  '/reservations/mine',
+  authMiddleware,
+  requireRole([RolUsuario.CLIENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const user = req.auth!.user!;
+    ensureUserReady(user, { requireTenant: false });
+
+    const data = await runWithContext({ isAdmin: true }, async (manager) => {
+      const reservationRepo = manager.getRepository(Reservation);
+      const list = await reservationRepo.find({
+        where: { userId: user.id },
+        order: { createdAt: 'DESC' },
+      });
+      if (!list.length) return [];
+
+      const businessIds = Array.from(new Set(list.map((item) => String(item.businessId))));
+      const businesses = await manager.getRepository(Business).find({ where: { id: In(businessIds) } });
+      const businessMap = businesses.reduce<Record<string, Business>>((acc, item) => {
+        acc[String(item.id)] = item;
+        return acc;
+      }, {});
+
+      const reservationIds = list.map((item) => String(item.id));
+      const links = await manager.getRepository(ReservationTableLink).find({
+        where: { reservationId: In(reservationIds) },
+      });
+      const linksByReservation = links.reduce<Record<string, ReservationTableLink[]>>((acc, link) => {
+        const key = String(link.reservationId);
+        acc[key] = acc[key] || [];
+        acc[key].push(link);
+        return acc;
+      }, {});
+
+      return list.map((reservation) => {
+        const business = businessMap[String(reservation.businessId)];
+        const tables = (linksByReservation[String(reservation.id)] || []).map((link) => ({
+          id: link.tableId,
+          label: link.tableLabel,
+          seats: link.tableSeats,
+        }));
+        const totalSeats = tables.reduce((acc, table) => acc + (Number(table.seats) || 0), 0);
+        return {
+          id: reservation.id,
+          code: reservation.code,
+          businessId: reservation.businessId,
+          businessName: business?.name || '',
+          businessType: business?.type || '',
+          tables,
+          totalSeats,
+          date: reservation.date,
+          time: reservation.time,
+          schedule: reservation.schedule,
+          notes: reservation.notes,
+          status: reservation.status,
+          totalPrice: parseNumeric(reservation.amount) ?? 0,
+          userId: reservation.userId,
+          holderName: reservation.holderName,
+          guestName: reservation.guestName,
+          guestRut: reservation.guestRut,
+          createdAt: reservation.createdAt,
+        };
+      });
+    });
+
+    res.json(data);
   })
 );
 
@@ -790,7 +1478,7 @@ router.get(
   requireRole([RolUsuario.OFERENTE]),
   asyncHandler(async (req: AuthRequest, res) => {
     const user = req.auth!.user!;
-    ensureUserReady(user);
+    ensureUserReady(user, { requireTenant: false });
     const tenantId = user.tenantId;
     if (!tenantId) return res.status(400).json({ message: 'tenantId es requerido' });
 

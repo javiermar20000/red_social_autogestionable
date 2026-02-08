@@ -22,6 +22,15 @@ async function bootstrap() {
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
   app.use('/api', router);
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const status =
+      typeof (err as { status?: number })?.status === 'number' ? (err as { status: number }).status : 500;
+    const message = (err as { message?: string })?.message || 'Error de servidor';
+    if (status >= 500) {
+      console.error('Unhandled error in route', err);
+    }
+    res.status(status).json({ message });
+  });
 
   app.listen(parseInt(PORT, 10), () => {
     console.log(`API escuchando en puerto ${PORT}`);

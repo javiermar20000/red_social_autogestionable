@@ -31,6 +31,8 @@ const PinDetailDialog = ({
   onEnsureCommentAccess,
   onSubmitRating,
   ratingSubmitting = false,
+  onSave,
+  saved = false,
 }) => {
   const lastVisitedId = useRef(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
@@ -150,33 +152,9 @@ const PinDetailDialog = ({
     }
     setIsShareOpen(false);
   };
-  const handleDownload = (event) => {
+  const handleSavePublication = (event) => {
     event.stopPropagation();
-    if (typeof document === 'undefined' || !mediaSrc) return;
-    const safeTitle = String(titulo || 'archivo')
-      .trim()
-      .replace(/[^a-z0-9_-]+/gi, '_')
-      .replace(/^_+|_+$/g, '');
-    const defaultExtension = isVideo ? 'mp4' : 'jpg';
-    let extension = defaultExtension;
-    if (typeof mediaSrc === 'string') {
-      const dataMatch = mediaSrc.match(/^data:(image|video)\/([a-z0-9.+-]+);/i);
-      if (dataMatch?.[2]) {
-        extension = dataMatch[2];
-      } else {
-        const cleanUrl = mediaSrc.split('?')[0].split('#')[0];
-        const extMatch = cleanUrl.match(/\.([a-z0-9]+)$/i);
-        if (extMatch?.[1]) extension = extMatch[1];
-      }
-    }
-    const filename = `${safeTitle || 'archivo'}.${extension}`;
-    const link = document.createElement('a');
-    link.href = mediaSrc;
-    link.download = filename;
-    link.rel = 'noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    onSave?.(publication);
   };
   const handleOpenMap = (event) => {
     event.stopPropagation();
@@ -442,10 +420,11 @@ const PinDetailDialog = ({
               <Button
                 size="icon"
                 variant="ghost"
-                className="rounded-full"
-                aria-label="Descargar"
-                title="Descargar"
-                onClick={handleDownload}
+                className={saved ? 'rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'rounded-full'}
+                aria-pressed={saved}
+                aria-label={saved ? 'Publicación guardada' : 'Guardar publicación'}
+                title={saved ? 'Publicación guardada' : 'Guardar publicación'}
+                onClick={handleSavePublication}
               >
                 <Download className="h-5 w-5" />
               </Button>

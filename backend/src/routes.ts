@@ -1251,6 +1251,31 @@ router.get(
       return res.status(403).json({ message: 'No tienes permiso para ver esta reserva' });
     }
 
+    let scanValid = false;
+    let reservationStatus = reservation.status;
+
+    if (reservation.status === ReservaEstado.CONFIRMADA) {
+      const updateResult = await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
+        manager.getRepository(Reservation).update(
+          { id: reservation.id, status: ReservaEstado.CONFIRMADA },
+          { status: ReservaEstado.COMPLETADA }
+        )
+      );
+
+      if (updateResult.affected && updateResult.affected > 0) {
+        scanValid = true;
+        reservationStatus = ReservaEstado.COMPLETADA;
+      } else {
+        const refreshed = await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
+          manager.getRepository(Reservation).findOne({
+            where: { id: reservation.id },
+            select: { status: true },
+          })
+        );
+        reservationStatus = refreshed?.status ?? reservation.status;
+      }
+    }
+
     const data = await runWithContext({ tenantId: business.tenantId, isAdmin }, async (manager) => {
       const links = await manager.getRepository(ReservationTableLink).find({
         where: { reservationId: reservation.id },
@@ -1281,7 +1306,7 @@ router.get(
         time: reservation.time,
         schedule: reservation.schedule,
         notes: reservation.notes,
-        status: reservation.status,
+        status: reservationStatus,
         totalPrice: parseNumeric(reservation.amount) ?? 0,
         userId: reservation.userId,
         holderName: reservation.holderName,
@@ -1295,7 +1320,7 @@ router.get(
     });
 
     res.json({
-      valid: reservation.status === ReservaEstado.CONFIRMADA,
+      valid: scanValid,
       reservation: data,
     });
   })

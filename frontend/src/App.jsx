@@ -192,6 +192,26 @@ const extractReservationCode = (payload = '') => {
   return raw;
 };
 
+const buildReservationScanFeedback = (result) => {
+  if (!result?.reservation) return null;
+  const isValid = Boolean(result.valid);
+  let description = '';
+  if (isValid) {
+    description = 'La reserva es válida.';
+  } else if (result.reservation.status === 'COMPLETADA') {
+    description = 'Esta reserva ya se usó previamente y ya no es válida.';
+  } else if (result.reservation.status === 'CANCELADA') {
+    description = 'Esta reserva fue cancelada y ya no es válida.';
+  } else {
+    description = 'La reserva no es válida.';
+  }
+  return {
+    isValid,
+    title: isValid ? 'Reserva válida' : 'Reserva inválida',
+    description,
+  };
+};
+
 const resolveScheduleForTime = (timeValue) => {
   const minutes = parseTimeToMinutes(timeValue);
   if (minutes === null) return RESERVATION_SCHEDULE_OPTIONS[1]?.value || 'ALMUERZO';
@@ -2262,6 +2282,8 @@ function App() {
       }
     };
   }, [reservationScanOpen]);
+
+  const reservationScanFeedback = buildReservationScanFeedback(reservationScanResult);
 
   const myBusinesses = useMemo(() => {
     if (isAdmin) return businesses;
@@ -5468,21 +5490,38 @@ function App() {
               <p className="text-sm text-rose-600">{reservationScanError || 'No se pudo verificar la reserva.'}</p>
             )}
             {reservationScanStatus === 'success' && reservationScanResult?.reservation && (
-              <div className="rounded-xl border border-border bg-card p-4 text-sm space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold">
-                    {reservationScanResult.valid ? 'Reserva verificada' : 'Reserva no válida'}
-                  </p>
-                  <span
+              <div className="rounded-xl border border-border bg-card p-4 text-sm space-y-3">
+                <div className="flex items-start gap-3">
+                  <div
                     className={cn(
-                      'rounded-full border px-2 py-1 text-xs font-semibold',
-                      reservationScanResult.valid
-                        ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
-                        : 'border-rose-200 bg-rose-100 text-rose-700'
+                      'flex h-10 w-10 items-center justify-center rounded-full border',
+                      reservationScanFeedback?.isValid
+                        ? 'border-emerald-200 bg-emerald-100 text-emerald-600'
+                        : 'border-rose-200 bg-rose-100 text-rose-600'
                     )}
                   >
-                    {reservationScanResult.valid ? 'VÁLIDA' : 'NO VÁLIDA'}
-                  </span>
+                    {reservationScanFeedback?.isValid ? (
+                      <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+                    ) : (
+                      <XCircle className="h-5 w-5" aria-hidden="true" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold">{reservationScanFeedback?.title}</p>
+                      <span
+                        className={cn(
+                          'rounded-full border px-2 py-1 text-xs font-semibold',
+                          reservationScanFeedback?.isValid
+                            ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                            : 'border-rose-200 bg-rose-100 text-rose-700'
+                        )}
+                      >
+                        {reservationScanFeedback?.isValid ? 'VÁLIDA' : 'NO VÁLIDA'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{reservationScanFeedback?.description}</p>
+                  </div>
                 </div>
                 <p className="text-muted-foreground">
                   <span className="font-semibold text-foreground">Código:</span>{' '}

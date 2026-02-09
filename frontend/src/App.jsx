@@ -64,6 +64,8 @@ const formatNumber = (value) => numberFormatter.format(value);
 const RESERVATION_PRICE = 5000;
 const CLIENT_COMMENTS_STORAGE_KEY = 'gastrohub-client-comments-v1';
 const CLIENT_SAVED_PUBLICATIONS_STORAGE_KEY = 'gastrohub-client-saved-publications-v1';
+const FEED_PAGE_INITIAL = 20;
+const FEED_PAGE_STEP = 5;
 const TABLE_STATUS_OPTIONS = [
   {
     value: 'DISPONIBLE',
@@ -1427,6 +1429,7 @@ function App() {
   const [loadingMyPublications, setLoadingMyPublications] = useState(false);
   const [editingPublicationId, setEditingPublicationId] = useState(null);
   const [adminPanelTab, setAdminPanelTab] = useState('perfil');
+  const [feedVisibleCount, setFeedVisibleCount] = useState(FEED_PAGE_INITIAL);
   const [profileBusinessId, setProfileBusinessId] = useState('');
   const [businessProfileForm, setBusinessProfileForm] = useState({
     name: '',
@@ -3884,6 +3887,32 @@ function App() {
     return topHeartsMode ? sorted.slice(0, 100) : sorted;
   }, [feedWithDecorations, filters, derivedCategories, categories, topHeartsMode]);
 
+  const feedFilterKey = useMemo(
+    () =>
+      JSON.stringify({
+        search: filters.search || '',
+        categoryId: filters.categoryId || '',
+        businessType: filters.businessType || '',
+        region: filters.region || '',
+        city: filters.city || '',
+        amenities: Array.isArray(filters.amenities) ? filters.amenities.slice().sort() : [],
+        sortBy: filters.sortBy || '',
+        sortDir: filters.sortDir || '',
+        topHeartsMode,
+      }),
+    [filters, topHeartsMode]
+  );
+
+  useEffect(() => {
+    setFeedVisibleCount(FEED_PAGE_INITIAL);
+  }, [feedFilterKey, feedWithDecorations.length]);
+
+  const visiblePublicFeed = useMemo(
+    () => filteredPublicFeed.slice(0, Math.max(FEED_PAGE_INITIAL, feedVisibleCount)),
+    [filteredPublicFeed, feedVisibleCount]
+  );
+  const canLoadMoreFeed = filteredPublicFeed.length > visiblePublicFeed.length;
+
   useEffect(() => {
     if (!similarSource) return;
     const updated = findSimilarPublications(similarSource);
@@ -4057,19 +4086,36 @@ function App() {
                     Cargando feed...
                   </div>
                 ) : filteredPublicFeed.length ? (
-                  <MasonryGrid className="mt-1">
-                    {filteredPublicFeed.map((pub) => (
-                      <PinCard
-                        key={pub.id}
-                        publication={pub}
-                        likesCount={getHeartsValue(pub)}
-                        liked={hasLikedInSession(pub)}
-                        onLike={handleLike}
-                        onSelect={handleSelectPublication}
-                        compact={isAdPanelExpanded}
-                      />
-                    ))}
-                  </MasonryGrid>
+                  <>
+                    <MasonryGrid className="mt-1">
+                      {visiblePublicFeed.map((pub) => (
+                        <PinCard
+                          key={pub.id}
+                          publication={pub}
+                          likesCount={getHeartsValue(pub)}
+                          liked={hasLikedInSession(pub)}
+                          onLike={handleLike}
+                          onSelect={handleSelectPublication}
+                          compact={isAdPanelExpanded}
+                        />
+                      ))}
+                    </MasonryGrid>
+                    {canLoadMoreFeed && (
+                      <div className="mt-6 flex justify-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setFeedVisibleCount((prev) =>
+                              Math.min(prev + FEED_PAGE_STEP, filteredPublicFeed.length)
+                            )
+                          }
+                        >
+                          Ver más
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
                     No hay publicaciones que coincidan con los filtros.

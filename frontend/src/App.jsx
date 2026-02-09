@@ -1103,7 +1103,8 @@ const buildReservationPdfBlob = async (reservation) => {
   doc.setTextColor(30, 30, 30);
   doc.text(`Código: ${reservation.code || '--'}`, 150, 102);
 
-  let y = 165;
+  const detailsStartY = 165;
+  let y = detailsStartY;
   const labelX = 60;
   const valueX = 170;
   const labelColor = [120, 120, 120];
@@ -1143,7 +1144,7 @@ const buildReservationPdfBlob = async (reservation) => {
   if (qrPayload && QRCode?.toDataURL) {
     const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 160 });
     const qrX = pageWidth - 200;
-    const qrY = 210;
+    const qrY = detailsStartY - 5;
     doc.addImage(qrDataUrl, 'PNG', qrX, qrY, 150, 150);
     doc.setFontSize(9);
     doc.setTextColor(110, 110, 110);
@@ -2133,6 +2134,25 @@ function App() {
       setSelectedTenantId('');
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser?.tenantId && String(selectedTenantId || '') !== String(currentUser.tenantId)) {
+      const normalized = String(currentUser.tenantId);
+      setSelectedTenantId(normalized);
+      localStorage.setItem('tenantId', normalized);
+    }
+  }, [currentUser, selectedTenantId]);
+
+  useEffect(() => {
+    if (selectedTenantId || isAdmin) return;
+    if (currentUser && currentUser.rol && currentUser.rol !== 'CLIENTE') return;
+    if (!tenants.length) return;
+    const fallbackTenant = tenants[0];
+    if (!fallbackTenant?.id) return;
+    const normalized = String(fallbackTenant.id);
+    setSelectedTenantId(normalized);
+    localStorage.setItem('tenantId', normalized);
+  }, [tenants, selectedTenantId, currentUser, isAdmin]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

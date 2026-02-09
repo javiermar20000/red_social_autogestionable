@@ -88,6 +88,16 @@ const RESERVATION_SCHEDULE_OPTIONS = [
   { value: 'CENA', label: 'Cena' },
 ];
 const RESERVATION_TIME_STEP_MINUTES = 30;
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: 'Lun' },
+  { value: 2, label: 'Mar' },
+  { value: 3, label: 'Mié' },
+  { value: 4, label: 'Jue' },
+  { value: 5, label: 'Vie' },
+  { value: 6, label: 'Sáb' },
+  { value: 0, label: 'Dom' },
+];
+const DEFAULT_OPERATING_DAYS = WEEKDAY_OPTIONS.map((day) => day.value);
 
 const getTableStatusMeta = (status) =>
   TABLE_STATUS_OPTIONS.find((option) => option.value === status) || TABLE_STATUS_OPTIONS[0];
@@ -108,6 +118,120 @@ const formatMinutesToTime = (minutes) => {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const normalizeDateValue = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!ISO_DATE_PATTERN.test(raw)) return '';
+  const [yearRaw, monthRaw, dayRaw] = raw.split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return '';
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return '';
+  }
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+const parseDateToKey = (value) => {
+  const normalized = normalizeDateValue(value);
+  if (!normalized) return null;
+  const [yearRaw, monthRaw, dayRaw] = normalized.split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return year * 10000 + month * 100 + day;
+};
+
+const getWeekdayFromDate = (value) => {
+  const normalized = normalizeDateValue(value);
+  if (!normalized) return null;
+  const [yearRaw, monthRaw, dayRaw] = normalized.split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+};
+
+const normalizeOperatingDaysList = (value) => {
+  if (value === null || value === undefined) return null;
+  const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [value];
+  const normalized = values
+    .map((item) => Number(item))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+  return Array.from(new Set(normalized));
+};
+
+const isDateWithinRange = (dateKey, start, end) => {
+  const startKey = parseDateToKey(start);
+  const endKey = parseDateToKey(end);
+  if (startKey === null && endKey === null) return true;
+  if (startKey !== null && dateKey < startKey) return false;
+  if (endKey !== null && dateKey > endKey) return false;
+  return true;
+};
+
+const getBusinessClosureInfo = (business, date) => {
+  if (!business || !date) return null;
+  const normalizedDate = normalizeDateValue(date);
+  if (!normalizedDate) return null;
+  const dateKey = parseDateToKey(normalizedDate);
+  if (dateKey === null) return null;
+  const weekday = getWeekdayFromDate(normalizedDate);
+  if (weekday === null) return null;
+
+  if (business.temporaryClosureActive) {
+    const start = business.temporaryClosureStart || null;
+    const end = business.temporaryClosureEnd || null;
+    if (isDateWithinRange(dateKey, start, end)) {
+      return {
+        reason: 'temporal',
+        message: business.temporaryClosureMessage
+          ? `Cierre temporal: ${business.temporaryClosureMessage}`
+          : 'El local está cerrado temporalmente para esta fecha.',
+      };
+    }
+  }
+
+  const operatingDays = normalizeOperatingDaysList(business.operatingDays);
+  if (Array.isArray(operatingDays)) {
+    if (!operatingDays.length) {
+      return { reason: 'dias', message: 'Este local no tiene días de atención habilitados.' };
+    }
+    if (!operatingDays.includes(weekday)) {
+      return { reason: 'dias', message: 'El local no atiende el día seleccionado.' };
+    }
+  }
+
+  if (Array.isArray(business.holidayDates) && business.holidayDates.includes(normalizedDate)) {
+    return { reason: 'feriado', message: 'El local marcó este día como feriado propio.' };
+  }
+
+  if (Array.isArray(business.vacationRanges) && business.vacationRanges.length) {
+    const matchingVacation = business.vacationRanges.find((range) => {
+      const startKey = parseDateToKey(range?.start);
+      const endKey = parseDateToKey(range?.end);
+      if (startKey === null || endKey === null) return false;
+      return dateKey >= startKey && dateKey <= endKey;
+    });
+    if (matchingVacation) {
+      return {
+        reason: 'vacaciones',
+        message: matchingVacation?.label
+          ? `El local está de vacaciones: ${matchingVacation.label}.`
+          : 'El local está de vacaciones en la fecha seleccionada.',
+      };
+    }
+  }
+
+  return null;
 };
 
 const getBusinessTimeRanges = (business) => {
@@ -1331,6 +1455,18 @@ function App() {
     afternoonEnd: '',
   });
   const [reservationHoursSaving, setReservationHoursSaving] = useState(false);
+  const [reservationAvailabilityDraft, setReservationAvailabilityDraft] = useState({
+    operatingDays: DEFAULT_OPERATING_DAYS,
+    holidayDates: [],
+    vacationRanges: [],
+    temporaryClosureActive: false,
+    temporaryClosureStart: '',
+    temporaryClosureEnd: '',
+    temporaryClosureMessage: '',
+  });
+  const [reservationHolidayDraft, setReservationHolidayDraft] = useState('');
+  const [reservationVacationDraft, setReservationVacationDraft] = useState({ start: '', end: '', label: '' });
+  const [reservationAvailabilitySaving, setReservationAvailabilitySaving] = useState(false);
   const [reservationScanOpen, setReservationScanOpen] = useState(false);
   const [reservationScanStatus, setReservationScanStatus] = useState('idle');
   const [reservationScanError, setReservationScanError] = useState('');
@@ -1413,14 +1549,20 @@ function App() {
     setReservationTablesByBusiness((prev) => ({ ...prev, [key]: Array.isArray(tables) ? tables : [] }));
   };
 
-  const loadReservationTables = async (businessId, { force = false } = {}) => {
+  const loadReservationTables = async (businessId, { force = false, date, time } = {}) => {
     if (!businessId) return [];
     const key = String(businessId);
     const cached = reservationTablesByBusiness?.[key];
     if (!force && Array.isArray(cached) && cached.length) return cached;
     setReservationTablesLoading(true);
     try {
-      const data = await fetchJson(`/businesses/${key}/tables`, { headers: authHeaders });
+      const params = new URLSearchParams();
+      if (date) params.set('date', date);
+      if (time) params.set('time', time);
+      const query = params.toString();
+      const data = await fetchJson(`/businesses/${key}/tables${query ? `?${query}` : ''}`, {
+        headers: authHeaders,
+      });
       const tables = Array.isArray(data) ? data : [];
       setReservationTablesForBusiness(key, tables);
       return tables;
@@ -1502,7 +1644,25 @@ function App() {
       notify('warning', 'Completa la fecha y hora de la reserva.');
       return;
     }
+    const selectedTables = getReservationTablesForBusiness(reservationBusinessId).filter((table) =>
+      reservationTableSelection.includes(String(table.id))
+    );
+    const hasUnavailableTables = selectedTables.some((table) => {
+      const availabilityStatus = table.availabilityStatus || table.status || 'DISPONIBLE';
+      return availabilityStatus !== 'DISPONIBLE';
+    });
+    if (hasUnavailableTables) {
+      notify('warning', 'Algunas mesas ya no están disponibles para ese horario.');
+      return;
+    }
     const business = reservationBusiness || businesses.find((b) => String(b.id) === String(reservationBusinessId));
+    if (business) {
+      const closure = getBusinessClosureInfo(business, reservationDate);
+      if (closure) {
+        notify('warning', closure.message);
+        return;
+      }
+    }
     if (business && !isTimeAllowedForBusiness(business, reservationTime)) {
       notify('warning', 'La hora seleccionada no está dentro del horario de funcionamiento.');
       return;
@@ -1517,7 +1677,10 @@ function App() {
     }
     const tables = getReservationTablesForBusiness(reservationBusinessId);
     const selectedTables = tables.filter((table) => reservationTableSelection.includes(String(table.id)));
-    const unavailable = selectedTables.some((table) => (table.status || 'DISPONIBLE') !== 'DISPONIBLE');
+    const unavailable = selectedTables.some((table) => {
+      const availabilityStatus = table.availabilityStatus || table.status || 'DISPONIBLE';
+      return availabilityStatus !== 'DISPONIBLE';
+    });
     if (unavailable) {
       notify('warning', 'Algunas mesas ya no están disponibles.');
       return;
@@ -1544,6 +1707,11 @@ function App() {
     const business = businesses.find((b) => String(b.id) === String(reservationBusinessId));
     if (!business) {
       notify('warning', 'No se pudo encontrar el local seleccionado.');
+      return;
+    }
+    const closure = getBusinessClosureInfo(business, reservationDate);
+    if (closure) {
+      notify('warning', closure.message);
       return;
     }
     if (!isTimeAllowedForBusiness(business, reservationTime)) {
@@ -1654,6 +1822,130 @@ function App() {
       notify('danger', err.message);
     } finally {
       setReservationHoursSaving(false);
+    }
+  };
+
+  const toggleReservationOperatingDay = (dayValue) => {
+    setReservationAvailabilityDraft((prev) => {
+      const current = Array.isArray(prev.operatingDays) ? prev.operatingDays : [];
+      const set = new Set(current.map((day) => Number(day)));
+      if (set.has(dayValue)) {
+        set.delete(dayValue);
+      } else {
+        set.add(dayValue);
+      }
+      const ordered = WEEKDAY_OPTIONS.map((day) => day.value).filter((value) => set.has(value));
+      return { ...prev, operatingDays: ordered };
+    });
+  };
+
+  const handleAddReservationHoliday = () => {
+    const normalized = normalizeDateValue(reservationHolidayDraft);
+    if (!normalized) {
+      notify('warning', 'Selecciona una fecha válida para agregar como feriado.');
+      return;
+    }
+    setReservationAvailabilityDraft((prev) => {
+      const current = Array.isArray(prev.holidayDates) ? prev.holidayDates : [];
+      if (current.includes(normalized)) {
+        notify('warning', 'Ese feriado ya está agregado.');
+        return prev;
+      }
+      const next = [...current, normalized].sort();
+      return { ...prev, holidayDates: next };
+    });
+    setReservationHolidayDraft('');
+  };
+
+  const handleRemoveReservationHoliday = (dateValue) => {
+    setReservationAvailabilityDraft((prev) => ({
+      ...prev,
+      holidayDates: (Array.isArray(prev.holidayDates) ? prev.holidayDates : []).filter((date) => date !== dateValue),
+    }));
+  };
+
+  const handleAddReservationVacation = () => {
+    const start = normalizeDateValue(reservationVacationDraft.start);
+    const end = normalizeDateValue(reservationVacationDraft.end);
+    if (!start || !end) {
+      notify('warning', 'Completa fecha de inicio y término para las vacaciones.');
+      return;
+    }
+    const startKey = parseDateToKey(start);
+    const endKey = parseDateToKey(end);
+    if (startKey !== null && endKey !== null && startKey > endKey) {
+      notify('warning', 'La fecha de término debe ser posterior o igual al inicio.');
+      return;
+    }
+    const label = reservationVacationDraft.label.trim();
+    setReservationAvailabilityDraft((prev) => {
+      const current = Array.isArray(prev.vacationRanges) ? prev.vacationRanges : [];
+      const next = [...current, label ? { start, end, label } : { start, end }];
+      return { ...prev, vacationRanges: next };
+    });
+    setReservationVacationDraft({ start: '', end: '', label: '' });
+  };
+
+  const handleRemoveReservationVacation = (index) => {
+    setReservationAvailabilityDraft((prev) => ({
+      ...prev,
+      vacationRanges: (Array.isArray(prev.vacationRanges) ? prev.vacationRanges : []).filter(
+        (_range, idx) => idx !== index
+      ),
+    }));
+  };
+
+  const handleSaveReservationAvailability = async () => {
+    if (!reservationAdminBusinessId) return;
+    const operatingDays = normalizeOperatingDaysList(reservationAvailabilityDraft.operatingDays) ?? [];
+    const holidayDates = Array.isArray(reservationAvailabilityDraft.holidayDates)
+      ? reservationAvailabilityDraft.holidayDates.map(normalizeDateValue).filter(Boolean)
+      : [];
+    const vacationRanges = Array.isArray(reservationAvailabilityDraft.vacationRanges)
+      ? reservationAvailabilityDraft.vacationRanges
+          .map((range) => {
+            const start = normalizeDateValue(range?.start);
+            const end = normalizeDateValue(range?.end);
+            if (!start || !end) return null;
+            const startKey = parseDateToKey(start);
+            const endKey = parseDateToKey(end);
+            if (startKey === null || endKey === null || startKey > endKey) return null;
+            const label = typeof range?.label === 'string' ? range.label.trim() : '';
+            return label ? { start, end, label } : { start, end };
+          })
+          .filter(Boolean)
+      : [];
+    const temporaryClosureStart = normalizeDateValue(reservationAvailabilityDraft.temporaryClosureStart);
+    const temporaryClosureEnd = normalizeDateValue(reservationAvailabilityDraft.temporaryClosureEnd);
+    if (temporaryClosureStart && temporaryClosureEnd) {
+      const startKey = parseDateToKey(temporaryClosureStart);
+      const endKey = parseDateToKey(temporaryClosureEnd);
+      if (startKey !== null && endKey !== null && startKey > endKey) {
+        notify('warning', 'El cierre temporal debe tener un rango válido.');
+        return;
+      }
+    }
+    setReservationAvailabilitySaving(true);
+    try {
+      await fetchJson(`/businesses/${reservationAdminBusinessId}`, {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({
+          operatingDays,
+          holidayDates,
+          vacationRanges,
+          temporaryClosureActive: Boolean(reservationAvailabilityDraft.temporaryClosureActive),
+          temporaryClosureStart: temporaryClosureStart || null,
+          temporaryClosureEnd: temporaryClosureEnd || null,
+          temporaryClosureMessage: reservationAvailabilityDraft.temporaryClosureMessage.trim() || null,
+        }),
+      });
+      notify('success', 'Disponibilidad actualizada');
+      loadBusinesses();
+    } catch (err) {
+      notify('danger', err.message);
+    } finally {
+      setReservationAvailabilitySaving(false);
     }
   };
 
@@ -2378,6 +2670,11 @@ function App() {
     if (formatted.length === 2) return `Mañana ${formatted[0]} · Tarde ${formatted[1]}`;
     return `Horario ${formatted[0]}`;
   }, [reservationBusiness]);
+  const reservationDateClosure = useMemo(
+    () => getBusinessClosureInfo(reservationBusiness, reservationDate),
+    [reservationBusiness, reservationDate]
+  );
+  const reservationDateClosed = Boolean(reservationDateClosure);
 
   const savedPublicationIdsForUser = useMemo(() => {
     if (!currentUser?.id) return [];
@@ -2524,6 +2821,32 @@ function App() {
       afternoonStart: selected.afternoonStart || '',
       afternoonEnd: selected.afternoonEnd || '',
     });
+  }, [businessListForForms, reservationAdminBusinessId]);
+
+  useEffect(() => {
+    if (!reservationBusinessId || !reservationDate || !reservationTime) return;
+    loadReservationTables(reservationBusinessId, {
+      force: true,
+      date: reservationDate,
+      time: reservationTime,
+    });
+  }, [reservationBusinessId, reservationDate, reservationTime]);
+
+  useEffect(() => {
+    const selected = businessListForForms.find((b) => String(b.id) === String(reservationAdminBusinessId));
+    if (!selected) return;
+    const operatingDays = normalizeOperatingDaysList(selected.operatingDays);
+    setReservationAvailabilityDraft({
+      operatingDays: operatingDays === null ? DEFAULT_OPERATING_DAYS : operatingDays,
+      holidayDates: Array.isArray(selected.holidayDates) ? selected.holidayDates : [],
+      vacationRanges: Array.isArray(selected.vacationRanges) ? selected.vacationRanges : [],
+      temporaryClosureActive: Boolean(selected.temporaryClosureActive),
+      temporaryClosureStart: selected.temporaryClosureStart || '',
+      temporaryClosureEnd: selected.temporaryClosureEnd || '',
+      temporaryClosureMessage: selected.temporaryClosureMessage || '',
+    });
+    setReservationHolidayDraft('');
+    setReservationVacationDraft({ start: '', end: '', label: '' });
   }, [businessListForForms, reservationAdminBusinessId]);
 
   const handleLogin = async (credentials) => {
@@ -4688,6 +5011,238 @@ function App() {
                             </div>
                           </div>
 
+                          <div className="border-t border-border/70 pt-4 space-y-4">
+                            <div>
+                              <h6 className="font-semibold">Disponibilidad semanal y cierres</h6>
+                              <p className="text-xs text-muted-foreground">
+                                Define los días de funcionamiento, feriados propios, vacaciones y cierres temporales.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label className="text-xs">Días de funcionamiento</Label>
+                              <div className="flex flex-wrap gap-2">
+                                {WEEKDAY_OPTIONS.map((day) => {
+                                  const isActive = Array.isArray(reservationAvailabilityDraft.operatingDays)
+                                    ? reservationAvailabilityDraft.operatingDays.includes(day.value)
+                                    : false;
+                                  return (
+                                    <Button
+                                      key={day.value}
+                                      type="button"
+                                      size="sm"
+                                      variant={isActive ? 'danger' : 'outline'}
+                                      aria-pressed={isActive}
+                                      onClick={() => toggleReservationOperatingDay(day.value)}
+                                    >
+                                      {day.label}
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Si no seleccionas días, no se podrán recibir reservas.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label className="text-xs">Feriados propios</Label>
+                              <div className="grid gap-2 sm:grid-cols-3">
+                                <div className="space-y-1 sm:col-span-2">
+                                  <Input
+                                    type="date"
+                                    value={reservationHolidayDraft}
+                                    onChange={(e) => setReservationHolidayDraft(e.target.value)}
+                                  />
+                                </div>
+                                <div className="flex items-end">
+                                  <Button type="button" variant="outline" onClick={handleAddReservationHoliday}>
+                                    Agregar feriado
+                                  </Button>
+                                </div>
+                              </div>
+                              {Array.isArray(reservationAvailabilityDraft.holidayDates) &&
+                              reservationAvailabilityDraft.holidayDates.length ? (
+                                <div className="space-y-2">
+                                  {reservationAvailabilityDraft.holidayDates.map((date) => (
+                                    <div
+                                      key={date}
+                                      className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs"
+                                    >
+                                      <span>{date}</span>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        aria-label="Eliminar feriado"
+                                        onClick={() => handleRemoveReservationHoliday(date)}
+                                      >
+                                        <XCircle className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">No hay feriados propios cargados.</p>
+                              )}
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label className="text-xs">Vacaciones</Label>
+                              <div className="grid gap-2 sm:grid-cols-3">
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] text-muted-foreground">Desde</Label>
+                                  <Input
+                                    type="date"
+                                    value={reservationVacationDraft.start}
+                                    onChange={(e) =>
+                                      setReservationVacationDraft((prev) => ({ ...prev, start: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] text-muted-foreground">Hasta</Label>
+                                  <Input
+                                    type="date"
+                                    value={reservationVacationDraft.end}
+                                    onChange={(e) =>
+                                      setReservationVacationDraft((prev) => ({ ...prev, end: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] text-muted-foreground">Motivo (opcional)</Label>
+                                  <Input
+                                    placeholder="Ej: mantenimiento"
+                                    value={reservationVacationDraft.label}
+                                    onChange={(e) =>
+                                      setReservationVacationDraft((prev) => ({ ...prev, label: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                              </div>
+                              <Button type="button" variant="outline" size="sm" onClick={handleAddReservationVacation}>
+                                Agregar semanas de vacaciones
+                              </Button>
+                              {Array.isArray(reservationAvailabilityDraft.vacationRanges) &&
+                              reservationAvailabilityDraft.vacationRanges.length ? (
+                                <div className="space-y-2">
+                                  {reservationAvailabilityDraft.vacationRanges.map((range, index) => (
+                                    <div
+                                      key={`${range?.start || 'start'}-${range?.end || 'end'}-${index}`}
+                                      className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs"
+                                    >
+                                      <div>
+                                        <p className="text-xs font-semibold">
+                                          {range?.start || '--'} → {range?.end || '--'}
+                                        </p>
+                                        {range?.label ? (
+                                          <p className="text-[11px] text-muted-foreground">{range.label}</p>
+                                        ) : null}
+                                      </div>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        aria-label="Eliminar vacaciones"
+                                        onClick={() => handleRemoveReservationVacation(index)}
+                                      >
+                                        <XCircle className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">No hay semanas de vacaciones definidas.</p>
+                              )}
+                            </div>
+
+                            <div className="rounded-xl border border-border/70 bg-muted/40 p-3 space-y-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold">Cierre temporal</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Activa un cierre temporal y agrega un mensaje para los clientes.
+                                  </p>
+                                </div>
+                                <label className="flex items-center gap-2 text-xs font-semibold">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4"
+                                    checked={reservationAvailabilityDraft.temporaryClosureActive}
+                                    onChange={(e) =>
+                                      setReservationAvailabilityDraft((prev) => ({
+                                        ...prev,
+                                        temporaryClosureActive: e.target.checked,
+                                      }))
+                                    }
+                                  />
+                                  {reservationAvailabilityDraft.temporaryClosureActive ? 'Activo' : 'Inactivo'}
+                                </label>
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Desde</Label>
+                                  <Input
+                                    type="date"
+                                    value={reservationAvailabilityDraft.temporaryClosureStart}
+                                    disabled={!reservationAvailabilityDraft.temporaryClosureActive}
+                                    onChange={(e) =>
+                                      setReservationAvailabilityDraft((prev) => ({
+                                        ...prev,
+                                        temporaryClosureStart: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Hasta</Label>
+                                  <Input
+                                    type="date"
+                                    value={reservationAvailabilityDraft.temporaryClosureEnd}
+                                    disabled={!reservationAvailabilityDraft.temporaryClosureActive}
+                                    onChange={(e) =>
+                                      setReservationAvailabilityDraft((prev) => ({
+                                        ...prev,
+                                        temporaryClosureEnd: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Mensaje para clientes</Label>
+                                <textarea
+                                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-soft"
+                                  rows={2}
+                                  value={reservationAvailabilityDraft.temporaryClosureMessage}
+                                  disabled={!reservationAvailabilityDraft.temporaryClosureActive}
+                                  onChange={(e) =>
+                                    setReservationAvailabilityDraft((prev) => ({
+                                      ...prev,
+                                      temporaryClosureMessage: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Ej: Cerrado por remodelación."
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                disabled={reservationAvailabilitySaving}
+                                onClick={handleSaveReservationAvailability}
+                              >
+                                {reservationAvailabilitySaving ? 'Guardando...' : 'Guardar disponibilidad'}
+                              </Button>
+                              <p className="text-xs text-muted-foreground">
+                                Esta configuración aplica a nuevas reservas.
+                              </p>
+                            </div>
+                          </div>
+
                           <div className="border-t border-border/70 pt-4 space-y-3">
                             <div className="flex items-center justify-between gap-2">
                               <div>
@@ -5152,9 +5707,9 @@ function App() {
                   ) : reservationTablesForSelectedBusiness.length ? (
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {reservationTablesForSelectedBusiness.map((table) => {
-                        const statusValue = table.status || 'DISPONIBLE';
-                        const statusMeta = getTableStatusMeta(statusValue);
-                        const isAvailable = statusValue === 'DISPONIBLE';
+                        const availabilityStatus = table.availabilityStatus || table.status || 'DISPONIBLE';
+                        const statusMeta = getTableStatusMeta(availabilityStatus);
+                        const isAvailable = availabilityStatus === 'DISPONIBLE';
                         const isSelected = reservationTableSelection.includes(String(table.id));
                         return (
                           <button
@@ -5204,6 +5759,7 @@ function App() {
                       <select
                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                         value={reservationTime}
+                        disabled={reservationDateClosed}
                         onChange={(e) => setReservationTime(e.target.value)}
                       >
                         <option value="">Selecciona una hora</option>
@@ -5217,6 +5773,7 @@ function App() {
                       <Input
                         type="time"
                         value={reservationTime}
+                        disabled={reservationDateClosed}
                         onChange={(e) => setReservationTime(e.target.value)}
                       />
                     )}
@@ -5226,6 +5783,12 @@ function App() {
                   <p className="text-xs text-muted-foreground">
                     Horarios disponibles para reservas: {reservationHoursLabel}
                   </p>
+                )}
+                {reservationDateClosure && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                    <p className="font-semibold">No hay disponibilidad para esa fecha</p>
+                    <p>{reservationDateClosure.message}</p>
+                  </div>
                 )}
 
                 <div className="space-y-2">
@@ -5250,7 +5813,7 @@ function App() {
                   <Button type="button" variant="outline" onClick={() => setReservationStep('business')}>
                     Volver
                   </Button>
-                  <Button type="button" variant="danger" onClick={handleReservationToPayment}>
+                  <Button type="button" variant="danger" disabled={reservationDateClosed} onClick={handleReservationToPayment}>
                     Continuar al pago
                   </Button>
                 </div>

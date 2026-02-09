@@ -13,7 +13,7 @@ import { Comment, ComentarioEstado } from './entities/Comment.js';
 import { ReservationTable, MesaEstado } from './entities/ReservationTable.js';
 import { Reservation, ReservaEstado, ReservaHorario } from './entities/Reservation.js';
 import { ReservationTableLink } from './entities/ReservationTableLink.js';
-import { EntityManager, In } from 'typeorm';
+import { EntityManager, In, LessThan } from 'typeorm';
 import { runWithContext } from './utils/rls.js';
 
 const router = Router();
@@ -129,6 +129,186 @@ const normalizeTimeValue = (value: unknown): string | null => {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const RESERVATION_DURATION_MINUTES = 60;
+const DEFAULT_OPERATING_DAYS = [1, 2, 3, 4, 5, 6, 0];
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const normalizeDateValue = (value: unknown): string | null => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (!ISO_DATE_PATTERN.test(raw)) return null;
+  const [yearRaw, monthRaw, dayRaw] = raw.split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+const parseDateToKey = (value: unknown): number | null => {
+  const normalized = normalizeDateValue(value);
+  if (!normalized) return null;
+  const [yearRaw, monthRaw, dayRaw] = normalized.split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return year * 10000 + month * 100 + day;
+};
+
+const getWeekdayFromDate = (value: string): number | null => {
+  const normalized = normalizeDateValue(value);
+  if (!normalized) return null;
+  const [yearRaw, monthRaw, dayRaw] = normalized.split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+};
+
+const parseBoolean = (value: unknown): boolean | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'si', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+  return null;
+};
+
+const normalizeOperatingDays = (value: unknown): number[] | null => {
+  if (value === null || value === undefined) return null;
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [value];
+  const normalized = values
+    .map((item) => Number(item))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+  return Array.from(new Set(normalized));
+};
+
+const normalizeHolidayDates = (value: unknown): string[] => {
+  if (value === null || value === undefined) return [];
+  const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  const normalized = values.map(normalizeDateValue).filter(Boolean) as string[];
+  return Array.from(new Set(normalized)).sort();
+};
+
+const normalizeVacationRanges = (
+  value: unknown
+): { start: string; end: string; label?: string | null }[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const start = normalizeDateValue((item as { start?: unknown }).start);
+      const end = normalizeDateValue((item as { end?: unknown }).end);
+      if (!start || !end) return null;
+      const startKey = parseDateToKey(start);
+      const endKey = parseDateToKey(end);
+      if (startKey === null || endKey === null || startKey > endKey) return null;
+      const labelRaw = typeof (item as { label?: unknown }).label === 'string' ? (item as { label?: string }).label : '';
+      const label = labelRaw ? labelRaw.trim().slice(0, 160) : '';
+      return label ? { start, end, label } : { start, end };
+    })
+    .filter(Boolean) as { start: string; end: string; label?: string | null }[];
+};
+
+const isDateWithinRange = (dateKey: number, start: string | null, end: string | null): boolean => {
+  const startKey = parseDateToKey(start);
+  const endKey = parseDateToKey(end);
+  if (startKey === null && endKey === null) return true;
+  if (startKey !== null && dateKey < startKey) return false;
+  if (endKey !== null && dateKey > endKey) return false;
+  return true;
+};
+
+const isDateWithinBusinessAvailability = (business: Business, date: string): boolean => {
+  const normalizedDate = normalizeDateValue(date);
+  if (!normalizedDate) return false;
+  const dateKey = parseDateToKey(normalizedDate);
+  if (dateKey === null) return false;
+  const weekday = getWeekdayFromDate(normalizedDate);
+  if (weekday === null) return false;
+
+  const operatingDays = normalizeOperatingDays(business.operatingDays);
+  if (Array.isArray(operatingDays)) {
+    if (!operatingDays.length) return false;
+    if (!operatingDays.includes(weekday)) return false;
+  }
+
+  if (Array.isArray(business.holidayDates) && business.holidayDates.includes(normalizedDate)) {
+    return false;
+  }
+
+  if (Array.isArray(business.vacationRanges) && business.vacationRanges.length) {
+    const isVacation = business.vacationRanges.some((range) => {
+      const startKey = parseDateToKey(range?.start);
+      const endKey = parseDateToKey(range?.end);
+      if (startKey === null || endKey === null) return false;
+      return dateKey >= startKey && dateKey <= endKey;
+    });
+    if (isVacation) return false;
+  }
+
+  if (business.temporaryClosureActive) {
+    const start = business.temporaryClosureStart || null;
+    const end = business.temporaryClosureEnd || null;
+    if (isDateWithinRange(dateKey, start, end)) return false;
+  }
+
+  return true;
+};
+
+const buildReservationWindow = (minutes: number) => {
+  const start = Math.max(0, minutes);
+  const end = Math.min(24 * 60, minutes + RESERVATION_DURATION_MINUTES);
+  return { start, end };
+};
+
+const isReservationTimeOverlapping = (requestedMinutes: number, candidateTime: string): boolean => {
+  const candidateMinutes = parseTimeToMinutes(candidateTime);
+  if (candidateMinutes === null) return false;
+  const requestedWindow = buildReservationWindow(requestedMinutes);
+  const candidateWindow = buildReservationWindow(candidateMinutes);
+  return requestedWindow.start < candidateWindow.end && candidateWindow.start < requestedWindow.end;
+};
+
+const getReservedTableIdsForDateTime = async (
+  manager: EntityManager,
+  businessId: string,
+  date: string,
+  time: string
+) => {
+  const targetMinutes = parseTimeToMinutes(time);
+  if (targetMinutes === null) return new Set<string>();
+  const reservationRepo = manager.getRepository(Reservation);
+  const reservations = await reservationRepo.find({
+    where: { businessId, date, status: In([ReservaEstado.CONFIRMADA, ReservaEstado.COMPLETADA]) },
+    select: { id: true, time: true },
+  });
+  if (!reservations.length) return new Set<string>();
+
+  const overlappingIds = reservations
+    .filter((reservation) => isReservationTimeOverlapping(targetMinutes, reservation.time))
+    .map((reservation) => String(reservation.id));
+
+  if (!overlappingIds.length) return new Set<string>();
+
+  const links = await manager.getRepository(ReservationTableLink).find({
+    where: { reservationId: In(overlappingIds) },
+  });
+
+  return new Set(links.map((link) => String(link.tableId)));
 };
 
 const isTimeWithinBusinessHours = (business: Business, time: string): boolean => {
@@ -615,6 +795,13 @@ router.post(
       morningEnd,
       afternoonStart,
       afternoonEnd,
+      operatingDays,
+      holidayDates,
+      vacationRanges,
+      temporaryClosureActive,
+      temporaryClosureStart,
+      temporaryClosureEnd,
+      temporaryClosureMessage,
     } = req.body;
     if (!name) return res.status(400).json({ message: 'Nombre es obligatorio' });
 
@@ -659,6 +846,14 @@ router.post(
         morningEnd: normalizeTimeValue(morningEnd),
         afternoonStart: normalizeTimeValue(afternoonStart),
         afternoonEnd: normalizeTimeValue(afternoonEnd),
+        operatingDays: normalizeOperatingDays(operatingDays) ?? DEFAULT_OPERATING_DAYS,
+        holidayDates: normalizeHolidayDates(holidayDates),
+        vacationRanges: normalizeVacationRanges(vacationRanges),
+        temporaryClosureActive: parseBoolean(temporaryClosureActive) ?? false,
+        temporaryClosureStart: normalizeDateValue(temporaryClosureStart),
+        temporaryClosureEnd: normalizeDateValue(temporaryClosureEnd),
+        temporaryClosureMessage:
+          typeof temporaryClosureMessage === 'string' ? temporaryClosureMessage.trim().slice(0, 200) : null,
         status: NegocioEstado.ACTIVO,
       })
     );
@@ -734,6 +929,13 @@ router.put(
       morningEnd,
       afternoonStart,
       afternoonEnd,
+      operatingDays,
+      holidayDates,
+      vacationRanges,
+      temporaryClosureActive,
+      temporaryClosureStart,
+      temporaryClosureEnd,
+      temporaryClosureMessage,
     } = req.body;
     const updates: Partial<Business> = {};
     if (name !== undefined) updates.name = String(name).slice(0, 255);
@@ -748,6 +950,19 @@ router.put(
     if (morningEnd !== undefined) updates.morningEnd = normalizeTimeValue(morningEnd);
     if (afternoonStart !== undefined) updates.afternoonStart = normalizeTimeValue(afternoonStart);
     if (afternoonEnd !== undefined) updates.afternoonEnd = normalizeTimeValue(afternoonEnd);
+    if (operatingDays !== undefined) updates.operatingDays = normalizeOperatingDays(operatingDays);
+    if (holidayDates !== undefined) updates.holidayDates = normalizeHolidayDates(holidayDates);
+    if (vacationRanges !== undefined) updates.vacationRanges = normalizeVacationRanges(vacationRanges);
+    if (temporaryClosureActive !== undefined) {
+      const parsed = parseBoolean(temporaryClosureActive);
+      if (parsed !== null) updates.temporaryClosureActive = parsed;
+    }
+    if (temporaryClosureStart !== undefined) updates.temporaryClosureStart = normalizeDateValue(temporaryClosureStart);
+    if (temporaryClosureEnd !== undefined) updates.temporaryClosureEnd = normalizeDateValue(temporaryClosureEnd);
+    if (temporaryClosureMessage !== undefined) {
+      updates.temporaryClosureMessage =
+        typeof temporaryClosureMessage === 'string' ? temporaryClosureMessage.trim().slice(0, 200) : null;
+    }
 
     await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
       manager.getRepository(Business).update({ id: businessId }, updates)
@@ -794,6 +1009,8 @@ router.get(
   optionalAuthMiddleware,
   asyncHandler(async (req: AuthRequest, res) => {
     const businessId = req.params.id;
+    const dateQuery = typeof req.query.date === 'string' ? req.query.date : '';
+    const timeQuery = typeof req.query.time === 'string' ? req.query.time : '';
     const requester = req.auth;
     const isAdmin = !!requester?.isAdminGlobal;
     const owner = requester?.user;
@@ -808,12 +1025,47 @@ router.get(
       return res.status(404).json({ message: 'Negocio no disponible' });
     }
 
-    const tables = await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
-      manager.getRepository(ReservationTable).find({
+    const normalizedDate = normalizeDateValue(dateQuery);
+    const normalizedTime = normalizeTimeValue(timeQuery);
+    const shouldResolveAvailability = Boolean(normalizedDate && normalizedTime);
+
+    const tables = await runWithContext({ tenantId: business.tenantId, isAdmin }, async (manager) => {
+      const tableRepo = manager.getRepository(ReservationTable);
+      await tableRepo.update(
+        { businessId: business.id, status: MesaEstado.OCUPADA, occupiedUntil: LessThan(new Date()) },
+        { status: MesaEstado.DISPONIBLE, occupiedUntil: null }
+      );
+
+      const list = await tableRepo.find({
         where: { businessId: business.id },
         order: { id: 'ASC' },
-      })
-    );
+      });
+
+      if (!shouldResolveAvailability || !normalizedDate || !normalizedTime) return list;
+
+      const reservedTableIds = await getReservedTableIdsForDateTime(
+        manager,
+        String(business.id),
+        normalizedDate,
+        normalizedTime
+      );
+
+      return list.map((table) => {
+        const isManualOccupied = table.status === MesaEstado.OCUPADA && !table.occupiedUntil;
+        const baseStatus =
+          table.status === MesaEstado.MANTENIMIENTO || isManualOccupied ? table.status : MesaEstado.DISPONIBLE;
+        let availabilityStatus = baseStatus;
+        if (baseStatus === MesaEstado.DISPONIBLE && reservedTableIds.has(String(table.id))) {
+          availabilityStatus = MesaEstado.OCUPADA;
+        }
+        return {
+          ...table,
+          availabilityStatus,
+          isAvailableForTime: availabilityStatus === MesaEstado.DISPONIBLE,
+        };
+      });
+    });
+
     res.json(tables);
   })
 );
@@ -937,6 +1189,9 @@ router.put(
       const statusRaw = String(req.body.status || '').toUpperCase();
       if (Object.values(MesaEstado).includes(statusRaw as MesaEstado)) {
         updates.status = statusRaw as MesaEstado;
+        if (updates.status !== MesaEstado.OCUPADA) {
+          updates.occupiedUntil = null;
+        }
       }
     }
     updates.updatedAt = new Date();
@@ -1105,8 +1360,19 @@ router.post(
       return res.status(400).json({ message: 'Fecha y hora son obligatorias' });
     }
 
+    const normalizedDate = normalizeDateValue(date);
+    if (!normalizedDate) {
+      return res.status(400).json({ message: 'La fecha seleccionada no es válida' });
+    }
+
     const schedule = normalizeReservationSchedule(req.body?.schedule);
     const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+
+    if (!isDateWithinBusinessAvailability(business, normalizedDate)) {
+      return res
+        .status(400)
+        .json({ message: 'El local no está disponible para la fecha seleccionada.' });
+    }
 
     if (!isTimeWithinBusinessHours(business, time)) {
       return res.status(400).json({ message: 'La hora seleccionada no está dentro del horario de funcionamiento.' });
@@ -1138,9 +1404,41 @@ router.post(
         throw new Error('Alguna mesa no existe para este negocio');
       }
 
-      const unavailable = tables.filter((table) => table.status !== MesaEstado.DISPONIBLE);
+      const now = new Date();
+      const expiredTableIds = tables
+        .filter((table) => table.status === MesaEstado.OCUPADA && table.occupiedUntil && table.occupiedUntil <= now)
+        .map((table) => String(table.id));
+      if (expiredTableIds.length) {
+        await tableRepo.update(
+          { id: In(expiredTableIds) },
+          { status: MesaEstado.DISPONIBLE, occupiedUntil: null, updatedAt: new Date() }
+        );
+        tables.forEach((table) => {
+          if (expiredTableIds.includes(String(table.id))) {
+            table.status = MesaEstado.DISPONIBLE;
+            table.occupiedUntil = null;
+          }
+        });
+      }
+
+      const unavailable = tables.filter((table) => {
+        if (table.status === MesaEstado.MANTENIMIENTO) return true;
+        if (table.status === MesaEstado.OCUPADA && !table.occupiedUntil) return true;
+        return false;
+      });
       if (unavailable.length) {
         throw new Error('Algunas mesas ya no están disponibles');
+      }
+
+      const reservedTableIds = await getReservedTableIdsForDateTime(
+        manager,
+        String(business.id),
+        normalizedDate,
+        time
+      );
+      const reservedIds = tableIds.filter((tableId) => reservedTableIds.has(String(tableId)));
+      if (reservedIds.length) {
+        throw new Error('Algunas mesas ya están reservadas para ese horario');
       }
 
       const holderName = user ? user.nombre : `${guestName} ${guestLastName}`.trim();
@@ -1160,7 +1458,7 @@ router.post(
               guestName: user ? null : guestName || null,
               guestLastName: user ? null : guestLastName || null,
               guestRut: user ? null : guestRut || null,
-              date,
+              date: normalizedDate,
               time,
               schedule,
               notes: notes || null,
@@ -1183,11 +1481,6 @@ router.post(
         })
       );
       await linkRepo.save(links);
-
-      await tableRepo.update(
-        { id: In(tableIds) },
-        { status: MesaEstado.OCUPADA, updatedAt: new Date() }
-      );
 
       const totalSeats = tables.reduce((acc, table) => acc + (Number(table.seats) || 0), 0);
 
@@ -1253,12 +1546,13 @@ router.get(
 
     let scanValid = false;
     let reservationStatus = reservation.status;
+    const validationTimestamp = new Date();
 
     if (reservation.status === ReservaEstado.CONFIRMADA) {
       const updateResult = await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
         manager.getRepository(Reservation).update(
           { id: reservation.id, status: ReservaEstado.CONFIRMADA },
-          { status: ReservaEstado.COMPLETADA }
+          { status: ReservaEstado.COMPLETADA, validatedAt: validationTimestamp }
         )
       );
 
@@ -1280,6 +1574,17 @@ router.get(
       const links = await manager.getRepository(ReservationTableLink).find({
         where: { reservationId: reservation.id },
       });
+      if (scanValid && links.length) {
+        const occupiedUntil = new Date(validationTimestamp.getTime() + RESERVATION_DURATION_MINUTES * 60 * 1000);
+        await manager
+          .getRepository(ReservationTable)
+          .createQueryBuilder()
+          .update()
+          .set({ status: MesaEstado.OCUPADA, occupiedUntil })
+          .where('id IN (:...ids)', { ids: links.map((link) => link.tableId) })
+          .andWhere('estado <> :maintenance', { maintenance: MesaEstado.MANTENIMIENTO })
+          .execute();
+      }
       const tables = links.map((link) => ({
         id: link.tableId,
         label: link.tableLabel,

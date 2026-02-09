@@ -63,6 +63,9 @@ export class Reservation {
   @Column({ name: 'monto', type: 'numeric', precision: 10, scale: 2, default: 0 })
   amount!: string;
 
+  @Column({ name: 'fecha_validacion', type: 'timestamptz', nullable: true })
+  validatedAt!: Date | null;
+
   @CreateDateColumn({ name: 'fecha_creacion', type: 'timestamptz' })
   createdAt!: Date;
 }

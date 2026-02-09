@@ -71,6 +71,27 @@ export class Business {
   @Column({ name: 'horario_tarde_fin', type: 'time', nullable: true })
   afternoonEnd!: string | null;
 
+  @Column({ name: 'dias_funcionamiento', type: 'int', array: true, nullable: true })
+  operatingDays!: number[] | null;
+
+  @Column({ name: 'feriados', type: 'text', array: true, nullable: true })
+  holidayDates!: string[] | null;
+
+  @Column({ name: 'vacaciones', type: 'jsonb', nullable: true })
+  vacationRanges!: { start: string; end: string; label?: string | null }[] | null;
+
+  @Column({ name: 'cierre_temporal_activo', type: 'boolean', default: false })
+  temporaryClosureActive!: boolean;
+
+  @Column({ name: 'cierre_temporal_desde', type: 'date', nullable: true })
+  temporaryClosureStart!: string | null;
+
+  @Column({ name: 'cierre_temporal_hasta', type: 'date', nullable: true })
+  temporaryClosureEnd!: string | null;
+
+  @Column({ name: 'cierre_temporal_mensaje', type: 'text', nullable: true })
+  temporaryClosureMessage!: string | null;
+
   @CreateDateColumn({ name: 'fecha_creacion', type: 'timestamptz' })
   createdAt!: Date;
 }

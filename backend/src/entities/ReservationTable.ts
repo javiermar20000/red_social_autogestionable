@@ -23,6 +23,9 @@ export class ReservationTable {
   @Column({ name: 'estado', type: 'enum', enum: MesaEstado, enumName: 'mesa_estado_enum', default: MesaEstado.DISPONIBLE })
   status!: MesaEstado;
 
+  @Column({ name: 'ocupada_hasta', type: 'timestamptz', nullable: true })
+  occupiedUntil!: Date | null;
+
   @CreateDateColumn({ name: 'fecha_creacion', type: 'timestamptz' })
   createdAt!: Date;
 

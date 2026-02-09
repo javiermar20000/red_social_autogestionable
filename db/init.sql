@@ -251,6 +251,13 @@ CREATE TABLE negocio (
   horario_manana_fin    TIME,
   horario_tarde_inicio  TIME,
   horario_tarde_fin     TIME,
+  dias_funcionamiento   INTEGER[],
+  feriados              TEXT[],
+  vacaciones            JSONB,
+  cierre_temporal_activo BOOLEAN NOT NULL DEFAULT FALSE,
+  cierre_temporal_desde DATE,
+  cierre_temporal_hasta DATE,
+  cierre_temporal_mensaje TEXT,
   fecha_creacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   CONSTRAINT fk_negocio_tenant
     FOREIGN KEY (tenant_id) REFERENCES tenant(id)
@@ -267,6 +274,7 @@ CREATE TABLE mesa (
   nombre            VARCHAR(120) NOT NULL,
   sillas            INTEGER NOT NULL DEFAULT 1,
   estado            mesa_estado_enum NOT NULL DEFAULT 'DISPONIBLE',
+  ocupada_hasta     TIMESTAMP WITH TIME ZONE,
   fecha_creacion    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   fecha_actualizacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   CONSTRAINT fk_mesa_negocio
@@ -290,6 +298,7 @@ CREATE TABLE reserva (
   notas           TEXT,
   estado          reserva_estado_enum NOT NULL DEFAULT 'CONFIRMADA',
   monto           NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  fecha_validacion TIMESTAMP WITH TIME ZONE,
   fecha_creacion  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   CONSTRAINT fk_reserva_negocio
     FOREIGN KEY (negocio_id) REFERENCES negocio(id)

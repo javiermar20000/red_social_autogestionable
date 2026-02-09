@@ -1334,6 +1334,8 @@ function App() {
   const [reservationScanStatus, setReservationScanStatus] = useState('idle');
   const [reservationScanError, setReservationScanError] = useState('');
   const [reservationScanResult, setReservationScanResult] = useState(null);
+  const [reservationScanOverlayOpen, setReservationScanOverlayOpen] = useState(false);
+  const [reservationScanSession, setReservationScanSession] = useState(0);
 
   const resetPublicationForm = () => {
     setPublicationForm({
@@ -1689,10 +1691,21 @@ function App() {
     }
   };
 
+  const handleReservationScanOverlayClose = () => {
+    setReservationScanOverlayOpen(false);
+    if (reservationScanOpen) {
+      setReservationScanStatus('scanning');
+      setReservationScanError('');
+      setReservationScanResult(null);
+      setReservationScanSession((prev) => prev + 1);
+    }
+  };
+
   const verifyReservationByCode = async (code) => {
     if (!code) {
       setReservationScanError('No se pudo leer el código de la reserva.');
       setReservationScanStatus('error');
+      setReservationScanOverlayOpen(true);
       return;
     }
     setReservationScanStatus('verifying');
@@ -1701,9 +1714,11 @@ function App() {
       const data = await fetchJson(`/reservations/verify?code=${encodeURIComponent(code)}`, { headers: authHeaders });
       setReservationScanResult(data);
       setReservationScanStatus('success');
+      setReservationScanOverlayOpen(true);
     } catch (err) {
       setReservationScanError(err.message || 'No se pudo verificar la reserva.');
       setReservationScanStatus('error');
+      setReservationScanOverlayOpen(true);
     }
   };
 
@@ -2223,6 +2238,7 @@ function App() {
     setReservationScanStatus('scanning');
     setReservationScanError('');
     setReservationScanResult(null);
+    setReservationScanOverlayOpen(false);
 
     const startScanner = async () => {
       try {
@@ -2281,7 +2297,7 @@ function App() {
         reservationScannerRef.current = null;
       }
     };
-  }, [reservationScanOpen]);
+  }, [reservationScanOpen, reservationScanSession]);
 
   const reservationScanFeedback = buildReservationScanFeedback(reservationScanResult);
 
@@ -5470,84 +5486,127 @@ function App() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={reservationScanOpen} onOpenChange={setReservationScanOpen}>
+      <Dialog
+        open={reservationScanOpen}
+        onOpenChange={(open) => {
+          setReservationScanOpen(open);
+          if (!open) {
+            setReservationScanOverlayOpen(false);
+            setReservationScanStatus('idle');
+            setReservationScanError('');
+            setReservationScanResult(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader className="text-left">
             <DialogTitle>Escanea reserva</DialogTitle>
             <DialogDescription>Apunta al QR del comprobante para validar la reserva.</DialogDescription>
           </DialogHeader>
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-3 relative">
             <div className="aspect-video overflow-hidden rounded-xl border border-border bg-black/80">
               <video ref={reservationScanVideoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
             </div>
+            {reservationScanOverlayOpen && (
+              <div
+                className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 p-4"
+                onMouseDown={handleReservationScanOverlayClose}
+              >
+                <div
+                  className="w-full max-w-md space-y-3 rounded-2xl border border-border bg-card p-4 shadow-hover"
+                  onMouseDown={(event) => event.stopPropagation()}
+                >
+                  {reservationScanStatus === 'success' && reservationScanResult?.reservation && (
+                    <>
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={cn(
+                            'flex h-10 w-10 items-center justify-center rounded-full border',
+                            reservationScanFeedback?.isValid
+                              ? 'border-emerald-200 bg-emerald-100 text-emerald-600'
+                              : 'border-rose-200 bg-rose-100 text-rose-600'
+                          )}
+                        >
+                          {reservationScanFeedback?.isValid ? (
+                            <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+                          ) : (
+                            <XCircle className="h-5 w-5" aria-hidden="true" />
+                          )}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-semibold">{reservationScanFeedback?.title}</p>
+                            <span
+                              className={cn(
+                                'rounded-full border px-2 py-1 text-xs font-semibold',
+                                reservationScanFeedback?.isValid
+                                  ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                                  : 'border-rose-200 bg-rose-100 text-rose-700'
+                              )}
+                            >
+                              {reservationScanFeedback?.isValid ? 'VÁLIDA' : 'NO VÁLIDA'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{reservationScanFeedback?.description}</p>
+                        </div>
+                      </div>
+                      <p className="text-muted-foreground">
+                        <span className="font-semibold text-foreground">Código:</span>{' '}
+                        {reservationScanResult.reservation.code || '--'}
+                      </p>
+                      <p className="text-muted-foreground">
+                        <span className="font-semibold text-foreground">Cliente:</span>{' '}
+                        {reservationScanResult.reservation.userName ||
+                          reservationScanResult.reservation.guestName ||
+                          reservationScanResult.reservation.holderName ||
+                          'Cliente'}
+                      </p>
+                      <p className="text-muted-foreground">
+                        <span className="font-semibold text-foreground">Fecha:</span>{' '}
+                        {reservationScanResult.reservation.date} · {reservationScanResult.reservation.time}
+                      </p>
+                      <p className="text-muted-foreground">
+                        <span className="font-semibold text-foreground">Mesas:</span>{' '}
+                        {Array.isArray(reservationScanResult.reservation.tables)
+                          ? reservationScanResult.reservation.tables.map((table) => table.label).join(', ')
+                          : 'Sin mesas'}
+                      </p>
+                    </>
+                  )}
+                  {reservationScanStatus === 'success' && !reservationScanResult?.reservation && (
+                    <p className="text-sm text-muted-foreground">
+                      No se encontró información adicional de la reserva.
+                    </p>
+                  )}
+                  {reservationScanStatus === 'error' && (
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-200 bg-rose-100 text-rose-600">
+                        <XCircle className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-semibold">No se pudo validar</p>
+                        <p className="text-xs text-muted-foreground">
+                          {reservationScanError || 'No se pudo verificar la reserva.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <Button type="button" variant="outline" onClick={handleReservationScanOverlayClose}>
+                      Escanear otra
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             {reservationScanStatus === 'scanning' && (
               <p className="text-xs text-muted-foreground">Apunta al QR para leer el código de la reserva.</p>
             )}
             {reservationScanStatus === 'verifying' && (
               <p className="text-xs text-muted-foreground">Verificando la reserva...</p>
             )}
-            {reservationScanStatus === 'error' && (
+            {reservationScanStatus === 'error' && !reservationScanOverlayOpen && (
               <p className="text-sm text-rose-600">{reservationScanError || 'No se pudo verificar la reserva.'}</p>
-            )}
-            {reservationScanStatus === 'success' && reservationScanResult?.reservation && (
-              <div className="rounded-xl border border-border bg-card p-4 text-sm space-y-3">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={cn(
-                      'flex h-10 w-10 items-center justify-center rounded-full border',
-                      reservationScanFeedback?.isValid
-                        ? 'border-emerald-200 bg-emerald-100 text-emerald-600'
-                        : 'border-rose-200 bg-rose-100 text-rose-600'
-                    )}
-                  >
-                    {reservationScanFeedback?.isValid ? (
-                      <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-                    ) : (
-                      <XCircle className="h-5 w-5" aria-hidden="true" />
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold">{reservationScanFeedback?.title}</p>
-                      <span
-                        className={cn(
-                          'rounded-full border px-2 py-1 text-xs font-semibold',
-                          reservationScanFeedback?.isValid
-                            ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
-                            : 'border-rose-200 bg-rose-100 text-rose-700'
-                        )}
-                      >
-                        {reservationScanFeedback?.isValid ? 'VÁLIDA' : 'NO VÁLIDA'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{reservationScanFeedback?.description}</p>
-                  </div>
-                </div>
-                <p className="text-muted-foreground">
-                  <span className="font-semibold text-foreground">Código:</span>{' '}
-                  {reservationScanResult.reservation.code || '--'}
-                </p>
-                <p className="text-muted-foreground">
-                  <span className="font-semibold text-foreground">Cliente:</span>{' '}
-                  {reservationScanResult.reservation.userName ||
-                    reservationScanResult.reservation.guestName ||
-                    reservationScanResult.reservation.holderName ||
-                    'Cliente'}
-                </p>
-                <p className="text-muted-foreground">
-                  <span className="font-semibold text-foreground">Fecha:</span>{' '}
-                  {reservationScanResult.reservation.date} · {reservationScanResult.reservation.time}
-                </p>
-                <p className="text-muted-foreground">
-                  <span className="font-semibold text-foreground">Mesas:</span>{' '}
-                  {Array.isArray(reservationScanResult.reservation.tables)
-                    ? reservationScanResult.reservation.tables.map((table) => table.label).join(', ')
-                    : 'Sin mesas'}
-                </p>
-              </div>
-            )}
-            {reservationScanStatus === 'success' && !reservationScanResult?.reservation && (
-              <p className="text-sm text-muted-foreground">No se encontró información adicional de la reserva.</p>
             )}
           </div>
         </DialogContent>

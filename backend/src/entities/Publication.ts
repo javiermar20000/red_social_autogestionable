@@ -78,4 +78,7 @@ export class Publication {
 
   @Column({ name: 'es_publicidad', type: 'boolean', default: false })
   esPublicidad!: boolean;
+
+  @Column({ name: 'extras', type: 'jsonb', nullable: true })
+  extras!: { nombre: string; precio: number; imagenUrl?: string | null }[] | null;
 }

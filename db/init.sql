@@ -338,6 +338,7 @@ CREATE TABLE publicacion (
   visitas              INTEGER NOT NULL DEFAULT 0,
   likes                INTEGER NOT NULL DEFAULT 0,
   es_publicidad        BOOLEAN NOT NULL DEFAULT FALSE,
+  extras               JSONB,
   precio               NUMERIC(10, 2),
   CONSTRAINT fk_publicacion_negocio
     FOREIGN KEY (negocio_id) REFERENCES negocio(id)

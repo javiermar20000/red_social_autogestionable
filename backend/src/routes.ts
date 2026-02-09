@@ -341,6 +341,50 @@ const generateReservationCode = () => {
   return `RSV-${Date.now().toString(36).toUpperCase()}-${random}`;
 };
 
+const normalizePublicationExtras = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const nombre = String((item as { nombre?: unknown }).nombre || '').trim();
+      const precioRaw = (item as { precio?: unknown }).precio;
+      const precio =
+        precioRaw === undefined || precioRaw === null || precioRaw === ''
+          ? null
+          : Number.parseFloat(String(precioRaw));
+      const imagenUrl = typeof (item as { imagenUrl?: unknown }).imagenUrl === 'string'
+        ? String((item as { imagenUrl?: string }).imagenUrl).trim()
+        : '';
+      if (!nombre && precio === null && !imagenUrl) return null;
+      if (!nombre) throw new Error('El nombre del agregado es obligatorio');
+      if (precio === null || !Number.isFinite(precio) || precio < 0) {
+        throw new Error('Precio inválido en agregados');
+      }
+      return {
+        nombre: nombre.slice(0, 120),
+        precio,
+        imagenUrl: imagenUrl || null,
+      };
+    })
+    .filter(Boolean) as { nombre: string; precio: number; imagenUrl?: string | null }[];
+  if (normalized.length > 4) {
+    throw new Error('Solo puedes agregar hasta 4 adicionales');
+  }
+  return normalized;
+};
+
+const normalizeMediaItems = (items?: Media[]) => {
+  if (!Array.isArray(items)) return [];
+  return [...items]
+    .filter((item) => item?.url)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+    .map((item) => ({
+      url: item.url,
+      tipo: item.tipo,
+      orden: item.orden ?? null,
+    }));
+};
+
 const fetchPublicationRatingSummary = async (
   manager: EntityManager,
   publicationIds: string[],
@@ -1713,13 +1757,19 @@ router.post(
     ensureUserReady(user);
     const tenantId = user.tenantId!;
     const { id } = req.params;
-    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio } = req.body;
+    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio, extras } = req.body;
     if (!titulo || !contenido) return res.status(400).json({ message: 'Título y contenido son obligatorios' });
     const precioNormalizado =
       precio === undefined || precio === null || precio === '' ? null : Number.parseFloat(precio as string);
     if (precioNormalizado === null) return res.status(400).json({ message: 'Precio es obligatorio' });
     if (!Number.isFinite(precioNormalizado) || precioNormalizado < 0) {
       return res.status(400).json({ message: 'Precio inválido' });
+    }
+    let extrasNormalized: { nombre: string; precio: number; imagenUrl?: string | null }[] = [];
+    try {
+      extrasNormalized = normalizePublicationExtras(extras);
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
     }
 
     const publication = await runWithContext({ tenantId }, async (manager) => {
@@ -1757,6 +1807,7 @@ router.post(
         estado: PublicacionEstado.PENDIENTE_VALIDACION,
         fechaFinVigencia: fechaFinVigencia ? new Date(fechaFinVigencia) : null,
         precio: precioNormalizado,
+        extras: extrasNormalized.length ? extrasNormalized : null,
       });
       const saved = await publicationRepo.save(record);
       if (validCategoryIds.length) {
@@ -1867,6 +1918,7 @@ router.get(
           business: businessMap[p.businessId],
           coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
           coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+          mediaItems: normalizeMediaItems(mediaByPublication[p.id]),
           ratingAverage: ratingSummary.ratingAverage,
           ratingCount: ratingSummary.ratingCount,
           userRating: userRatingsByPublication[p.id] ?? null,
@@ -1952,6 +2004,7 @@ router.get(
           categories: categoriesByPublication[p.id] || [],
           coverUrl: mediaGrouped[p.id]?.[0]?.url || null,
           coverType: mediaGrouped[p.id]?.[0]?.tipo || null,
+          mediaItems: normalizeMediaItems(mediaGrouped[p.id]),
           ratingAverage: ratingSummary.ratingAverage,
           ratingCount: ratingSummary.ratingCount,
           userRating: userRatingsByPublication[p.id] ?? null,
@@ -2069,6 +2122,7 @@ router.get(
             business: businessMap[p.businessId],
             coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
             coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+            mediaItems: normalizeMediaItems(mediaByPublication[p.id]),
             ratingAverage: ratingSummary.ratingAverage,
             ratingCount: ratingSummary.ratingCount,
             userRating: userRatingsByPublication[p.id] ?? null,
@@ -2163,6 +2217,7 @@ router.get(
             business: businessMap[p.businessId],
             coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
             coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+            mediaItems: normalizeMediaItems(mediaByPublication[p.id]),
             ratingAverage: ratingSummary.ratingAverage,
             ratingCount: ratingSummary.ratingCount,
             userRating: userRatingsByPublication[p.id] ?? null,
@@ -2192,13 +2247,19 @@ router.put(
     if (!tenantId && !isAdmin) return res.status(400).json({ message: 'tenantId es requerido' });
     if (!isAdmin && user) ensureUserReady(user);
 
-    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio } = req.body;
+    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio, extras } = req.body;
     if (!titulo || !contenido) return res.status(400).json({ message: 'Título y contenido son obligatorios' });
     const precioNormalizado =
       precio === undefined || precio === null || precio === '' ? null : Number.parseFloat(precio as string);
     if (precioNormalizado === null) return res.status(400).json({ message: 'Precio es obligatorio' });
     if (!Number.isFinite(precioNormalizado) || precioNormalizado < 0) {
       return res.status(400).json({ message: 'Precio inválido' });
+    }
+    let extrasNormalized: { nombre: string; precio: number; imagenUrl?: string | null }[] = [];
+    try {
+      extrasNormalized = normalizePublicationExtras(extras);
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
     }
 
     const updated = await runWithContext({ tenantId: tenantId ?? undefined, isAdmin }, async (manager) => {
@@ -2239,6 +2300,7 @@ router.put(
           tipo: (tipo as PublicacionTipo) || PublicacionTipo.AVISO_GENERAL,
           fechaFinVigencia: fechaFinVigencia ? new Date(fechaFinVigencia) : null,
           precio: precioNormalizado,
+          extras: extrasNormalized.length ? extrasNormalized : null,
           estado: PublicacionEstado.PENDIENTE_VALIDACION,
           fechaPublicacion: null,
         }
@@ -2375,6 +2437,7 @@ router.get(
         business: businessMap[p.businessId] || null,
         coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
         coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+        mediaItems: normalizeMediaItems(mediaByPublication[p.id]),
       }));
     });
     res.json(pending);
@@ -2447,6 +2510,7 @@ router.get(
         business: businessMap[p.businessId],
         coverUrl: mediaByPublication[p.id]?.[0]?.url || null,
         coverType: mediaByPublication[p.id]?.[0]?.tipo || null,
+        mediaItems: normalizeMediaItems(mediaByPublication[p.id]),
       }));
     });
 

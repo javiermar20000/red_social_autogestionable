@@ -1,5 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { Heart, Share2, Download, MoreHorizontal, Facebook, Instagram, Twitter, MessageCircle, MapPin, Star } from 'lucide-react';
+import {
+  Heart,
+  Share2,
+  Download,
+  MoreHorizontal,
+  Facebook,
+  Instagram,
+  Twitter,
+  MessageCircle,
+  MapPin,
+  Star,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/Dialog.jsx';
 import { Button } from './ui/Button.jsx';
 import { Avatar, AvatarFallback } from './ui/Avatar.jsx';
@@ -9,6 +22,13 @@ const formatCategoryLabel = (cat) => {
   const type = cat?.type;
   const name = cat?.name || type || cat;
   return type && name && type !== name ? `${type} · ${name}` : name;
+};
+
+const detectMediaTypeFromUrl = (value = '') => {
+  if (!value) return 'IMAGEN';
+  if (value.startsWith('data:video')) return 'VIDEO';
+  if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(value)) return 'VIDEO';
+  return 'IMAGEN';
 };
 
 const PinDetailDialog = ({
@@ -44,8 +64,26 @@ const PinDetailDialog = ({
   const [ratingHover, setRatingHover] = useState(0);
   const [ratingText, setRatingText] = useState('');
   const [showFullContent, setShowFullContent] = useState(false);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const publicationId = publication?.id ? String(publication.id) : null;
   const CONTENT_WORD_LIMIT = 50;
+  const autoSlideCount = (() => {
+    if (!publication) return 0;
+    const urls = new Set();
+    const baseUrl = publication.coverUrl || publication.placeholder || '';
+    if (baseUrl) urls.add(baseUrl);
+    if (Array.isArray(publication.mediaItems)) {
+      publication.mediaItems.forEach((item) => {
+        if (item?.url) urls.add(item.url);
+      });
+    }
+    if (Array.isArray(publication.extras)) {
+      publication.extras.forEach((extra) => {
+        if (extra?.imagenUrl) urls.add(extra.imagenUrl);
+      });
+    }
+    return urls.size;
+  })();
 
   useEffect(() => {
     if (!open) {
@@ -69,6 +107,7 @@ const PinDetailDialog = ({
       setRatingHover(0);
       setRatingText('');
       setShowFullContent(false);
+      setActiveMediaIndex(0);
       return;
     }
     setCommentText('');
@@ -79,12 +118,21 @@ const PinDetailDialog = ({
     setRatingHover(0);
     setRatingText('');
     setShowFullContent(false);
+    setActiveMediaIndex(0);
   }, [open, publicationId]);
 
   useEffect(() => {
     if (!open || !commentsOpen || !publicationId) return;
     onLoadComments?.(publicationId);
   }, [open, commentsOpen, publicationId, onLoadComments]);
+
+  useEffect(() => {
+    if (!open || autoSlideCount <= 1) return;
+    const interval = setInterval(() => {
+      setActiveMediaIndex((prev) => (prev + 1) % autoSlideCount);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [open, autoSlideCount]);
 
   if (!publication) return null;
   const {
@@ -109,9 +157,6 @@ const PinDetailDialog = ({
   const canManage =
     (currentUser?.rol === 'OFERENTE' && publication.authorId && publication.authorId === currentUser.id) ||
     currentUser?.role === 'admin';
-  const isVideo =
-    coverType === 'VIDEO' ||
-    (typeof mediaSrc === 'string' && (mediaSrc.startsWith('data:video') || /\.(mp4|webm|ogg)(\?.*)?$/i.test(mediaSrc)));
   const formattedPrice =
     precio === null || precio === undefined || Number.isNaN(Number(precio))
       ? null
@@ -146,6 +191,38 @@ const PinDetailDialog = ({
   const isContentTruncated = contentWords.length > CONTENT_WORD_LIMIT;
   const displayContent =
     !isContentTruncated || showFullContent ? contentText : `${contentWords.slice(0, CONTENT_WORD_LIMIT).join(' ')}…`;
+  const extras = Array.isArray(publication.extras) ? publication.extras : [];
+  const mediaItems = Array.isArray(publication.mediaItems)
+    ? [...publication.mediaItems].sort((a, b) => (a?.orden ?? 0) - (b?.orden ?? 0))
+    : [];
+  const extraImages = extras.map((extra) => extra?.imagenUrl || '').filter(Boolean);
+  const mediaSlides = (() => {
+    const slides = [];
+    const seen = new Set();
+    const addSlide = (url, tipo) => {
+      if (!url || seen.has(url)) return;
+      slides.push({ url, tipo });
+      seen.add(url);
+    };
+    const baseUrl = coverUrl || mediaItems[0]?.url || extraImages[0] || mediaSrc;
+    const baseType =
+      coverType === 'VIDEO'
+        ? 'VIDEO'
+        : detectMediaTypeFromUrl(baseUrl) === 'VIDEO'
+        ? 'VIDEO'
+        : 'IMAGEN';
+    addSlide(baseUrl, baseType);
+    mediaItems.forEach((item) => {
+      if (!item?.url) return;
+      const itemType =
+        item.tipo === 'VIDEO' || detectMediaTypeFromUrl(item.url) === 'VIDEO' ? 'VIDEO' : 'IMAGEN';
+      addSlide(item.url, itemType);
+    });
+    extraImages.forEach((url) => addSlide(url, 'IMAGEN'));
+    return slides.length ? slides : [{ url: placeholderImg, tipo: 'IMAGEN' }];
+  })();
+  const hasMultipleMedia = mediaSlides.length > 1;
+  const activeMedia = mediaSlides[Math.min(activeMediaIndex, mediaSlides.length - 1)] || mediaSlides[0];
   const handleShareToggle = (event) => {
     event.stopPropagation();
     setIsShareOpen((prev) => !prev);
@@ -256,10 +333,32 @@ const PinDetailDialog = ({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
         <div className="grid md:grid-cols-2 gap-0">
           <div className="relative bg-muted">
-            {isVideo ? (
-              <video src={mediaSrc} controls className="w-full h-full object-cover" />
+            {activeMedia?.tipo === 'VIDEO' ? (
+              <video src={activeMedia?.url || mediaSrc} controls className="w-full h-full object-cover" />
             ) : (
-              <img src={mediaSrc} alt={titulo} className="w-full h-full object-cover" />
+              <img src={activeMedia?.url || mediaSrc} alt={titulo} className="w-full h-full object-cover" />
+            )}
+            {hasMultipleMedia && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Imagen anterior"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white transition hover:bg-black/70"
+                  onClick={() =>
+                    setActiveMediaIndex((prev) => (prev - 1 + mediaSlides.length) % mediaSlides.length)
+                  }
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Imagen siguiente"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white transition hover:bg-black/70"
+                  onClick={() => setActiveMediaIndex((prev) => (prev + 1) % mediaSlides.length)}
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </>
             )}
           </div>
 
@@ -285,6 +384,39 @@ const PinDetailDialog = ({
               >
                 Ver más
               </Button>
+            )}
+            {extras.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Agregados adicionales</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  {extras.map((extra, index) => (
+                    <div
+                      key={`${extra?.nombre || 'extra'}-${index}`}
+                      className="flex gap-3 rounded-xl border border-border/70 bg-muted/30 p-3"
+                    >
+                      {extra?.imagenUrl ? (
+                        <img
+                          src={extra.imagenUrl}
+                          alt={extra?.nombre || 'Extra'}
+                          className="h-16 w-16 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
+                          Sin imagen
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold">{extra?.nombre || 'Agregado'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {Number.isFinite(Number(extra?.precio))
+                            ? `$${new Intl.NumberFormat('es-CL').format(Number(extra.precio))}`
+                            : 'Precio no disponible'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             {categories.length > 0 && (

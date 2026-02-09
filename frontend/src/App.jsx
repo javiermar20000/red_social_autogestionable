@@ -66,6 +66,7 @@ const CLIENT_COMMENTS_STORAGE_KEY = 'gastrohub-client-comments-v1';
 const CLIENT_SAVED_PUBLICATIONS_STORAGE_KEY = 'gastrohub-client-saved-publications-v1';
 const FEED_PAGE_INITIAL = 20;
 const FEED_PAGE_STEP = 5;
+const PUBLICATION_EXTRAS_LIMIT = 4;
 const TABLE_STATUS_OPTIONS = [
   {
     value: 'DISPONIBLE',
@@ -1418,6 +1419,7 @@ function App() {
     mediaUrl: '',
     mediaType: 'IMAGEN',
     precio: '',
+    extras: [],
   });
 
   const [adminQueues, setAdminQueues] = useState({ publications: [] });
@@ -1489,6 +1491,7 @@ function App() {
       mediaUrl: '',
       mediaType: 'IMAGEN',
       precio: '',
+      extras: [],
     });
     setEditingPublicationId(null);
   };
@@ -2073,6 +2076,57 @@ function App() {
     };
     reader.onerror = () => notify('danger', 'No se pudo leer el archivo de portada');
     reader.readAsDataURL(file);
+  };
+
+  const handleAddPublicationExtra = () => {
+    setPublicationForm((prev) => {
+      const current = Array.isArray(prev.extras) ? prev.extras : [];
+      if (current.length >= PUBLICATION_EXTRAS_LIMIT) return prev;
+      return {
+        ...prev,
+        extras: [
+          ...current,
+          {
+            nombre: '',
+            precio: '',
+            imagenUrl: '',
+          },
+        ],
+      };
+    });
+  };
+
+  const handleRemovePublicationExtra = (index) => {
+    setPublicationForm((prev) => {
+      const current = Array.isArray(prev.extras) ? prev.extras : [];
+      return { ...prev, extras: current.filter((_, idx) => idx !== index) };
+    });
+  };
+
+  const updatePublicationExtra = (index, patch) => {
+    setPublicationForm((prev) => {
+      const current = Array.isArray(prev.extras) ? prev.extras : [];
+      const next = current.map((item, idx) => (idx === index ? { ...item, ...patch } : item));
+      return { ...prev, extras: next };
+    });
+  };
+
+  const handleExtraImageFileChange = async (index, file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      notify('danger', 'Solo se permiten imágenes para los agregados');
+      return;
+    }
+    try {
+      const compressed = await compressImageFile(file);
+      if (!compressed) {
+        notify('danger', 'No se pudo procesar la imagen');
+        return;
+      }
+      updatePublicationExtra(index, { imagenUrl: compressed });
+    } catch {
+      notify('danger', 'No se pudo procesar la imagen');
+    }
   };
 
   const handleBusinessLogoUpload = (event) => {
@@ -3013,6 +3067,7 @@ function App() {
       mediaUrl: publication.coverUrl || '',
       mediaType: publication.coverType || detectMediaTypeFromUrl(publication.coverUrl || ''),
       precio: publication.precio === null || publication.precio === undefined ? '' : publication.precio,
+      extras: Array.isArray(publication.extras) ? publication.extras : [],
     });
     setCreateDialogTab('publicacion');
     setCreateOpen(true);
@@ -3086,6 +3141,33 @@ function App() {
         return;
       }
     }
+    const extrasNormalized = [];
+    const extrasSource = Array.isArray(publicationForm.extras) ? publicationForm.extras : [];
+    for (const extra of extrasSource) {
+      const nombre = String(extra?.nombre || '').trim();
+      const precioRaw = extra?.precio;
+      const precio =
+        precioRaw === undefined || precioRaw === null || precioRaw === '' ? null : Number(precioRaw);
+      const imagenUrl = String(extra?.imagenUrl || '').trim();
+      if (!nombre && precio === null && !imagenUrl) continue;
+      if (!nombre) {
+        notify('warning', 'Cada agregado debe tener un nombre.');
+        return;
+      }
+      if (precio === null || !Number.isFinite(precio) || precio < 0) {
+        notify('warning', 'Cada agregado debe tener un precio válido.');
+        return;
+      }
+      extrasNormalized.push({
+        nombre,
+        precio,
+        imagenUrl: imagenUrl || null,
+      });
+    }
+    if (extrasNormalized.length > PUBLICATION_EXTRAS_LIMIT) {
+      notify('warning', 'Solo puedes agregar hasta 3 adicionales.');
+      return;
+    }
     try {
       await fetchJson(isEditing ? `/publications/${editingPublicationId}` : `/businesses/${businessId}/publications`, {
         method: isEditing ? 'PUT' : 'POST',
@@ -3100,6 +3182,7 @@ function App() {
           mediaUrl: publicationForm.mediaUrl || undefined,
           mediaType: publicationForm.mediaType,
           precio: parsedPrice,
+          extras: extrasNormalized,
         }),
       });
       notify('success', isEditing ? 'Publicación actualizada' : 'Publicación creada y enviada a validación');
@@ -6613,6 +6696,84 @@ function App() {
                         </div>
                       )}
                     </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Agregados adicionales (opcional)</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Puedes agregar hasta {PUBLICATION_EXTRAS_LIMIT} adicionales con nombre, precio e imagen opcional.
+                    </p>
+                    <div className="mt-3 space-y-3">
+                      {(Array.isArray(publicationForm.extras) ? publicationForm.extras : []).length ? (
+                        (Array.isArray(publicationForm.extras) ? publicationForm.extras : []).map((extra, index) => (
+                          <div key={`extra-${index}`} className="rounded-xl border border-border/70 bg-muted/30 p-3">
+                            <div className="grid gap-2 md:grid-cols-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Nombre</Label>
+                                <Input
+                                  placeholder="Ej: Papas fritas"
+                                  value={extra?.nombre || ''}
+                                  onChange={(e) => updatePublicationExtra(index, { nombre: e.target.value })}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Precio</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="Ej: 1500"
+                                  value={extra?.precio ?? ''}
+                                  onChange={(e) => updatePublicationExtra(index, { precio: e.target.value })}
+                                />
+                              </div>
+                              <div className="flex items-end justify-end">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRemovePublicationExtra(index)}
+                                >
+                                  Quitar
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid gap-2 md:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Imagen (opcional)</Label>
+                                <Input
+                                  placeholder="https://... o pega un data URL"
+                                  value={extra?.imagenUrl || ''}
+                                  onChange={(e) => updatePublicationExtra(index, { imagenUrl: e.target.value })}
+                                />
+                              </div>
+                              <div className="flex items-end">
+                                <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-input bg-muted/60 px-3 py-2 text-sm font-medium hover:bg-muted">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="sr-only"
+                                    onChange={(e) => handleExtraImageFileChange(index, e.target.files?.[0] || null)}
+                                  />
+                                  Subir imagen
+                                </label>
+                              </div>
+                            </div>
+                            {extra?.imagenUrl && (
+                              <div className="mt-3 overflow-hidden rounded-lg border bg-muted/40">
+                                <img src={extra.imagenUrl} alt={extra?.nombre || 'Extra'} className="h-40 w-full object-cover" />
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Aún no agregas adicionales.</p>
+                      )}
+                    </div>
+                    {(Array.isArray(publicationForm.extras) ? publicationForm.extras : []).length < PUBLICATION_EXTRAS_LIMIT && (
+                      <Button type="button" variant="outline" size="sm" className="mt-3" onClick={handleAddPublicationExtra}>
+                        Agregar adicional
+                      </Button>
+                    )}
                   </div>
                   <div className="md:col-span-2">
                     <Label>Categoría</Label>

@@ -43,7 +43,9 @@ const PinDetailDialog = ({
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingHover, setRatingHover] = useState(0);
   const [ratingText, setRatingText] = useState('');
+  const [showFullContent, setShowFullContent] = useState(false);
   const publicationId = publication?.id ? String(publication.id) : null;
+  const CONTENT_WORD_LIMIT = 50;
 
   useEffect(() => {
     if (!open) {
@@ -66,6 +68,7 @@ const PinDetailDialog = ({
       setRatingValue(0);
       setRatingHover(0);
       setRatingText('');
+      setShowFullContent(false);
       return;
     }
     setCommentText('');
@@ -75,6 +78,7 @@ const PinDetailDialog = ({
     setRatingValue(0);
     setRatingHover(0);
     setRatingText('');
+    setShowFullContent(false);
   }, [open, publicationId]);
 
   useEffect(() => {
@@ -137,6 +141,11 @@ const PinDetailDialog = ({
     ? 'rounded-full bg-red-500 text-white hover:bg-red-600'
     : 'rounded-full text-muted-foreground';
   const likeButtonLabel = liked ? 'Me gusta marcado' : 'Dar me gusta';
+  const contentText = typeof contenido === 'string' ? contenido.trim() : '';
+  const contentWords = contentText ? contentText.split(/\s+/).filter(Boolean) : [];
+  const isContentTruncated = contentWords.length > CONTENT_WORD_LIMIT;
+  const displayContent =
+    !isContentTruncated || showFullContent ? contentText : `${contentWords.slice(0, CONTENT_WORD_LIMIT).join(' ')}…`;
   const handleShareToggle = (event) => {
     event.stopPropagation();
     setIsShareOpen((prev) => !prev);
@@ -265,7 +274,18 @@ const PinDetailDialog = ({
             </DialogHeader>
 
             {formattedPrice && <p className="mt-2 text-center text-xl font-bold text-emerald-700">{formattedPrice}</p>}
-            <p className="mt-4 text-muted-foreground leading-relaxed whitespace-pre-line">{contenido}</p>
+            <p className="mt-4 text-muted-foreground leading-relaxed whitespace-pre-line">{displayContent}</p>
+            {isContentTruncated && !showFullContent && (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="mt-2 w-fit px-0"
+                onClick={() => setShowFullContent(true)}
+              >
+                Ver más
+              </Button>
+            )}
 
             {categories.length > 0 && (
               <div className="mt-4">

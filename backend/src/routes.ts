@@ -15,6 +15,7 @@ import { Reservation, ReservaEstado, ReservaHorario } from './entities/Reservati
 import { ReservationTableLink } from './entities/ReservationTableLink.js';
 import { EntityManager, In, LessThan } from 'typeorm';
 import { runWithContext } from './utils/rls.js';
+import sharp from 'sharp';
 
 const router = Router();
 
@@ -339,6 +340,56 @@ const normalizeReservationSchedule = (value: unknown): ReservaHorario => {
 const generateReservationCode = () => {
   const random = Math.floor(100 + Math.random() * 900);
   return `RSV-${Date.now().toString(36).toUpperCase()}-${random}`;
+};
+
+const IMAGE_DATA_URL_REGEX = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/;
+const IMAGE_MAX_DIMENSION = 1600;
+const IMAGE_JPEG_QUALITY = 80;
+const IMAGE_WEBP_QUALITY = 80;
+const SKIP_IMAGE_MIME_TYPES = new Set(['image/svg+xml', 'image/gif']);
+
+const compressDataUrlImage = async (value: string) => {
+  const match = IMAGE_DATA_URL_REGEX.exec(value);
+  if (!match) return value;
+  const mimeType = match[1].toLowerCase();
+  if (SKIP_IMAGE_MIME_TYPES.has(mimeType)) return value;
+  const base64 = match[2];
+  if (!base64) return value;
+  try {
+    const inputBuffer = Buffer.from(base64, 'base64');
+    let pipeline = sharp(inputBuffer, { failOnError: false })
+      .rotate()
+      .resize({
+        width: IMAGE_MAX_DIMENSION,
+        height: IMAGE_MAX_DIMENSION,
+        fit: 'inside',
+        withoutEnlargement: true,
+      });
+
+    let outputBuffer: Buffer;
+    let outputMime = mimeType;
+    if (mimeType === 'image/png') {
+      outputBuffer = await pipeline.png({ compressionLevel: 9 }).toBuffer();
+    } else if (mimeType === 'image/webp') {
+      outputBuffer = await pipeline.webp({ quality: IMAGE_WEBP_QUALITY }).toBuffer();
+      outputMime = 'image/webp';
+    } else {
+      outputBuffer = await pipeline.jpeg({ quality: IMAGE_JPEG_QUALITY, mozjpeg: true }).toBuffer();
+      outputMime = 'image/jpeg';
+    }
+
+    return `data:${outputMime};base64,${outputBuffer.toString('base64')}`;
+  } catch {
+    return value;
+  }
+};
+
+const compressImageIfNeeded = async (value?: string | null) => {
+  if (!value || typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!trimmed.startsWith('data:image/')) return trimmed;
+  return compressDataUrlImage(trimmed);
 };
 
 const normalizePublicationExtras = (value: unknown) => {
@@ -848,6 +899,7 @@ router.post(
       temporaryClosureMessage,
     } = req.body;
     if (!name) return res.status(400).json({ message: 'Nombre es obligatorio' });
+    const compressedImageUrl = await compressImageIfNeeded(imageUrl);
 
     let tenant = null as Tenant | null;
     if (user.tenantId) {
@@ -881,7 +933,7 @@ router.post(
         type: (type as NegocioTipo) || NegocioTipo.RESTAURANTE,
         description: description || null,
         phone: phone ? String(phone).slice(0, 30) : null,
-        imageUrl: imageUrl || null,
+        imageUrl: compressedImageUrl || null,
         address: address || null,
         city: city || null,
         region: region || null,
@@ -984,7 +1036,7 @@ router.put(
     const updates: Partial<Business> = {};
     if (name !== undefined) updates.name = String(name).slice(0, 255);
     if (description !== undefined) updates.description = description || null;
-    if (imageUrl !== undefined) updates.imageUrl = imageUrl || null;
+    if (imageUrl !== undefined) updates.imageUrl = await compressImageIfNeeded(imageUrl);
     if (phone !== undefined) updates.phone = phone ? String(phone).slice(0, 30) : null;
     if (address !== undefined) updates.address = address || null;
     if (city !== undefined) updates.city = city || null;
@@ -1768,6 +1820,14 @@ router.post(
     let extrasNormalized: { nombre: string; precio: number; imagenUrl?: string | null }[] = [];
     try {
       extrasNormalized = normalizePublicationExtras(extras);
+      if (extrasNormalized.length) {
+        extrasNormalized = await Promise.all(
+          extrasNormalized.map(async (extra) => ({
+            ...extra,
+            imagenUrl: await compressImageIfNeeded(extra.imagenUrl),
+          }))
+        );
+      }
     } catch (err) {
       return res.status(400).json({ message: (err as Error).message });
     }
@@ -1823,16 +1883,31 @@ router.post(
         mediaType?: MediaTipo;
       };
       if (mediaUrl) {
-        mediaEntries.push({ url: mediaUrl, tipo: mediaType === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN });
+        const compressed = await compressImageIfNeeded(mediaUrl);
+        if (compressed) {
+          mediaEntries.push({
+            url: compressed,
+            tipo: mediaType === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN,
+          });
+        }
       }
       if (Array.isArray(mediaUrlsBody)) {
-        mediaUrlsBody.filter(Boolean).forEach((url) => mediaEntries.push({ url, tipo: MediaTipo.IMAGEN }));
+        const compressedUrls = await Promise.all(
+          mediaUrlsBody.filter(Boolean).map((url) => compressImageIfNeeded(url))
+        );
+        compressedUrls.filter(Boolean).forEach((url) => mediaEntries.push({ url, tipo: MediaTipo.IMAGEN }));
       }
       if (Array.isArray(mediaItemsBody)) {
-        mediaItemsBody.forEach((item) => {
-          if (!item?.url) return;
-          mediaEntries.push({ url: item.url, tipo: item.tipo === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN });
-        });
+        const normalizedItems = await Promise.all(
+          mediaItemsBody.map(async (item) => {
+            if (!item?.url) return null;
+            const tipo = item.tipo === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN;
+            const url = tipo === MediaTipo.IMAGEN ? await compressImageIfNeeded(item.url) : item.url;
+            if (!url) return null;
+            return { url, tipo };
+          })
+        );
+        normalizedItems.filter(Boolean).forEach((entry) => mediaEntries.push(entry as { url: string; tipo: MediaTipo }));
       }
       if (mediaEntries.length) {
         const mediaRepo = manager.getRepository(Media);
@@ -2258,6 +2333,14 @@ router.put(
     let extrasNormalized: { nombre: string; precio: number; imagenUrl?: string | null }[] = [];
     try {
       extrasNormalized = normalizePublicationExtras(extras);
+      if (extrasNormalized.length) {
+        extrasNormalized = await Promise.all(
+          extrasNormalized.map(async (extra) => ({
+            ...extra,
+            imagenUrl: await compressImageIfNeeded(extra.imagenUrl),
+          }))
+        );
+      }
     } catch (err) {
       return res.status(400).json({ message: (err as Error).message });
     }
@@ -2321,13 +2404,27 @@ router.put(
         mediaType?: MediaTipo;
       };
       const mediaEntries: { url: string; tipo?: MediaTipo }[] = [];
-      if (mediaUrl) mediaEntries.push({ url: mediaUrl, tipo: mediaType });
-      if (Array.isArray(mediaUrlsBody)) mediaUrlsBody.filter(Boolean).forEach((url) => mediaEntries.push({ url }));
+      if (mediaUrl) {
+        const compressed = await compressImageIfNeeded(mediaUrl);
+        if (compressed) mediaEntries.push({ url: compressed, tipo: mediaType });
+      }
+      if (Array.isArray(mediaUrlsBody)) {
+        const compressedUrls = await Promise.all(
+          mediaUrlsBody.filter(Boolean).map((url) => compressImageIfNeeded(url))
+        );
+        compressedUrls.filter(Boolean).forEach((url) => mediaEntries.push({ url }));
+      }
       if (Array.isArray(mediaItemsBody)) {
-        mediaItemsBody.forEach((item) => {
-          if (!item?.url) return;
-          mediaEntries.push({ url: item.url, tipo: item.tipo });
-        });
+        const normalizedItems = await Promise.all(
+          mediaItemsBody.map(async (item) => {
+            if (!item?.url) return null;
+            const tipo = item.tipo === MediaTipo.VIDEO ? MediaTipo.VIDEO : MediaTipo.IMAGEN;
+            const url = tipo === MediaTipo.IMAGEN ? await compressImageIfNeeded(item.url) : item.url;
+            if (!url) return null;
+            return { url, tipo };
+          })
+        );
+        normalizedItems.filter(Boolean).forEach((entry) => mediaEntries.push(entry as { url: string; tipo: MediaTipo }));
       }
       if (mediaEntries.length) {
         await mediaRepo.delete({ publicationId });

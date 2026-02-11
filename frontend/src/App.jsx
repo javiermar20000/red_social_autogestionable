@@ -27,6 +27,7 @@ import AdPanel, { AdRail } from './components/AdPanel.jsx';
 import MasonryGrid from './components/MasonryGrid.jsx';
 import PinCard from './components/PinCard.jsx';
 import PinDetailDialog from './components/PinDetailDialog.jsx';
+import BusinessMap from './components/BusinessMap.jsx';
 import AuthDialog from './components/AuthDialog.jsx';
 import ExploreDialog from './components/ExploreDialog.jsx';
 import { Button } from './components/ui/Button.jsx';
@@ -66,6 +67,8 @@ const CLIENT_COMMENTS_STORAGE_KEY = 'gastrohub-client-comments-v1';
 const CLIENT_SAVED_PUBLICATIONS_STORAGE_KEY = 'gastrohub-client-saved-publications-v1';
 const FEED_PAGE_INITIAL = 20;
 const FEED_PAGE_STEP = 5;
+const BUSINESS_PROFILE_PAGE_INITIAL = 20;
+const BUSINESS_PROFILE_PAGE_STEP = 5;
 const PUBLICATION_EXTRAS_LIMIT = 4;
 const TABLE_STATUS_OPTIONS = [
   {
@@ -637,6 +640,7 @@ const defaultFilters = {
   categoryId: '',
   businessId: '',
   businessType: '',
+  publicationType: '',
   region: '',
   city: '',
   amenities: [],
@@ -1395,6 +1399,7 @@ function App() {
   const [businessProfile, setBusinessProfile] = useState(null);
   const [businessProfilePublications, setBusinessProfilePublications] = useState([]);
   const [loadingBusinessProfile, setLoadingBusinessProfile] = useState(false);
+  const [businessProfileVisibleCount, setBusinessProfileVisibleCount] = useState(BUSINESS_PROFILE_PAGE_INITIAL);
 
   const [tenantForm, setTenantForm] = useState({ nombre: '', dominio: '' });
   const [categoryForm, setCategoryForm] = useState({ name: '', type: '', tenantId: '' });
@@ -2044,38 +2049,35 @@ function App() {
   };
 
   const handleMediaUrlChange = (value) => {
+    if (!value) {
+      setPublicationForm((prev) => ({ ...prev, mediaUrl: '', mediaType: 'IMAGEN' }));
+      return;
+    }
     const mediaType = detectMediaTypeFromUrl(value);
-    setPublicationForm((prev) => ({ ...prev, mediaUrl: value, mediaType }));
+    if (mediaType === 'VIDEO') {
+      notify('danger', 'Solo se permiten imágenes en la portada');
+      return;
+    }
+    setPublicationForm((prev) => ({ ...prev, mediaUrl: value, mediaType: 'IMAGEN' }));
   };
 
   const handleMediaFileChange = async (file) => {
     if (!file) return;
-    const isVideo = file.type.startsWith('video/');
     const isImage = file.type.startsWith('image/');
-    if (!isImage && !isVideo) {
-      notify('danger', 'Solo se permiten imágenes o videos cortos');
+    if (!isImage) {
+      notify('danger', 'Solo se permiten imágenes');
       return;
     }
-    if (isImage) {
-      try {
-        const compressed = await compressImageFile(file);
-        if (!compressed) {
-          notify('danger', 'No se pudo procesar la imagen');
-          return;
-        }
-        handleMediaUrlChange(compressed);
-      } catch {
+    try {
+      const compressed = await compressImageFile(file);
+      if (!compressed) {
         notify('danger', 'No se pudo procesar la imagen');
+        return;
       }
-      return;
+      handleMediaUrlChange(compressed);
+    } catch {
+      notify('danger', 'No se pudo procesar la imagen');
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      handleMediaUrlChange(result);
-    };
-    reader.onerror = () => notify('danger', 'No se pudo leer el archivo de portada');
-    reader.readAsDataURL(file);
   };
 
   const handleAddPublicationExtra = () => {
@@ -3098,6 +3100,10 @@ function App() {
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
       return notify('danger', 'El precio debe ser un número válido');
     }
+    const mediaType = publicationForm.mediaType || detectMediaTypeFromUrl(publicationForm.mediaUrl || '');
+    if (mediaType === 'VIDEO') {
+      return notify('danger', 'La portada debe ser una imagen');
+    }
     const isEditing = Boolean(editingPublicationId);
     const businessForPublication =
       businessListForForms.find((b) => String(b.id) === String(businessId)) || selectedBusinessForPublication;
@@ -3539,6 +3545,21 @@ function App() {
     });
   }, [businessProfileDecorated, normalizedSearch]);
 
+  useEffect(() => {
+    setBusinessProfileVisibleCount(BUSINESS_PROFILE_PAGE_INITIAL);
+  }, [businessProfile?.id, normalizedSearch]);
+
+  const visibleBusinessProfilePublications = useMemo(
+    () =>
+      businessProfileFiltered.slice(
+        0,
+        Math.max(BUSINESS_PROFILE_PAGE_INITIAL, businessProfileVisibleCount)
+      ),
+    [businessProfileFiltered, businessProfileVisibleCount]
+  );
+  const canLoadMoreBusinessProfile =
+    businessProfileFiltered.length > visibleBusinessProfilePublications.length;
+
   const feedWithDecorations = useMemo(
     () => decoratePublicationList(feed),
     [feed, categories, businesses]
@@ -3935,6 +3956,12 @@ function App() {
       const target = String(filters.businessType).toUpperCase();
       list = list.filter((pub) => String(pub.business?.type || '').toUpperCase() === target);
     }
+    if (filters.publicationType) {
+      const target = String(filters.publicationType).toUpperCase();
+      list = list.filter(
+        (pub) => String(pub.tipo || pub.type || pub.publicationType || '').toUpperCase() === target
+      );
+    }
     if (filters.region) {
       const target = normalizeLocationValue(filters.region);
       list = list.filter((pub) => normalizeLocationValue(pub.business?.region) === target);
@@ -3976,6 +4003,7 @@ function App() {
         search: filters.search || '',
         categoryId: filters.categoryId || '',
         businessType: filters.businessType || '',
+        publicationType: filters.publicationType || '',
         region: filters.region || '',
         city: filters.city || '',
         amenities: Array.isArray(filters.amenities) ? filters.amenities.slice().sort() : [],
@@ -4034,7 +4062,43 @@ function App() {
   const businessProfileEmail =
     businessProfile?.contactEmail || businessProfile?.email || businessProfile?.ownerEmail || '';
   const businessProfilePhone = businessProfile?.phone || '';
+  const businessProfileAddress = [businessProfile?.address, businessProfile?.city, businessProfile?.region]
+    .filter(Boolean)
+    .join(', ');
   const businessProfileImage = businessProfile?.imageUrl || businessProfile?.logoUrl || '';
+  const businessProfileAmenities = useMemo(() => {
+    const raw = Array.isArray(businessProfile?.amenities) ? businessProfile.amenities : [];
+    const lookup = new Map(
+      businessAmenityOptions.map((amenity) => [amenity.value, amenity.label || humanizeCategoryType(amenity.value)])
+    );
+    return raw
+      .map((value) => lookup.get(value) || humanizeCategoryType(value))
+      .filter(Boolean);
+  }, [businessProfile, businessAmenityOptions]);
+  const businessProfileTimeRanges = useMemo(() => getBusinessTimeRanges(businessProfile), [businessProfile]);
+  const businessProfileOperatingDays = useMemo(() => {
+    const days = normalizeOperatingDaysList(businessProfile?.operatingDays);
+    if (!Array.isArray(days) || !days.length) return [];
+    return WEEKDAY_OPTIONS.filter((day) => days.includes(day.value)).map((day) => day.label);
+  }, [businessProfile?.operatingDays]);
+  const formatTimeRangeLabel = (startValue, endValue) => {
+    const startMinutes = parseTimeToMinutes(startValue);
+    const endMinutes = parseTimeToMinutes(endValue);
+    if (startMinutes === null || endMinutes === null || startMinutes > endMinutes) return '';
+    return `${formatMinutesToTime(startMinutes)} - ${formatMinutesToTime(endMinutes)}`;
+  };
+  const businessProfileScheduleEntries = [
+    {
+      label: 'Mañana',
+      value: formatTimeRangeLabel(businessProfile?.morningStart, businessProfile?.morningEnd),
+    },
+    {
+      label: 'Tarde',
+      value: formatTimeRangeLabel(businessProfile?.afternoonStart, businessProfile?.afternoonEnd),
+    },
+  ].filter((entry) => entry.value);
+  const hasBusinessProfileSchedule =
+    businessProfileScheduleEntries.length > 0 || businessProfileOperatingDays.length > 0;
   const hasSimilarNotifications = similarItems.length > 0;
   const similarNotificationsLabel = hasSimilarNotifications ? (similarItems.length > 9 ? '9+' : similarItems.length) : null;
   const showFeedLoading = loadingFeed && feed.length === 0;
@@ -4117,8 +4181,88 @@ function App() {
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Teléfono</p>
                   <p className="mt-2 text-sm font-semibold">{businessProfilePhone || 'No disponible'}</p>
                 </div>
+                {businessProfileAddress && (
+                  <div className="rounded-xl border border-border bg-muted/30 text-center p-4 md:col-span-2">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Dirección</p>
+                    <p className="mt-2 text-sm font-semibold">{businessProfileAddress}</p>
+                  </div>
+                )}
               </div>
             </div>
+
+            <section className="rounded-2xl bg-card p-5 shadow-soft">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Ubicación del negocio</p>
+                  <h4 className="text-xl font-semibold">Cómo llegar</h4>
+                </div>
+              </div>
+              <div className="mt-4">
+                {loadingBusinessProfile ? (
+                  <div className="rounded-2xl border border-dashed border-border p-6 text-center text-muted-foreground">
+                    Cargando ubicación...
+                  </div>
+                ) : (
+                  <BusinessMap business={businessProfile} heightClass="h-[520px]" />
+                )}
+              </div>
+              <div className="mt-6">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Servicios disponibles
+                </p>
+                {businessProfileAmenities.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {businessProfileAmenities.map((amenity) => (
+                      <span
+                        key={amenity}
+                        className="rounded-full border border-border/70 bg-muted/40 px-3 py-1 text-xs text-muted-foreground"
+                      >
+                        {amenity}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Este negocio aún no registró servicios.
+                  </p>
+                )}
+              </div>
+
+              {hasBusinessProfileSchedule && (
+                <div className="mt-6">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Horarios de atención
+                  </p>
+                  {businessProfileScheduleEntries.length > 0 && (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {businessProfileScheduleEntries.map((entry) => (
+                        <div
+                          key={entry.label}
+                          className="rounded-xl border border-border bg-muted/30 p-3 text-sm"
+                        >
+                          <p className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">
+                            {entry.label}
+                          </p>
+                          <p className="mt-1 font-semibold">{entry.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {businessProfileOperatingDays.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {businessProfileOperatingDays.map((day) => (
+                        <span
+                          key={day}
+                          className="rounded-full border border-border/70 bg-muted/40 px-3 py-1 text-xs text-muted-foreground"
+                        >
+                          {day}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
 
             <section className="rounded-2xl bg-card p-5 shadow-soft">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -4133,18 +4277,35 @@ function App() {
                   Cargando publicaciones...
                 </div>
               ) : businessProfileFiltered.length ? (
-                <MasonryGrid className="mt-4">
-                  {businessProfileFiltered.map((pub) => (
-                    <PinCard
-                      key={pub.id}
-                      publication={pub}
-                      likesCount={getHeartsValue(pub)}
-                      liked={hasLikedInSession(pub)}
-                      onLike={handleLike}
-                      onSelect={handleSelectPublication}
-                    />
-                  ))}
-                </MasonryGrid>
+                <>
+                  <MasonryGrid className="mt-4">
+                    {visibleBusinessProfilePublications.map((pub) => (
+                      <PinCard
+                        key={pub.id}
+                        publication={pub}
+                        likesCount={getHeartsValue(pub)}
+                        liked={hasLikedInSession(pub)}
+                        onLike={handleLike}
+                        onSelect={handleSelectPublication}
+                      />
+                    ))}
+                  </MasonryGrid>
+                  {canLoadMoreBusinessProfile && (
+                    <div className="mt-6 flex justify-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setBusinessProfileVisibleCount((prev) =>
+                            Math.min(prev + BUSINESS_PROFILE_PAGE_STEP, businessProfileFiltered.length)
+                          )
+                        }
+                      >
+                        Ver más
+                      </Button>
+                    </div>
+                  )}
+                </>
               ) : businessProfileDecorated.length ? (
                 <div className="mt-4 rounded-2xl border border-dashed border-border p-6 text-center text-muted-foreground">
                   No hay publicaciones que coincidan con la búsqueda.
@@ -5609,7 +5770,7 @@ function App() {
                 <span className="text-[10px] font-bold">/</span>
                 <Download className="h-5 w-5" aria-hidden="true" />
               </span>
-              Publicaciones guardadas
+              P. guardadas
             </button>
           </div>
         </nav>
@@ -5628,6 +5789,7 @@ function App() {
         onOpenChange={setExploreOpen}
         categories={categoryFilterOptions}
         businessTypes={businessTypeOptions}
+        publicationTypes={publicationTypes}
         regions={chileRegions}
         citiesByRegion={chileCitiesByRegion}
         amenities={businessAmenityOptions}
@@ -5642,6 +5804,7 @@ function App() {
             ...prev,
             categoryId: '',
             businessType: '',
+            publicationType: '',
             region: '',
             city: '',
             amenities: [],
@@ -6665,7 +6828,7 @@ function App() {
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <Label>Portada (imagen o video)</Label>
+                    <Label>Portada (imagen)</Label>
                     <div className="mt-1 space-y-2 rounded-lg border border-dashed border-input p-3">
                       <Input
                         placeholder="https://... o pega un data URL"
@@ -6676,14 +6839,14 @@ function App() {
                         <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-input bg-muted/60 px-3 py-2 text-sm font-medium hover:bg-muted">
                           <input
                             type="file"
-                            accept="image/*,video/mp4,video/webm,video/ogg"
+                            accept="image/*"
                             className="sr-only"
                             onChange={(e) => handleMediaFileChange(e.target.files?.[0] || null)}
                           />
                           Subir archivo
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Acepta imagen o video corto. La imagen se comprimira antes de enviarse al backend.
+                          Acepta solo imágenes. La imagen se comprimira antes de enviarse al backend.
                         </p>
                       </div>
                       {publicationForm.mediaUrl && (

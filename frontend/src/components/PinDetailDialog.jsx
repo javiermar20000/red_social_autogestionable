@@ -31,6 +31,7 @@ const detectMediaTypeFromUrl = (value = '') => {
   return 'IMAGEN';
 };
 
+
 const PinDetailDialog = ({
   open,
   onOpenChange,
@@ -180,7 +181,10 @@ const PinDetailDialog = ({
     shareUrl ? `&url=${shareUrlEncoded}` : ''
   }`;
   const businessAvatarSrc = businessLogoUrl || business?.imageUrl || business?.logoUrl || '';
-  const mapQuery = locationLabel || business?.address || business?.city || business?.region || '';
+  const mapCoordinateQuery =
+    business?.latitude && business?.longitude ? `${business.latitude},${business.longitude}` : '';
+  const mapQuery =
+    mapCoordinateQuery || locationLabel || business?.address || business?.city || business?.region || '';
   const mapUrl = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : '';
   const likeButtonClassName = liked
     ? 'rounded-full bg-red-500 text-white hover:bg-red-600'
@@ -254,7 +258,7 @@ const PinDetailDialog = ({
     event.stopPropagation();
     if (!canOpenBusiness) return;
     onViewBusiness?.({
-      ...business,
+      ...(business || {}),
       id: businessId,
       name: business?.name || businessName,
       imageUrl: business?.imageUrl || businessAvatarSrc,

@@ -18,7 +18,7 @@ async function bootstrap() {
       credentials: true,
     })
   );
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '10mb' }));
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
   app.use('/api', router);

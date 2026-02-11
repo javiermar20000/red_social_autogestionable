@@ -15,6 +15,7 @@ const ExploreDialog = ({
   regions = [],
   citiesByRegion = {},
   amenities = [],
+  publicationTypes = [],
   filters = {},
   onChange,
   onClear,
@@ -22,6 +23,7 @@ const ExploreDialog = ({
   const {
     categoryId = '',
     businessType = '',
+    publicationType = '',
     region = '',
     city = '',
     amenities: amenitiesFilter = [],
@@ -44,6 +46,17 @@ const ExploreDialog = ({
       };
     })
     .filter((amenity) => amenity.value);
+  const publicationTypeOptions = publicationTypes
+    .map((type) => {
+      if (typeof type === 'string') {
+        return { value: type, label: formatLabel(type) };
+      }
+      return {
+        value: type.value,
+        label: type.label || formatLabel(type.value),
+      };
+    })
+    .filter((type) => type.value);
 
   const handleSortChange = (value) => {
     if (!value) return onChange?.({ sortBy: '', sortDir: 'desc' });
@@ -95,6 +108,22 @@ const ExploreDialog = ({
               {categoryList.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-muted-foreground">Tipo de publicación</p>
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+              value={publicationType}
+              onChange={(e) => onChange?.({ publicationType: e.target.value })}
+            >
+              <option value="">Todas las publicaciones</option>
+              {publicationTypeOptions.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
                 </option>
               ))}
             </select>

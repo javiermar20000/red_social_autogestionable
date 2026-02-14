@@ -378,12 +378,12 @@ const PinDetailDialog = ({
         >
           <X className="h-5 w-5" />
         </button>
-        <div className="grid gap-0 md:grid-cols-2 md:items-start">
-          <div className="relative bg-muted md:self-start">
+        <div className="grid gap-0 md:grid-cols-2 md:items-stretch">
+          <div className="relative bg-muted md:self-stretch">
             {activeMedia?.tipo === 'VIDEO' ? (
-              <video src={activeMedia?.url || mediaSrc} controls className="w-full h-full object-contain" />
+              <video src={activeMedia?.url || mediaSrc} controls className="w-full h-full object-contain md:object-cover" />
             ) : (
-              <img src={activeMedia?.url || mediaSrc} alt={titulo} className="w-full h-full object-contain" />
+              <img src={activeMedia?.url || mediaSrc} alt={titulo} className="w-full h-full object-contain md:object-cover" />
             )}
             {hasMultipleMedia && (
               <>
@@ -649,122 +649,122 @@ const PinDetailDialog = ({
                 <MessageCircle className="h-5 w-5" />
               </Button>
             </div>
-
-            {commentsOpen && (
-              <div className="mt-6 border-t pt-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold">Comentarios públicos</h4>
-                  <span className="text-xs text-muted-foreground">{commentsList.length} en total</span>
-                </div>
-
-                {!replyTarget && (
-                  <form onSubmit={handleSubmitComment} className="mt-3 space-y-2">
-                    <textarea
-                      className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      placeholder="Escribe tu comentario..."
-                      value={commentText}
-                      onChange={(event) => setCommentText(event.target.value)}
-                    />
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground">
-                        {currentUser?.rol === 'CLIENTE'
-                          ? 'Comparte tu opinión con la comunidad.'
-                          : 'Para comentar debes iniciar sesión como cliente.'}
-                      </p>
-                      <Button type="submit" size="sm" disabled={commentSubmitting || !commentText.trim()}>
-                        {commentSubmitting ? 'Enviando...' : 'Comentar'}
-                      </Button>
-                    </div>
-                  </form>
-                )}
-
-                <div className="mt-4 space-y-4">
-                  {commentsLoading && <p className="text-sm text-muted-foreground">Cargando comentarios...</p>}
-                  {!commentsLoading && orderedRootComments.length === 0 && (
-                    <p className="text-sm text-muted-foreground">Aún no hay comentarios. ¡Sé el primero en comentar!</p>
-                  )}
-                  {!commentsLoading &&
-                    orderedRootComments.map((comment) => {
-                      const ratingValue = Number(comment.calificacion);
-                      const hasRatingValue = Number.isFinite(ratingValue) && ratingValue >= 1;
-                      const isRatingComment = isRatingCommentEntry(comment);
-                      const ratingDisplay = hasRatingValue ? ratingValue : null;
-                      const isReplyingHere = Boolean(replyTarget && String(replyTarget.id) === String(comment.id));
-                      return (
-                        <div
-                          key={comment.id}
-                          className={`rounded-lg border p-3 shadow-soft ${
-                            isRatingComment ? 'border-amber-200 bg-amber-50/80' : 'border-border/60 bg-background/80'
-                          } ${isReplyingHere ? 'ring-1 ring-primary/30' : ''}`}
-                        >
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-foreground">{comment.userName || 'Usuario'}</span>
-                              {isRatingComment && ratingDisplay !== null && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700">
-                                  <Star className="h-3 w-3 text-amber-500" fill="currentColor" />
-                                  {ratingDisplay}
-                                </span>
-                              )}
-                            </div>
-                            <span>{formatCommentDate(comment.fechaCreacion)}</span>
-                          </div>
-                          <p className="mt-2 text-sm text-foreground/90">{comment.contenido}</p>
-                          <button
-                            type="button"
-                            className="mt-2 text-xs font-semibold text-primary hover:underline"
-                            onClick={() => handleReplyStart(comment)}
-                          >
-                            Responder
-                          </button>
-                          {isReplyingHere && (
-                            <form onSubmit={handleSubmitComment} className="mt-3 space-y-2">
-                              <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                                <span>Respondiendo a {comment.userName || 'usuario'}</span>
-                                <button type="button" className="text-primary hover:underline" onClick={handleCancelReply}>
-                                  Cancelar
-                                </button>
-                              </div>
-                              <textarea
-                                ref={replyTextareaRef}
-                                className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                placeholder="Escribe tu respuesta..."
-                                value={commentText}
-                                onChange={(event) => setCommentText(event.target.value)}
-                              />
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs text-muted-foreground">
-                                  {currentUser?.rol === 'CLIENTE'
-                                    ? 'Comparte tu opinión con la comunidad.'
-                                    : 'Para comentar debes iniciar sesión como cliente.'}
-                                </p>
-                                <Button type="submit" size="sm" disabled={commentSubmitting || !commentText.trim()}>
-                                  {commentSubmitting ? 'Enviando...' : 'Responder'}
-                                </Button>
-                              </div>
-                            </form>
-                          )}
-                          {(commentsByParent[String(comment.id)] || []).length > 0 && (
-                            <div className="mt-3 space-y-2 border-l border-primary/20 pl-3">
-                              {commentsByParent[String(comment.id)].map((reply) => (
-                                <div key={reply.id} className="rounded-md bg-muted/40 px-3 py-2">
-                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                    <span className="font-semibold text-foreground">{reply.userName || 'Usuario'}</span>
-                                    <span>{formatCommentDate(reply.fechaCreacion)}</span>
-                                  </div>
-                                  <p className="mt-1 text-sm text-foreground/90">{reply.contenido}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
           </div>
         </div>
+
+        {commentsOpen && (
+          <div className="border-t px-6 pb-6 pt-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold">Comentarios públicos</h4>
+              <span className="text-xs text-muted-foreground">{commentsList.length} en total</span>
+            </div>
+
+            {!replyTarget && (
+              <form onSubmit={handleSubmitComment} className="mt-3 space-y-2">
+                <textarea
+                  className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Escribe tu comentario..."
+                  value={commentText}
+                  onChange={(event) => setCommentText(event.target.value)}
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    {currentUser?.rol === 'CLIENTE'
+                      ? 'Comparte tu opinión con la comunidad.'
+                      : 'Para comentar debes iniciar sesión como cliente.'}
+                  </p>
+                  <Button type="submit" size="sm" disabled={commentSubmitting || !commentText.trim()}>
+                    {commentSubmitting ? 'Enviando...' : 'Comentar'}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            <div className="mt-4 space-y-4">
+              {commentsLoading && <p className="text-sm text-muted-foreground">Cargando comentarios...</p>}
+              {!commentsLoading && orderedRootComments.length === 0 && (
+                <p className="text-sm text-muted-foreground">Aún no hay comentarios. ¡Sé el primero en comentar!</p>
+              )}
+              {!commentsLoading &&
+                orderedRootComments.map((comment) => {
+                  const ratingValue = Number(comment.calificacion);
+                  const hasRatingValue = Number.isFinite(ratingValue) && ratingValue >= 1;
+                  const isRatingComment = isRatingCommentEntry(comment);
+                  const ratingDisplay = hasRatingValue ? ratingValue : null;
+                  const isReplyingHere = Boolean(replyTarget && String(replyTarget.id) === String(comment.id));
+                  return (
+                    <div
+                      key={comment.id}
+                      className={`rounded-lg border p-3 shadow-soft ${
+                        isRatingComment ? 'border-amber-200 bg-amber-50/80' : 'border-border/60 bg-background/80'
+                      } ${isReplyingHere ? 'ring-1 ring-primary/30' : ''}`}
+                    >
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">{comment.userName || 'Usuario'}</span>
+                          {isRatingComment && ratingDisplay !== null && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700">
+                              <Star className="h-3 w-3 text-amber-500" fill="currentColor" />
+                              {ratingDisplay}
+                            </span>
+                          )}
+                        </div>
+                        <span>{formatCommentDate(comment.fechaCreacion)}</span>
+                      </div>
+                      <p className="mt-2 text-sm text-foreground/90">{comment.contenido}</p>
+                      <button
+                        type="button"
+                        className="mt-2 text-xs font-semibold text-primary hover:underline"
+                        onClick={() => handleReplyStart(comment)}
+                      >
+                        Responder
+                      </button>
+                      {isReplyingHere && (
+                        <form onSubmit={handleSubmitComment} className="mt-3 space-y-2">
+                          <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                            <span>Respondiendo a {comment.userName || 'usuario'}</span>
+                            <button type="button" className="text-primary hover:underline" onClick={handleCancelReply}>
+                              Cancelar
+                            </button>
+                          </div>
+                          <textarea
+                            ref={replyTextareaRef}
+                            className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            placeholder="Escribe tu respuesta..."
+                            value={commentText}
+                            onChange={(event) => setCommentText(event.target.value)}
+                          />
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs text-muted-foreground">
+                              {currentUser?.rol === 'CLIENTE'
+                                ? 'Comparte tu opinión con la comunidad.'
+                                : 'Para comentar debes iniciar sesión como cliente.'}
+                            </p>
+                            <Button type="submit" size="sm" disabled={commentSubmitting || !commentText.trim()}>
+                              {commentSubmitting ? 'Enviando...' : 'Responder'}
+                            </Button>
+                          </div>
+                        </form>
+                      )}
+                      {(commentsByParent[String(comment.id)] || []).length > 0 && (
+                        <div className="mt-3 space-y-2 border-l border-primary/20 pl-3">
+                          {commentsByParent[String(comment.id)].map((reply) => (
+                            <div key={reply.id} className="rounded-md bg-muted/40 px-3 py-2">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span className="font-semibold text-foreground">{reply.userName || 'Usuario'}</span>
+                                <span>{formatCommentDate(reply.fechaCreacion)}</span>
+                              </div>
+                              <p className="mt-1 text-sm text-foreground/90">{reply.contenido}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
       </DialogContent>
 
       <Dialog open={ratingOpen} onOpenChange={setRatingOpen}>

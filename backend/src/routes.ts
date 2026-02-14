@@ -106,6 +106,14 @@ const parseNumeric = (value: unknown): number | null => {
   return Number.isFinite(num) ? num : null;
 };
 
+const normalizeCoordinate = (value: unknown, min: number, max: number): string | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  if (num < min || num > max) return null;
+  return num.toFixed(6);
+};
+
 const parsePositiveInt = (value: unknown, fallback = 1) => {
   const num = Number(value);
   if (!Number.isFinite(num) || num <= 0) return fallback;
@@ -886,6 +894,8 @@ router.post(
       amenities,
       imageUrl,
       phone,
+      latitude,
+      longitude,
       morningStart,
       morningEnd,
       afternoonStart,
@@ -938,6 +948,8 @@ router.post(
         city: city || null,
         region: region || null,
         amenities: normalizeAmenities(amenities),
+        latitude: normalizeCoordinate(latitude, -90, 90),
+        longitude: normalizeCoordinate(longitude, -180, 180),
         morningStart: normalizeTimeValue(morningStart),
         morningEnd: normalizeTimeValue(morningEnd),
         afternoonStart: normalizeTimeValue(afternoonStart),
@@ -1021,6 +1033,8 @@ router.put(
       amenities,
       imageUrl,
       phone,
+      latitude,
+      longitude,
       morningStart,
       morningEnd,
       afternoonStart,
@@ -1042,6 +1056,8 @@ router.put(
     if (city !== undefined) updates.city = city || null;
     if (region !== undefined) updates.region = region || null;
     if (amenities !== undefined) updates.amenities = normalizeAmenities(amenities);
+    if (latitude !== undefined) updates.latitude = normalizeCoordinate(latitude, -90, 90);
+    if (longitude !== undefined) updates.longitude = normalizeCoordinate(longitude, -180, 180);
     if (morningStart !== undefined) updates.morningStart = normalizeTimeValue(morningStart);
     if (morningEnd !== undefined) updates.morningEnd = normalizeTimeValue(morningEnd);
     if (afternoonStart !== undefined) updates.afternoonStart = normalizeTimeValue(afternoonStart);

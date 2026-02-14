@@ -28,6 +28,7 @@ import MasonryGrid from './components/MasonryGrid.jsx';
 import PinCard from './components/PinCard.jsx';
 import PinDetailDialog from './components/PinDetailDialog.jsx';
 import BusinessMap from './components/BusinessMap.jsx';
+import BusinessLocationPicker from './components/BusinessLocationPicker.jsx';
 import AuthDialog from './components/AuthDialog.jsx';
 import ExploreDialog from './components/ExploreDialog.jsx';
 import { Button } from './components/ui/Button.jsx';
@@ -1413,6 +1414,8 @@ function App() {
     region: '',
     amenities: [],
     phone: '',
+    latitude: null,
+    longitude: null,
   });
   const [publicationForm, setPublicationForm] = useState({
     titulo: '',
@@ -1448,6 +1451,8 @@ function App() {
     amenities: [],
     imageUrl: '',
     phone: '',
+    latitude: null,
+    longitude: null,
   });
   const [reservationAdminBusinessId, setReservationAdminBusinessId] = useState('');
   const [reservationTableDraft, setReservationTableDraft] = useState({
@@ -2886,6 +2891,8 @@ function App() {
       amenities: Array.isArray(selected.amenities) ? selected.amenities : [],
       imageUrl: selected.imageUrl || '',
       phone: selected.phone || '',
+      latitude: selected.latitude ?? null,
+      longitude: selected.longitude ?? null,
     }));
   }, [businessListForForms, profileBusinessId]);
 
@@ -3046,6 +3053,8 @@ function App() {
         region: businessForm.region || null,
         phone: businessForm.phone || null,
         amenities: Array.isArray(businessForm.amenities) ? businessForm.amenities : [],
+        latitude: businessForm.latitude ?? null,
+        longitude: businessForm.longitude ?? null,
       };
       const data = await fetchJson('/businesses', {
         method: 'POST',
@@ -3073,6 +3082,8 @@ function App() {
         region: '',
         amenities: [],
         phone: '',
+        latitude: null,
+        longitude: null,
       });
       if (!tenantIdFromResponse || tenantIdFromResponse === selectedTenantId) {
         loadBusinesses();
@@ -3250,6 +3261,8 @@ function App() {
           city: businessProfileForm.city,
           region: businessProfileForm.region,
           amenities: Array.isArray(businessProfileForm.amenities) ? businessProfileForm.amenities : [],
+          latitude: businessProfileForm.latitude ?? null,
+          longitude: businessProfileForm.longitude ?? null,
         }),
       });
       notify('success', 'Perfil de negocio actualizado');
@@ -4707,7 +4720,15 @@ function App() {
                       <Label>Dirección</Label>
                       <Input
                         value={businessProfileForm.address}
-                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, address: e.target.value }))}
+                        onChange={(e) => {
+                          const nextAddress = e.target.value;
+                          setBusinessProfileForm((prev) => ({
+                            ...prev,
+                            address: nextAddress,
+                            latitude: nextAddress ? prev.latitude : null,
+                            longitude: nextAddress ? prev.longitude : null,
+                          }));
+                        }}
                       />
                     </div>
                     <div>
@@ -4725,7 +4746,13 @@ function App() {
                         className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                         value={businessProfileForm.region || ''}
                         onChange={(e) =>
-                          setBusinessProfileForm((prev) => ({ ...prev, region: e.target.value, city: '' }))
+                          setBusinessProfileForm((prev) => ({
+                            ...prev,
+                            region: e.target.value,
+                            city: '',
+                            latitude: null,
+                            longitude: null,
+                          }))
                         }
                       >
                         <option value="">Selecciona región</option>
@@ -4741,7 +4768,14 @@ function App() {
                       <select
                         className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                         value={businessProfileForm.city || ''}
-                        onChange={(e) => setBusinessProfileForm((prev) => ({ ...prev, city: e.target.value }))}
+                        onChange={(e) =>
+                          setBusinessProfileForm((prev) => ({
+                            ...prev,
+                            city: e.target.value,
+                            latitude: null,
+                            longitude: null,
+                          }))
+                        }
                         disabled={!businessProfileForm.region}
                       >
                         <option value="">
@@ -4754,6 +4788,22 @@ function App() {
                         ))}
                       </select>
                     </div>
+                    {businessProfileForm.region && businessProfileForm.city && businessProfileForm.address?.trim() && (
+                      <div className="md:col-span-2 space-y-2">
+                        <Label>Ubicación en el mapa</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Ajusta el marcador para indicar con precisión dónde está tu negocio.
+                        </p>
+                        <BusinessLocationPicker
+                          address={businessProfileForm.address}
+                          city={businessProfileForm.city}
+                          region={businessProfileForm.region}
+                          value={{ latitude: businessProfileForm.latitude, longitude: businessProfileForm.longitude }}
+                          onChange={(coords) => setBusinessProfileForm((prev) => ({ ...prev, ...coords }))}
+                          heightClass="h-[320px]"
+                        />
+                      </div>
+                    )}
                     <div className="md:col-span-2">
                       <Label>Servicios y espacios</Label>
                       <p className="mt-1 text-xs text-muted-foreground">Selecciona todo lo que aplique.</p>
@@ -7072,7 +7122,15 @@ function App() {
                     <select
                       className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                       value={businessForm.region || ''}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, region: e.target.value, city: '' }))}
+                      onChange={(e) =>
+                        setBusinessForm((prev) => ({
+                          ...prev,
+                          region: e.target.value,
+                          city: '',
+                          latitude: null,
+                          longitude: null,
+                        }))
+                      }
                     >
                       <option value="">Selecciona región</option>
                       {chileRegions.map((region) => (
@@ -7087,7 +7145,14 @@ function App() {
                     <select
                       className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                       value={businessForm.city || ''}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, city: e.target.value }))}
+                      onChange={(e) =>
+                        setBusinessForm((prev) => ({
+                          ...prev,
+                          city: e.target.value,
+                          latitude: null,
+                          longitude: null,
+                        }))
+                      }
                       disabled={!businessForm.region}
                     >
                       <option value="">{businessForm.region ? 'Selecciona ciudad' : 'Selecciona región primero'}</option>
@@ -7102,9 +7167,33 @@ function App() {
                     <Label>Dirección</Label>
                     <Input
                       value={businessForm.address}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, address: e.target.value }))}
+                      onChange={(e) => {
+                        const nextAddress = e.target.value;
+                        setBusinessForm((prev) => ({
+                          ...prev,
+                          address: nextAddress,
+                          latitude: nextAddress ? prev.latitude : null,
+                          longitude: nextAddress ? prev.longitude : null,
+                        }));
+                      }}
                     />
                   </div>
+                  {businessForm.region && businessForm.city && businessForm.address?.trim() && (
+                    <div className="md:col-span-2 space-y-2">
+                      <Label>Ubicación en el mapa</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Ajusta el marcador para indicar con precisión dónde está tu negocio.
+                      </p>
+                      <BusinessLocationPicker
+                        address={businessForm.address}
+                        city={businessForm.city}
+                        region={businessForm.region}
+                        value={{ latitude: businessForm.latitude, longitude: businessForm.longitude }}
+                        onChange={(coords) => setBusinessForm((prev) => ({ ...prev, ...coords }))}
+                        heightClass="h-[320px]"
+                      />
+                    </div>
+                  )}
                   <div className="md:col-span-2">
                     <Label>Teléfono de contacto</Label>
                     <Input

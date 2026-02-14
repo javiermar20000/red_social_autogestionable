@@ -162,12 +162,13 @@ const BusinessMap = ({ business, heightClass = 'h-[420px]' }) => {
     if (!mapContainerRef.current || mapRef.current) return;
     ensureLeafletIcons();
     const map = L.map(mapContainerRef.current, {
-      zoomControl: true,
+      zoomControl: false,
       scrollWheelZoom: false,
     });
     L.tileLayer(OSM_TILE_URL, {
       attribution: OSM_ATTRIBUTION,
     }).addTo(map);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
     mapRef.current = map;
     return () => {
       map.remove();

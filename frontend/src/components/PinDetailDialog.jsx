@@ -56,6 +56,7 @@ const PinDetailDialog = ({
   saved = false,
 }) => {
   const lastVisitedId = useRef(null);
+  const replyTextareaRef = useRef(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -126,6 +127,14 @@ const PinDetailDialog = ({
     if (!open || !commentsOpen || !publicationId) return;
     onLoadComments?.(publicationId);
   }, [open, commentsOpen, publicationId, onLoadComments]);
+
+  useEffect(() => {
+    if (!open || !commentsOpen || !replyTarget) return;
+    const frame = requestAnimationFrame(() => {
+      replyTextareaRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, commentsOpen, replyTarget?.id]);
 
   useEffect(() => {
     if (!open || autoSlideCount <= 1) return;
@@ -265,6 +274,11 @@ const PinDetailDialog = ({
     });
   };
   const commentsList = Array.isArray(comments) ? comments : [];
+  const isRatingCommentEntry = (comment) => {
+    const ratingValue = Number(comment?.calificacion);
+    const hasRatingValue = Number.isFinite(ratingValue) && ratingValue >= 1;
+    return Boolean(comment?.esCalificacion) && hasRatingValue;
+  };
   const commentsByParent = commentsList.reduce((acc, comment) => {
     const key = comment.parentId ? String(comment.parentId) : 'root';
     acc[key] = acc[key] || [];
@@ -272,6 +286,13 @@ const PinDetailDialog = ({
     return acc;
   }, {});
   const rootComments = commentsByParent.root || [];
+  const orderedRootComments = rootComments
+    .map((comment, index) => ({ comment, index, isRating: isRatingCommentEntry(comment) }))
+    .sort((a, b) => {
+      if (a.isRating === b.isRating) return a.index - b.index;
+      return a.isRating ? -1 : 1;
+    })
+    .map((entry) => entry.comment);
   const formatCommentDate = (value) => {
     if (!value) return '';
     const date = new Date(value);
@@ -286,8 +307,12 @@ const PinDetailDialog = ({
     if (onEnsureCommentAccess && !onEnsureCommentAccess()) return;
     setCommentsOpen(true);
     setReplyTarget(comment);
+    setCommentText('');
   };
-  const handleCancelReply = () => setReplyTarget(null);
+  const handleCancelReply = () => {
+    setReplyTarget(null);
+    setCommentText('');
+  };
   const handleSubmitComment = async (event) => {
     event.preventDefault();
     const text = commentText.trim();
@@ -614,50 +639,45 @@ const PinDetailDialog = ({
                   <span className="text-xs text-muted-foreground">{commentsList.length} en total</span>
                 </div>
 
-                <form onSubmit={handleSubmitComment} className="mt-3 space-y-2">
-                  {replyTarget && (
-                    <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                      <span>Respondiendo a {replyTarget.userName || 'usuario'}</span>
-                      <button type="button" className="text-primary hover:underline" onClick={handleCancelReply}>
-                        Cancelar
-                      </button>
+                {!replyTarget && (
+                  <form onSubmit={handleSubmitComment} className="mt-3 space-y-2">
+                    <textarea
+                      className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="Escribe tu comentario..."
+                      value={commentText}
+                      onChange={(event) => setCommentText(event.target.value)}
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        {currentUser?.rol === 'CLIENTE'
+                          ? 'Comparte tu opinión con la comunidad.'
+                          : 'Para comentar debes iniciar sesión como cliente.'}
+                      </p>
+                      <Button type="submit" size="sm" disabled={commentSubmitting || !commentText.trim()}>
+                        {commentSubmitting ? 'Enviando...' : 'Comentar'}
+                      </Button>
                     </div>
-                  )}
-                  <textarea
-                    className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    placeholder="Escribe tu comentario..."
-                    value={commentText}
-                    onChange={(event) => setCommentText(event.target.value)}
-                  />
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">
-                      {currentUser?.rol === 'CLIENTE'
-                        ? 'Comparte tu opinión con la comunidad.'
-                        : 'Para comentar debes iniciar sesión como cliente.'}
-                    </p>
-                    <Button type="submit" size="sm" disabled={commentSubmitting || !commentText.trim()}>
-                      {commentSubmitting ? 'Enviando...' : 'Comentar'}
-                    </Button>
-                  </div>
-                </form>
+                  </form>
+                )}
 
                 <div className="mt-4 space-y-4">
                   {commentsLoading && <p className="text-sm text-muted-foreground">Cargando comentarios...</p>}
-                  {!commentsLoading && rootComments.length === 0 && (
+                  {!commentsLoading && orderedRootComments.length === 0 && (
                     <p className="text-sm text-muted-foreground">Aún no hay comentarios. ¡Sé el primero en comentar!</p>
                   )}
                   {!commentsLoading &&
-                    rootComments.map((comment) => {
+                    orderedRootComments.map((comment) => {
                       const ratingValue = Number(comment.calificacion);
                       const hasRatingValue = Number.isFinite(ratingValue) && ratingValue >= 1;
-                      const isRatingComment = Boolean(comment.esCalificacion) && hasRatingValue;
+                      const isRatingComment = isRatingCommentEntry(comment);
                       const ratingDisplay = hasRatingValue ? ratingValue : null;
+                      const isReplyingHere = Boolean(replyTarget && String(replyTarget.id) === String(comment.id));
                       return (
                         <div
                           key={comment.id}
                           className={`rounded-lg border p-3 shadow-soft ${
                             isRatingComment ? 'border-amber-200 bg-amber-50/80' : 'border-border/60 bg-background/80'
-                          }`}
+                          } ${isReplyingHere ? 'ring-1 ring-primary/30' : ''}`}
                         >
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <div className="flex items-center gap-2">
@@ -679,6 +699,33 @@ const PinDetailDialog = ({
                           >
                             Responder
                           </button>
+                          {isReplyingHere && (
+                            <form onSubmit={handleSubmitComment} className="mt-3 space-y-2">
+                              <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                                <span>Respondiendo a {comment.userName || 'usuario'}</span>
+                                <button type="button" className="text-primary hover:underline" onClick={handleCancelReply}>
+                                  Cancelar
+                                </button>
+                              </div>
+                              <textarea
+                                ref={replyTextareaRef}
+                                className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                placeholder="Escribe tu respuesta..."
+                                value={commentText}
+                                onChange={(event) => setCommentText(event.target.value)}
+                              />
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                  {currentUser?.rol === 'CLIENTE'
+                                    ? 'Comparte tu opinión con la comunidad.'
+                                    : 'Para comentar debes iniciar sesión como cliente.'}
+                                </p>
+                                <Button type="submit" size="sm" disabled={commentSubmitting || !commentText.trim()}>
+                                  {commentSubmitting ? 'Enviando...' : 'Responder'}
+                                </Button>
+                              </div>
+                            </form>
+                          )}
                           {(commentsByParent[String(comment.id)] || []).length > 0 && (
                             <div className="mt-3 space-y-2 border-l border-primary/20 pl-3">
                               {commentsByParent[String(comment.id)].map((reply) => (

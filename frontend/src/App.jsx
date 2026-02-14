@@ -2757,10 +2757,24 @@ function App() {
     return map;
   }, [feed, adPublications, businessProfilePublications, myPublications]);
   const savedLikedPublications = useMemo(() => {
-    const items = savedPublicationIdsForUser
-      .map((id) => savedPublicationsLookup.get(id))
-      .filter(Boolean);
-    return items.filter((pub) => likedById[String(pub.id)]);
+    const uniqueIds = new Set();
+    const orderedIds = [];
+    savedPublicationIdsForUser.forEach((id) => {
+      const key = String(id);
+      if (!uniqueIds.has(key)) {
+        uniqueIds.add(key);
+        orderedIds.push(key);
+      }
+    });
+    Object.entries(likedById || {}).forEach(([id, liked]) => {
+      if (!liked) return;
+      const key = String(id);
+      if (!uniqueIds.has(key)) {
+        uniqueIds.add(key);
+        orderedIds.push(key);
+      }
+    });
+    return orderedIds.map((id) => savedPublicationsLookup.get(id)).filter(Boolean);
   }, [savedPublicationIdsForUser, savedPublicationsLookup, likedById]);
 
   const activePublicationBusinessId = useMemo(() => {
@@ -6591,7 +6605,7 @@ function App() {
                 <Heart className="h-4 w-4" aria-hidden="true" />
                 <span className="font-semibold">/</span>
                 <Download className="h-4 w-4" aria-hidden="true" />
-                <span>Publicaciones con me gusta y guardadas.</span>
+                <span>Publicaciones con me gusta o guardadas.</span>
               </div>
               {savedLikedPublications.length ? (
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -6608,7 +6622,7 @@ function App() {
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  Aún no tienes publicaciones guardadas con me gusta.
+                  Aún no tienes publicaciones guardadas o con me gusta.
                 </div>
               )}
             </TabsContent>

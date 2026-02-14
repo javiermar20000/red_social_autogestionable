@@ -68,7 +68,7 @@ const PinDetailDialog = ({
   const [showFullContent, setShowFullContent] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const publicationId = publication?.id ? String(publication.id) : null;
-  const CONTENT_WORD_LIMIT = 50;
+  const CONTENT_WORD_LIMIT = 30;
   const autoSlideCount = (() => {
     if (!publication) return 0;
     const urls = new Set();

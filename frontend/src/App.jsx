@@ -6520,7 +6520,7 @@ function App() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={clientPortalOpen} onOpenChange={setClientPortalOpen}>
+      <Dialog open={clientPortalOpen} onOpenChange={setClientPortalOpen} overlayClassName="z-[70]">
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader className="text-left">
             <DialogTitle>Mi actividad</DialogTitle>

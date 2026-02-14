@@ -4443,7 +4443,7 @@ function App() {
               type="button"
               className={cn(
                 'fixed right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-card/95 text-foreground shadow-soft transition hover:-translate-y-0.5 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60 md:hidden',
-                showClientBottomNav ? 'bottom-32' : 'bottom-20',
+                showClientBottomNav ? 'bottom-40' : 'bottom-24',
                 hasNewSimilar && 'notification-attention bg-rose-100 text-rose-600'
               )}
               onClick={handleOpenNotifications}

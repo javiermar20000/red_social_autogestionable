@@ -12,6 +12,7 @@ import {
   Star,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/Dialog.jsx';
 import { Button } from './ui/Button.jsx';
@@ -359,7 +360,18 @@ const PinDetailDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent className="relative max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+        <button
+          type="button"
+          aria-label="Cerrar publicación"
+          className="absolute right-3 top-3 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-900 shadow-md transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenChange?.(false);
+          }}
+        >
+          <X className="h-5 w-5" />
+        </button>
         <div className="grid md:grid-cols-2 gap-0">
           <div className="relative bg-muted">
             {activeMedia?.tipo === 'VIDEO' ? (

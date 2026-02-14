@@ -62,7 +62,7 @@ const buildGoogleMapsUrl = ({ businessCoords, userCoords }) => {
   return `https://www.google.com/maps/search/?api=1&query=${bizLat},${bizLng}`;
 };
 
-const BusinessMap = ({ business, heightClass = 'h-[420px]' }) => {
+const BusinessMap = ({ business, heightClass = 'h-[420px]', showMapsLink = true }) => {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const businessMarkerRef = useRef(null);
@@ -335,15 +335,18 @@ const BusinessMap = ({ business, heightClass = 'h-[420px]' }) => {
         <div className="absolute right-4 top-4 z-[400] rounded-xl bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 shadow-soft backdrop-blur">
           Mapa alternativo
         </div>
-        {mapsUrl && (
-          <div className="pointer-events-none absolute bottom-4 right-4 z-[400]">
+        {mapsUrl && showMapsLink && (
+          <div className="pointer-events-none absolute bottom-8 left-4 z-[400]">
             <a
               className="pointer-events-auto inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary/90"
               href={mapsUrl}
               target="_blank"
               rel="noreferrer noopener"
             >
-              Ver en Google Maps
+              <span className="flex flex-col leading-tight text-center">
+                <span>Ver en</span>
+                <span>Google Maps</span>
+              </span>
             </a>
           </div>
         )}
@@ -371,15 +374,18 @@ const BusinessMap = ({ business, heightClass = 'h-[420px]' }) => {
         <p className="uppercase tracking-wide text-slate-500">Tiempo y distancia</p>
         <p className="pointer-events-none mt-1 text-sm font-semibold text-slate-800">{infoLabel}</p>
       </div>
-      {mapsUrl && (
-        <div className="pointer-events-none absolute bottom-4 right-4 z-[400]">
+      {mapsUrl && showMapsLink && (
+        <div className="pointer-events-none absolute bottom-8 left-4 z-[400]">
           <a
             className="pointer-events-auto inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary/90"
             href={mapsUrl}
             target="_blank"
             rel="noreferrer noopener"
           >
-            Ver en Google Maps
+            <span className="flex flex-col leading-tight text-center">
+              <span>Ver en</span>
+              <span>Google Maps</span>
+            </span>
           </a>
         </div>
       )}

@@ -4249,7 +4249,11 @@ function App() {
                     Cargando ubicación...
                   </div>
                 ) : (
-                  <BusinessMap business={businessProfile} heightClass="h-[520px]" />
+                  <BusinessMap
+                    business={businessProfile}
+                    heightClass="h-[520px]"
+                    showMapsLink={shouldShowPublicFeed}
+                  />
                 )}
               </div>
               <div className="mt-6">

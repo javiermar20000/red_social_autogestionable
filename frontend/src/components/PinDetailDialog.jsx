@@ -55,6 +55,7 @@ const PinDetailDialog = ({
   ratingSubmitting = false,
   onSave,
   saved = false,
+  autoOpenComments = false,
 }) => {
   const lastVisitedId = useRef(null);
   const replyTextareaRef = useRef(null);
@@ -115,7 +116,7 @@ const PinDetailDialog = ({
     }
     setCommentText('');
     setReplyTarget(null);
-    setCommentsOpen(false);
+    setCommentsOpen(Boolean(autoOpenComments));
     setRatingOpen(false);
     setRatingValue(0);
     setRatingHover(0);
@@ -123,6 +124,11 @@ const PinDetailDialog = ({
     setShowFullContent(false);
     setActiveMediaIndex(0);
   }, [open, publicationId]);
+
+  useEffect(() => {
+    if (!open || !autoOpenComments) return;
+    setCommentsOpen(true);
+  }, [open, autoOpenComments, publicationId]);
 
   useEffect(() => {
     if (!open || !commentsOpen || !publicationId) return;
@@ -372,12 +378,12 @@ const PinDetailDialog = ({
         >
           <X className="h-5 w-5" />
         </button>
-        <div className="grid md:grid-cols-2 gap-0">
-          <div className="relative bg-muted">
+        <div className="grid gap-0 md:grid-cols-2 md:items-start">
+          <div className="relative bg-muted md:self-start">
             {activeMedia?.tipo === 'VIDEO' ? (
-              <video src={activeMedia?.url || mediaSrc} controls className="w-full h-full object-cover" />
+              <video src={activeMedia?.url || mediaSrc} controls className="w-full h-full object-contain" />
             ) : (
-              <img src={activeMedia?.url || mediaSrc} alt={titulo} className="w-full h-full object-cover" />
+              <img src={activeMedia?.url || mediaSrc} alt={titulo} className="w-full h-full object-contain" />
             )}
             {hasMultipleMedia && (
               <>

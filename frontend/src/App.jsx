@@ -1388,6 +1388,7 @@ function App() {
   const [likedById, setLikedById] = useState(() => readSessionLikes());
 
   const [selectedPublication, setSelectedPublication] = useState(null);
+  const [autoOpenComments, setAutoOpenComments] = useState(false);
   const [commentsByPublication, setCommentsByPublication] = useState({});
   const [commentsLoadingByPublication, setCommentsLoadingByPublication] = useState({});
   const [commentSubmitting, setCommentSubmitting] = useState(false);
@@ -2777,6 +2778,23 @@ function App() {
     return orderedIds.map((id) => savedPublicationsLookup.get(id)).filter(Boolean);
   }, [savedPublicationIdsForUser, savedPublicationsLookup, likedById]);
 
+  const resolvePublicationById = (publicationId) => {
+    if (!publicationId) return null;
+    const key = String(publicationId);
+    return savedPublicationsLookup.get(key) || null;
+  };
+
+  const handleOpenClientComment = (comment) => {
+    if (!comment?.publicationId) return;
+    const publication =
+      resolvePublicationById(comment.publicationId) || {
+        id: comment.publicationId,
+        titulo: comment.publicationTitle || 'Publicación',
+      };
+    setClientPortalOpen(false);
+    handleSelectPublication(publication, { openComments: true });
+  };
+
   const activePublicationBusinessId = useMemo(() => {
     return publicationForm.businessId || filters.businessId || businessListForForms[0]?.id || '';
   }, [publicationForm.businessId, filters.businessId, businessListForForms]);
@@ -3449,13 +3467,14 @@ function App() {
     }
   };
 
-  const handleSelectPublication = (publication) => {
+  const handleSelectPublication = (publication, { openComments = false } = {}) => {
     if (!publication) return;
     setSelectedPublication(publication);
     setSimilarSource(publication);
     const similarList = findSimilarPublications(publication);
     setSimilarItems(similarList);
     setHasNewSimilar(similarList.length > 0);
+    setAutoOpenComments(Boolean(openComments));
   };
 
   const handleViewBusinessProfile = async (payload) => {
@@ -6575,7 +6594,14 @@ function App() {
               </div>
               {clientComments.length ? (
                 clientComments.map((comment) => (
-                  <div key={comment.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                  <button
+                    key={comment.id}
+                    type="button"
+                    className="w-full text-left rounded-xl border border-border bg-card p-4 space-y-2 transition hover:border-primary/40 hover:bg-muted/40"
+                    onClick={() => handleOpenClientComment(comment)}
+                    aria-label={`Abrir publicación ${comment.publicationTitle}`}
+                    title="Abrir publicación"
+                  >
                     <div className="flex flex-col gap-1">
                       <p className="font-semibold">{comment.publicationTitle}</p>
                       <p className="text-xs text-muted-foreground">
@@ -6591,7 +6617,7 @@ function App() {
                     <p className="text-xs text-muted-foreground">
                       Respuestas: {comment.replyCount || 0}
                     </p>
-                  </div>
+                  </button>
                 ))
               ) : (
                 <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -7212,8 +7238,14 @@ function App() {
 
       <PinDetailDialog
         open={Boolean(selectedPublication)}
-        onOpenChange={(open) => !open && setSelectedPublication(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedPublication(null);
+            setAutoOpenComments(false);
+          }
+        }}
         publication={selectedPublication}
+        autoOpenComments={autoOpenComments}
         onRegisterVisit={handleRegisterVisit}
         onLike={handleLike}
         liked={hasLikedInSession(selectedPublication)}

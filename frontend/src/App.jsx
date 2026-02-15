@@ -48,11 +48,44 @@ import pin7 from './assets/pin7.jpg';
 import pin8 from './assets/pin8.jpg';
 import matchCoffeeLogo from './assets/logo_matchcoffee_real.png';
 
+const normalizePathFromEnv = (value, fallback) => {
+  if (!value) return fallback;
+  const raw = String(value).trim();
+  if (!raw) return fallback;
+  try {
+    const parsed = new URL(raw);
+    return parsed.pathname || fallback;
+  } catch {
+    return raw.startsWith('/') ? raw : `/${raw}`;
+  }
+};
+
 const API_URL = import.meta.env.VITE_API_URL || '/api';
+const MERCADO_PAGO_CHECKOUT_URL = import.meta.env.VITE_MERCADO_PAGO_CHECKOUT_URL || '';
+const MERCADO_PAGO_SUCCESS_PATH = normalizePathFromEnv(
+  import.meta.env.VITE_MERCADO_PAGO_SUCCESS_PATH,
+  '/reservaExitosa'
+);
+const MP_PLAN_INICIO_CHECKOUT_URL = import.meta.env.VITE_MP_PLAN_INICIO_CHECKOUT_URL || '';
+const MP_PLAN_IMPULSO_CHECKOUT_URL = import.meta.env.VITE_MP_PLAN_IMPULSO_CHECKOUT_URL || '';
+const MP_PLAN_DOMINIO_CHECKOUT_URL = import.meta.env.VITE_MP_PLAN_DOMINIO_CHECKOUT_URL || '';
+const MP_PLAN_INICIO_SUCCESS_PATH = normalizePathFromEnv(
+  import.meta.env.VITE_MP_PLAN_INICIO_SUCCESS_PATH,
+  '/PagoPlanInicio_exitoso'
+);
+const MP_PLAN_IMPULSO_SUCCESS_PATH = normalizePathFromEnv(
+  import.meta.env.VITE_MP_PLAN_IMPULSO_SUCCESS_PATH,
+  '/PagoPlanImpulso_exitoso'
+);
+const MP_PLAN_DOMINIO_SUCCESS_PATH = normalizePathFromEnv(
+  import.meta.env.VITE_MP_PLAN_DOMINIO_SUCCESS_PATH,
+  '/PagoPlanDominio_exitoso'
+);
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 const SESSION_LIKES_STORAGE_KEY = 'publicationLikesSession';
 const MAX_BUSINESS_LOGO_BYTES = 1024 * 1024;
 const FEED_CACHE_STORAGE_KEY = 'gastrohub-feed-cache-v1';
+const PENDING_RESERVATION_STORAGE_KEY = 'gastrohub-pending-reservation-v1';
 const ADS_CACHE_STORAGE_KEY = 'gastrohub-ads-cache-v1';
 const CACHE_MAX_ENTRIES = 6;
 const CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
@@ -425,8 +458,45 @@ const writeStorageJson = (storageKey, value) => {
   try {
     storage.setItem(storageKey, JSON.stringify(value));
   } catch {
-    // ignore storage failures
+    // ignore
   }
+};
+
+const removeStorageKey = (storageKey) => {
+  const storage = getLocalStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(storageKey);
+  } catch {
+    // ignore
+  }
+};
+
+const isMercadoPagoApproved = (params) => {
+  if (!params) return false;
+  const keys = ['status', 'collection_status', 'payment_status'];
+  return keys.some((key) => {
+    const value = params.get(key);
+    return value ? value.toLowerCase() === 'approved' : false;
+  });
+};
+
+const extractPreapprovalId = (params) => {
+  if (!params) return '';
+  return (
+    params.get('preapproval_id') ||
+    params.get('preapprovalId') ||
+    params.get('id') ||
+    params.get('subscription_id') ||
+    ''
+  );
+};
+
+const formatShortDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
 const readCacheBucket = (storageKey) => {
@@ -588,6 +658,8 @@ const oferenteAdPlans = [
     name: 'Plan Inicio',
     description: 'Presencia básica para comenzar a destacar.',
     price: 4990,
+    checkoutUrl: MP_PLAN_INICIO_CHECKOUT_URL,
+    successPath: MP_PLAN_INICIO_SUCCESS_PATH,
     presence: 35,
     presenceLabel: 'Baja',
     benefits: [
@@ -605,6 +677,8 @@ const oferenteAdPlans = [
     name: 'Plan Impulso',
     description: 'Mayor frecuencia y alcance sostenido.',
     price: 8990,
+    checkoutUrl: MP_PLAN_IMPULSO_CHECKOUT_URL,
+    successPath: MP_PLAN_IMPULSO_SUCCESS_PATH,
     presence: 65,
     presenceLabel: 'Media',
     benefits: [
@@ -622,6 +696,8 @@ const oferenteAdPlans = [
     name: 'Plan Dominio',
     description: 'Máxima presencia para ser el primero.',
     price: 14990,
+    checkoutUrl: MP_PLAN_DOMINIO_CHECKOUT_URL,
+    successPath: MP_PLAN_DOMINIO_SUCCESS_PATH,
     presence: 100,
     presenceLabel: 'Alta',
     benefits: [
@@ -1352,6 +1428,9 @@ function App() {
   const [reservationTablesByBusiness, setReservationTablesByBusiness] = useState({});
   const [reservationTablesLoading, setReservationTablesLoading] = useState(false);
   const [reservations, setReservations] = useState([]);
+  const [activeAdPlan, setActiveAdPlan] = useState(null);
+  const [adPlanSuccessOpen, setAdPlanSuccessOpen] = useState(false);
+  const [adPlanSuccessInfo, setAdPlanSuccessInfo] = useState(null);
   const [clientCommentsByUser, setClientCommentsByUser] = useState(() =>
     readStorageJson(CLIENT_COMMENTS_STORAGE_KEY, {})
   );
@@ -1519,6 +1598,22 @@ function App() {
   const isOferente = currentUser?.rol === 'OFERENTE';
   const shouldShowPublicFeed = !isAdmin && !isOferente;
   const isAdPanelExpanded = adPanelOpen && !isAdPanelNarrow;
+  const hasMercadoPagoCheckout = Boolean(MERCADO_PAGO_CHECKOUT_URL);
+  const mpReturnInfo = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const path = window.location.pathname;
+    if (path !== MERCADO_PAGO_SUCCESS_PATH) return null;
+    const params = new URLSearchParams(window.location.search);
+    return { params };
+  }, []);
+  const mpPlanReturnInfo = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const path = window.location.pathname;
+    const matchedPlan = oferenteAdPlans.find((plan) => plan.successPath === path);
+    if (!matchedPlan) return null;
+    const params = new URLSearchParams(window.location.search);
+    return { plan: matchedPlan, params };
+  }, []);
 
   const toggleAdPanel = () => {
     setAdPanelOpen((prev) => {
@@ -1687,10 +1782,10 @@ function App() {
     setReservationStep('payment');
   };
 
-  const handleConfirmReservation = async () => {
+  const prepareReservationSubmission = () => {
     if (reservationMode === 'registered' && currentUser?.rol !== 'CLIENTE') {
       notify('warning', 'Debes iniciar sesión como cliente para completar la reserva.');
-      return;
+      return null;
     }
     const tables = getReservationTablesForBusiness(reservationBusinessId);
     const selectedTables = tables.filter((table) => reservationTableSelection.includes(String(table.id)));
@@ -1700,16 +1795,111 @@ function App() {
     });
     if (unavailable) {
       notify('warning', 'Algunas mesas ya no están disponibles.');
-      return;
+      return null;
     }
     if (!selectedTables.length) {
       notify('warning', 'Selecciona al menos una mesa disponible.');
-      return;
+      return null;
     }
     if (!reservationDate || !reservationTime) {
       notify('warning', 'Completa la fecha y hora de la reserva.');
+      return null;
+    }
+
+    const business = businesses.find((b) => String(b.id) === String(reservationBusinessId));
+    if (!business) {
+      notify('warning', 'No se pudo encontrar el local seleccionado.');
+      return null;
+    }
+    const closure = getBusinessClosureInfo(business, reservationDate);
+    if (closure) {
+      notify('warning', closure.message);
+      return null;
+    }
+    if (!isTimeAllowedForBusiness(business, reservationTime)) {
+      notify('warning', 'La hora seleccionada no está dentro del horario de funcionamiento.');
+      return null;
+    }
+
+    const schedule = resolveScheduleForTime(reservationTime);
+    const payload = {
+      businessId: String(business.id),
+      tableIds: reservationTableSelection,
+      date: reservationDate,
+      time: reservationTime,
+      schedule,
+      notes: reservationNotes.trim(),
+      amount: RESERVATION_PRICE,
+      guest:
+        reservationMode === 'guest'
+          ? {
+              nombre: reservationGuest.nombre.trim(),
+              apellido: reservationGuest.apellido.trim(),
+              rut: formatRut(reservationGuest.rut),
+            }
+          : undefined,
+    };
+
+    return { business, payload };
+  };
+
+  const submitReservation = async (payload, business, { clearPending = true, modeOverride } = {}) => {
+    try {
+      const data = await fetchJson('/reservations', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      });
+      setReservationSuccess({ ...data, businessLogo: business?.imageUrl || '' });
+      setReservationStep('success');
+      if ((modeOverride || reservationMode) === 'registered') {
+        loadMyReservations();
+      }
+      if (payload?.businessId) {
+        loadReservationTables(payload.businessId, { force: true });
+      }
+      if (clearPending) {
+        removeStorageKey(PENDING_RESERVATION_STORAGE_KEY);
+      }
+      return data;
+    } catch (err) {
+      notify('danger', err.message);
+      return null;
+    }
+  };
+
+  const storePendingReservation = (payload, business) => {
+    if (!payload) return;
+    writeStorageJson(PENDING_RESERVATION_STORAGE_KEY, {
+      payload,
+      businessId: payload.businessId,
+      business: business
+        ? {
+            id: business.id,
+            name: business.name,
+            imageUrl: business.imageUrl || '',
+          }
+        : null,
+      mode: reservationMode || 'guest',
+      createdAt: new Date().toISOString(),
+      processing: false,
+    });
+  };
+
+  const handleMercadoPagoCheckout = () => {
+    if (!MERCADO_PAGO_CHECKOUT_URL) {
+      notify('warning', 'No se encontró el link de Mercado Pago.');
       return;
     }
+    const prepared = prepareReservationSubmission();
+    if (!prepared) return;
+    storePendingReservation(prepared.payload, prepared.business);
+    window.location.href = MERCADO_PAGO_CHECKOUT_URL;
+  };
+
+  const handleConfirmReservation = async () => {
+    const prepared = prepareReservationSubmission();
+    if (!prepared) return;
     const payment = {
       name: reservationPayment.name.trim(),
       number: reservationPayment.number.replace(/\s+/g, ''),
@@ -1720,54 +1910,19 @@ function App() {
       notify('warning', 'Completa los datos de la tarjeta para continuar.');
       return;
     }
+    await submitReservation(prepared.payload, prepared.business);
+  };
 
-    const business = businesses.find((b) => String(b.id) === String(reservationBusinessId));
-    if (!business) {
-      notify('warning', 'No se pudo encontrar el local seleccionado.');
+  const handleAdPlanCheckout = (plan) => {
+    if (!currentUser || currentUser.rol !== 'OFERENTE') {
+      notify('warning', 'Debes iniciar sesión como oferente para comprar un plan.');
       return;
     }
-    const closure = getBusinessClosureInfo(business, reservationDate);
-    if (closure) {
-      notify('warning', closure.message);
+    if (!plan?.checkoutUrl) {
+      notify('warning', 'No se encontró el link de Mercado Pago para este plan.');
       return;
     }
-    if (!isTimeAllowedForBusiness(business, reservationTime)) {
-      notify('warning', 'La hora seleccionada no está dentro del horario de funcionamiento.');
-      return;
-    }
-    try {
-      const schedule = resolveScheduleForTime(reservationTime);
-      const payload = {
-        businessId: String(business.id),
-        tableIds: reservationTableSelection,
-        date: reservationDate,
-        time: reservationTime,
-        schedule,
-        notes: reservationNotes.trim(),
-        amount: RESERVATION_PRICE,
-        guest:
-          reservationMode === 'guest'
-            ? {
-                nombre: reservationGuest.nombre.trim(),
-                apellido: reservationGuest.apellido.trim(),
-                rut: formatRut(reservationGuest.rut),
-              }
-            : undefined,
-      };
-      const data = await fetchJson('/reservations', {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify(payload),
-      });
-      setReservationSuccess({ ...data, businessLogo: business.imageUrl || '' });
-      setReservationStep('success');
-      if (reservationMode === 'registered') {
-        loadMyReservations();
-      }
-      loadReservationTables(reservationBusinessId, { force: true });
-    } catch (err) {
-      notify('danger', err.message);
-    }
+    window.location.href = plan.checkoutUrl;
   };
 
   const handleReservationAdminAddTable = async () => {
@@ -2476,6 +2631,98 @@ function App() {
       });
     }
   };
+
+  useEffect(() => {
+    if (!mpReturnInfo) return undefined;
+    let cancelled = false;
+    const processReturn = async () => {
+      const pending = readStorageJson(PENDING_RESERVATION_STORAGE_KEY, null);
+      if (!pending?.payload) {
+        notify('warning', 'No encontramos una reserva pendiente para confirmar.');
+        return;
+      }
+      if (pending.processing) {
+        return;
+      }
+      if (!isMercadoPagoApproved(mpReturnInfo.params)) {
+        notify('warning', 'El pago no aparece como aprobado. Si ya pagaste, contáctanos.');
+        return;
+      }
+      writeStorageJson(PENDING_RESERVATION_STORAGE_KEY, { ...pending, processing: true });
+      setReservationMode(pending.mode || 'guest');
+      setReservationBusinessId(pending.businessId || '');
+      setReservationOpen(true);
+      const result = await submitReservation(pending.payload, pending.business || null, {
+        clearPending: true,
+        modeOverride: pending.mode,
+      });
+      if (!result && !cancelled) {
+        writeStorageJson(PENDING_RESERVATION_STORAGE_KEY, { ...pending, processing: false });
+      }
+    };
+    processReturn();
+    return () => {
+      cancelled = true;
+    };
+  }, [mpReturnInfo]);
+
+  const loadActiveAdPlan = async () => {
+    if (!currentUser?.id || currentUser?.rol !== 'OFERENTE') {
+      setActiveAdPlan(null);
+      return;
+    }
+    try {
+      const data = await fetchJson('/ads/plan', { headers: authHeaders });
+      setActiveAdPlan(data?.plan || null);
+    } catch (err) {
+      setActiveAdPlan(null);
+      notify('danger', err.message || 'No se pudo cargar el plan activo.');
+    }
+  };
+
+  useEffect(() => {
+    loadActiveAdPlan();
+  }, [currentUser, token]);
+
+  useEffect(() => {
+    if (!mpPlanReturnInfo) return undefined;
+    if (!currentUser?.id || currentUser?.rol !== 'OFERENTE') {
+      notify('warning', 'Inicia sesión como oferente para confirmar el plan.');
+      return undefined;
+    }
+    const preapprovalId = extractPreapprovalId(mpPlanReturnInfo.params);
+    if (!preapprovalId) {
+      notify('warning', 'No encontramos el identificador de la suscripción.');
+      return undefined;
+    }
+    let cancelled = false;
+    const confirmPlan = async () => {
+      try {
+        const data = await fetchJson('/ads/plan/confirm', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            planId: mpPlanReturnInfo.plan.id,
+            preapprovalId,
+          }),
+        });
+        if (cancelled) return;
+        setActiveAdPlan(data?.plan || null);
+        if (data?.plan) {
+          setAdPlanSuccessInfo(data.plan);
+          setAdPlanSuccessOpen(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          notify('danger', err.message || 'No se pudo confirmar el plan.');
+        }
+      }
+    };
+    confirmPlan();
+    return () => {
+      cancelled = true;
+    };
+  }, [mpPlanReturnInfo, currentUser, token]);
 
   useEffect(() => {
     loadPublicTenants();
@@ -5087,19 +5334,27 @@ function App() {
                     </div>
 
                     <div className="mt-5 grid gap-4 lg:grid-cols-3">
-                      {oferenteAdPlans.map((plan) => (
-                        <div
-                          key={plan.id}
-                          className={cn(
-                            'relative flex h-full flex-col rounded-2xl border p-4 shadow-soft',
-                            plan.accentClass
-                          )}
-                        >
-                          {plan.badge ? (
-                            <span className="absolute right-4 top-4 rounded-full bg-background/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground shadow-soft">
-                              {plan.badge}
-                            </span>
-                          ) : null}
+                      {oferenteAdPlans.map((plan) => {
+                        const isActivePlan = activeAdPlan?.planId === plan.id;
+                        const hasCheckout = Boolean(plan.checkoutUrl);
+                        const buttonLabel = isActivePlan
+                          ? 'Plan activo'
+                          : hasCheckout
+                            ? 'Comprar'
+                            : 'No disponible';
+                        return (
+                          <div
+                            key={plan.id}
+                            className={cn(
+                              'relative flex h-full flex-col rounded-2xl border p-4 shadow-soft',
+                              plan.accentClass
+                            )}
+                          >
+                            {plan.badge || isActivePlan ? (
+                              <span className="absolute right-4 top-4 rounded-full bg-background/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground shadow-soft">
+                                {isActivePlan ? 'Plan activo' : plan.badge}
+                              </span>
+                            ) : null}
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-xs uppercase tracking-wide text-muted-foreground">Plan</p>
@@ -5129,17 +5384,38 @@ function App() {
                             ))}
                           </ul>
                           <div className="mt-5">
-                            <Button type="button" variant={plan.buttonVariant} className="w-full">
-                              Comprar
+                            <Button
+                              type="button"
+                              variant={plan.buttonVariant}
+                              className="w-full"
+                              disabled={isActivePlan || !hasCheckout}
+                              onClick={() => handleAdPlanCheckout(plan)}
+                            >
+                              {buttonLabel}
                             </Button>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
-                    <p className="mt-4 text-xs text-muted-foreground">
-                      La compra se habilitará más adelante. Por ahora esta sección es solo visual.
-                    </p>
+                    {activeAdPlan ? (
+                      <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                        <p className="font-semibold">
+                          Plan activo:{' '}
+                          {oferenteAdPlans.find((plan) => plan.id === activeAdPlan.planId)?.name || 'Sin nombre'}
+                        </p>
+                        {activeAdPlan.startDate && (
+                          <p className="text-xs text-emerald-700/80">
+                            Activo desde {formatShortDate(activeAdPlan.startDate)}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-xs text-muted-foreground">
+                        Aún no tienes un plan activo. Selecciona uno para aumentar tu visibilidad.
+                      </p>
+                    )}
                   </div>
                 </TabsContent>
               )}
@@ -6230,54 +6506,72 @@ function App() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                    <p className="font-semibold">Pago con tarjeta (demo)</p>
+                {hasMercadoPagoCheckout ? (
+                  <div className="rounded-xl border border-border bg-card p-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                      <p className="font-semibold">Pagar con Mercado Pago</p>
+                    </div>
+                    <p className="mt-2 text-muted-foreground">
+                      Serás redirigido a Mercado Pago para completar el pago de forma segura.
+                    </p>
                   </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="md:col-span-2 space-y-2">
-                      <Label>Nombre en la tarjeta</Label>
-                      <Input
-                        value={reservationPayment.name}
-                        onChange={(e) => setReservationPayment((prev) => ({ ...prev, name: e.target.value }))}
-                        placeholder="Nombre completo"
-                      />
+                ) : (
+                  <div className="rounded-xl border border-border bg-card p-4">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                      <p className="font-semibold">Pago con tarjeta (demo)</p>
                     </div>
-                    <div className="md:col-span-2 space-y-2">
-                      <Label>Número de tarjeta</Label>
-                      <Input
-                        value={reservationPayment.number}
-                        onChange={(e) => setReservationPayment((prev) => ({ ...prev, number: e.target.value }))}
-                        placeholder="0000 0000 0000 0000"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Vencimiento</Label>
-                      <Input
-                        value={reservationPayment.expiry}
-                        onChange={(e) => setReservationPayment((prev) => ({ ...prev, expiry: e.target.value }))}
-                        placeholder="MM/AA"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>CVV</Label>
-                      <Input
-                        value={reservationPayment.cvv}
-                        onChange={(e) => setReservationPayment((prev) => ({ ...prev, cvv: e.target.value }))}
-                        placeholder="123"
-                      />
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="md:col-span-2 space-y-2">
+                        <Label>Nombre en la tarjeta</Label>
+                        <Input
+                          value={reservationPayment.name}
+                          onChange={(e) => setReservationPayment((prev) => ({ ...prev, name: e.target.value }))}
+                          placeholder="Nombre completo"
+                        />
+                      </div>
+                      <div className="md:col-span-2 space-y-2">
+                        <Label>Número de tarjeta</Label>
+                        <Input
+                          value={reservationPayment.number}
+                          onChange={(e) => setReservationPayment((prev) => ({ ...prev, number: e.target.value }))}
+                          placeholder="0000 0000 0000 0000"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Vencimiento</Label>
+                        <Input
+                          value={reservationPayment.expiry}
+                          onChange={(e) => setReservationPayment((prev) => ({ ...prev, expiry: e.target.value }))}
+                          placeholder="MM/AA"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>CVV</Label>
+                        <Input
+                          value={reservationPayment.cvv}
+                          onChange={(e) => setReservationPayment((prev) => ({ ...prev, cvv: e.target.value }))}
+                          placeholder="123"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex items-center justify-between gap-2">
                   <Button type="button" variant="outline" onClick={() => setReservationStep('tables')}>
                     Volver
                   </Button>
-                  <Button type="button" variant="danger" onClick={handleConfirmReservation}>
-                    Confirmar y pagar $ {formatNumber(RESERVATION_PRICE)}
-                  </Button>
+                  {hasMercadoPagoCheckout ? (
+                    <Button type="button" variant="danger" onClick={handleMercadoPagoCheckout}>
+                      Ir a Mercado Pago
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="danger" onClick={handleConfirmReservation}>
+                      Confirmar y pagar $ {formatNumber(RESERVATION_PRICE)}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
@@ -6363,6 +6657,45 @@ function App() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={adPlanSuccessOpen}
+        onOpenChange={(open) => {
+          setAdPlanSuccessOpen(open);
+          if (!open) setAdPlanSuccessInfo(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <CheckCircle2 className="h-7 w-7" aria-hidden="true" />
+            </div>
+            <DialogTitle>¡Plan activado!</DialogTitle>
+            <DialogDescription>
+              Tu plan{' '}
+              {adPlanSuccessInfo?.planId
+                ? `"${oferenteAdPlans.find((plan) => plan.id === adPlanSuccessInfo.planId)?.name || 'Seleccionado'}"`
+                : ''}
+              está activo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => {
+                setAdminPanelTab('publicidad');
+                setAdPlanSuccessOpen(false);
+              }}
+            >
+              Ver publicidad
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setAdPlanSuccessOpen(false)}>
+              Cerrar
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

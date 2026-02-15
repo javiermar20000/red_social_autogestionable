@@ -13,6 +13,7 @@ import { Comment } from '../entities/Comment.js';
 import { ReservationTable } from '../entities/ReservationTable.js';
 import { Reservation } from '../entities/Reservation.js';
 import { ReservationTableLink } from '../entities/ReservationTableLink.js';
+import { AdPlanSubscription } from '../entities/AdPlanSubscription.js';
 
 const {
   DB_HOST = 'db',
@@ -44,6 +45,7 @@ export const AppDataSource = new DataSource({
     ReservationTable,
     Reservation,
     ReservationTableLink,
+    AdPlanSubscription,
   ],
   synchronize: false,
   logging: false,

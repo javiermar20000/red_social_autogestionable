@@ -13,6 +13,7 @@ import { Comment, ComentarioEstado } from './entities/Comment.js';
 import { ReservationTable, MesaEstado } from './entities/ReservationTable.js';
 import { Reservation, ReservaEstado, ReservaHorario } from './entities/Reservation.js';
 import { ReservationTableLink } from './entities/ReservationTableLink.js';
+import { AdPlanSubscription, AdPlanCode, AdPlanStatus } from './entities/AdPlanSubscription.js';
 import { EntityManager, In, LessThan } from 'typeorm';
 import { runWithContext } from './utils/rls.js';
 import sharp from 'sharp';
@@ -118,6 +119,73 @@ const parsePositiveInt = (value: unknown, fallback = 1) => {
   const num = Number(value);
   if (!Number.isFinite(num) || num <= 0) return fallback;
   return Math.floor(num);
+};
+
+const {
+  MP_ACCESS_TOKEN = '',
+  MP_PLAN_INICIO_ID = '',
+  MP_PLAN_IMPULSO_ID = '',
+  MP_PLAN_DOMINIO_ID = '',
+} = process.env;
+
+const MP_PLAN_ID_BY_CODE: Record<AdPlanCode, string> = {
+  [AdPlanCode.INICIO]: MP_PLAN_INICIO_ID,
+  [AdPlanCode.IMPULSO]: MP_PLAN_IMPULSO_ID,
+  [AdPlanCode.DOMINIO]: MP_PLAN_DOMINIO_ID,
+};
+
+const normalizeAdPlanCode = (value: unknown): AdPlanCode | null => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return null;
+  if (raw === 'INICIO') return AdPlanCode.INICIO;
+  if (raw === 'IMPULSO') return AdPlanCode.IMPULSO;
+  if (raw === 'DOMINIO') return AdPlanCode.DOMINIO;
+  return null;
+};
+
+const adPlanCodeToClientId = (code: AdPlanCode) => code.toLowerCase();
+
+const resolveMpPlanId = (code: AdPlanCode) => {
+  const id = MP_PLAN_ID_BY_CODE[code];
+  return id ? String(id) : '';
+};
+
+const resolvePlanCodeFromMpPlanId = (mpPlanId: string | null | undefined): AdPlanCode | null => {
+  if (!mpPlanId) return null;
+  const normalized = String(mpPlanId);
+  const match = (Object.entries(MP_PLAN_ID_BY_CODE) as Array<[AdPlanCode, string]>).find(
+    ([, value]) => value && value === normalized
+  );
+  return match ? match[0] : null;
+};
+
+const resolveAdPlanStatus = (mpStatus: string | null | undefined) => {
+  if (!mpStatus) return AdPlanStatus.PENDIENTE;
+  const normalized = String(mpStatus).toLowerCase();
+  if (['authorized', 'active', 'approved'].includes(normalized)) return AdPlanStatus.ACTIVA;
+  if (['cancelled', 'canceled', 'paused', 'suspended'].includes(normalized)) return AdPlanStatus.CANCELADA;
+  if (['expired'].includes(normalized)) return AdPlanStatus.EXPIRADA;
+  return AdPlanStatus.PENDIENTE;
+};
+
+const parseOptionalDate = (value: unknown) => {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const fetchMercadoPagoPreapproval = async (preapprovalId: string) => {
+  if (!MP_ACCESS_TOKEN) {
+    throw new Error('MP_ACCESS_TOKEN no configurado');
+  }
+  const response = await fetch(`https://api.mercadopago.com/preapproval/${preapprovalId}`, {
+    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.message || 'No se pudo validar el pago en Mercado Pago');
+  }
+  return data as Record<string, any>;
 };
 
 const parseTimeToMinutes = (value: unknown): number | null => {
@@ -2664,6 +2732,196 @@ router.post(
     res.json({
       message: enabled ? 'Publicación añadida al espacio publicitario' : 'Publicación retirada del espacio publicitario',
     });
+  })
+);
+
+router.get(
+  '/ads/plan',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const user = req.auth?.user;
+    if (!user) return res.status(401).json({ message: 'No autenticado' });
+    ensureUserReady(user);
+    const tenantId = user.tenantId!;
+    const now = new Date();
+
+    const active = await runWithContext({ tenantId }, async (manager) => {
+      const repo = manager.getRepository(AdPlanSubscription);
+      let subscription = await repo.findOne({
+        where: { userId: user.id, status: AdPlanStatus.ACTIVA },
+        order: { startDate: 'DESC', createdAt: 'DESC' },
+      });
+      if (subscription?.endDate && subscription.endDate <= now) {
+        await repo.update({ id: subscription.id }, { status: AdPlanStatus.EXPIRADA });
+        subscription = null;
+      }
+      return subscription;
+    });
+
+    if (!active) {
+      return res.json({ plan: null });
+    }
+
+    return res.json({
+      plan: {
+        id: active.id,
+        planId: adPlanCodeToClientId(active.planCode),
+        status: active.status,
+        startDate: active.startDate,
+        endDate: active.endDate,
+        mpStatus: active.mpStatus,
+      },
+    });
+  })
+);
+
+router.post(
+  '/ads/plan/confirm',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const user = req.auth?.user;
+    if (!user) return res.status(401).json({ message: 'No autenticado' });
+    ensureUserReady(user);
+    const tenantId = user.tenantId!;
+
+    const planCode = normalizeAdPlanCode(req.body?.planId);
+    if (!planCode) return res.status(400).json({ message: 'planId inválido' });
+    const preapprovalId =
+      String(req.body?.preapprovalId || req.body?.preapproval_id || req.query?.preapproval_id || '').trim();
+    if (!preapprovalId) return res.status(400).json({ message: 'preapprovalId es obligatorio' });
+
+    const expectedMpPlanId = resolveMpPlanId(planCode);
+    if (!expectedMpPlanId) {
+      return res.status(500).json({ message: 'Plan de Mercado Pago no configurado' });
+    }
+
+    const mpData = await fetchMercadoPagoPreapproval(preapprovalId);
+    const mpPlanId = String(mpData.preapproval_plan_id || '');
+    if (!mpPlanId || mpPlanId !== expectedMpPlanId) {
+      return res.status(400).json({ message: 'El plan de Mercado Pago no coincide con la compra' });
+    }
+
+    const mpStatus = mpData.status ? String(mpData.status) : null;
+    const status = resolveAdPlanStatus(mpStatus);
+    if (status !== AdPlanStatus.ACTIVA) {
+      return res.status(400).json({ message: 'El plan aún no aparece como activo' });
+    }
+
+    const startDate = parseOptionalDate(mpData.auto_recurring?.start_date) || parseOptionalDate(mpData.date_created);
+    const endDate = parseOptionalDate(mpData.auto_recurring?.end_date);
+
+    const saved = await runWithContext({ tenantId }, async (manager) => {
+      const repo = manager.getRepository(AdPlanSubscription);
+      const existingByPreapproval = await repo.findOne({ where: { mpPreapprovalId: preapprovalId } });
+      let currentId: string | null = null;
+
+      if (existingByPreapproval) {
+        await repo.update(
+          { id: existingByPreapproval.id },
+          {
+            planCode,
+            status,
+            mpPlanId,
+            mpStatus,
+            startDate: startDate ?? existingByPreapproval.startDate,
+            endDate: endDate ?? existingByPreapproval.endDate,
+          }
+        );
+        currentId = existingByPreapproval.id;
+      } else {
+        const created = await repo.save(
+          repo.create({
+            tenantId,
+            userId: user.id,
+            planCode,
+            status,
+            mpPreapprovalId: preapprovalId,
+            mpPlanId,
+            mpStatus,
+            startDate,
+            endDate,
+          })
+        );
+        currentId = created.id;
+      }
+
+      if (currentId) {
+        await repo
+          .createQueryBuilder()
+          .update()
+          .set({ status: AdPlanStatus.CANCELADA })
+          .where('usuario_id = :userId', { userId: user.id })
+          .andWhere('estado = :status', { status: AdPlanStatus.ACTIVA })
+          .andWhere('id <> :currentId', { currentId })
+          .execute();
+      }
+
+      const current = await repo.findOne({
+        where: { mpPreapprovalId: preapprovalId },
+      });
+      if (!current) throw new Error('No se pudo guardar la suscripción');
+      return current;
+    });
+
+    res.json({
+      plan: {
+        id: saved.id,
+        planId: adPlanCodeToClientId(saved.planCode),
+        status: saved.status,
+        startDate: saved.startDate,
+        endDate: saved.endDate,
+        mpStatus: saved.mpStatus,
+      },
+    });
+  })
+);
+
+router.post(
+  '/ads/plan/webhook/mercadopago',
+  asyncHandler(async (req: AuthRequest, res) => {
+    const preapprovalId = String(req.body?.data?.id || req.body?.id || '').trim();
+    if (!preapprovalId) {
+      return res.json({ received: true });
+    }
+
+    let mpData: Record<string, any>;
+    try {
+      mpData = await fetchMercadoPagoPreapproval(preapprovalId);
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
+
+    const mpPlanId = mpData.preapproval_plan_id ? String(mpData.preapproval_plan_id) : null;
+    const planCode = resolvePlanCodeFromMpPlanId(mpPlanId);
+    if (!planCode) {
+      return res.json({ received: true });
+    }
+
+    const mpStatus = mpData.status ? String(mpData.status) : null;
+    const status = resolveAdPlanStatus(mpStatus);
+    const startDate = parseOptionalDate(mpData.auto_recurring?.start_date) || parseOptionalDate(mpData.date_created);
+    const endDate = parseOptionalDate(mpData.auto_recurring?.end_date);
+
+    await runWithContext({ isAdmin: true }, async (manager) => {
+      const repo = manager.getRepository(AdPlanSubscription);
+      const existing = await repo.findOne({ where: { mpPreapprovalId: preapprovalId } });
+      if (!existing) return;
+      await repo.update(
+        { id: existing.id },
+        {
+          planCode,
+          status,
+          mpPlanId,
+          mpStatus,
+          startDate: startDate ?? existing.startDate,
+          endDate: endDate ?? existing.endDate,
+        }
+      );
+    });
+
+    res.json({ received: true });
   })
 );
 

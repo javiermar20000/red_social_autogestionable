@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS favorito CASCADE;
 DROP TABLE IF EXISTS comentario CASCADE;
 DROP TABLE IF EXISTS reserva_mesa CASCADE;
 DROP TABLE IF EXISTS reserva CASCADE;
+DROP TABLE IF EXISTS suscripcion_publicidad CASCADE;
 DROP TABLE IF EXISTS mesa CASCADE;
 DROP TABLE IF EXISTS publicacion_categoria CASCADE;
 DROP TABLE IF EXISTS categoria CASCADE;
@@ -34,6 +35,8 @@ DROP TYPE IF EXISTS notificacion_tipo_enum CASCADE;
 DROP TYPE IF EXISTS comentario_estado_enum CASCADE;
 DROP TYPE IF EXISTS reserva_estado_enum CASCADE;
 DROP TYPE IF EXISTS reserva_horario_enum CASCADE;
+DROP TYPE IF EXISTS suscripcion_publicidad_estado_enum CASCADE;
+DROP TYPE IF EXISTS suscripcion_publicidad_plan_enum CASCADE;
 DROP TYPE IF EXISTS mesa_estado_enum CASCADE;
 DROP TYPE IF EXISTS categoria_tipo_enum CASCADE;
 DROP TYPE IF EXISTS media_tipo_enum CASCADE;
@@ -165,6 +168,19 @@ CREATE TYPE reserva_estado_enum AS ENUM (
   'CONFIRMADA',
   'CANCELADA',
   'COMPLETADA'
+);
+
+CREATE TYPE suscripcion_publicidad_plan_enum AS ENUM (
+  'INICIO',
+  'IMPULSO',
+  'DOMINIO'
+);
+
+CREATE TYPE suscripcion_publicidad_estado_enum AS ENUM (
+  'ACTIVA',
+  'PENDIENTE',
+  'CANCELADA',
+  'EXPIRADA'
 );
 
 CREATE TYPE notificacion_tipo_enum AS ENUM (
@@ -323,6 +339,28 @@ CREATE TABLE reserva_mesa (
     ON DELETE RESTRICT
 );
 
+-- SUSCRIPCION PUBLICIDAD
+CREATE TABLE suscripcion_publicidad (
+  id                 BIGSERIAL PRIMARY KEY,
+  tenant_id          BIGINT NOT NULL,
+  usuario_id         BIGINT NOT NULL,
+  plan_codigo        suscripcion_publicidad_plan_enum NOT NULL,
+  estado             suscripcion_publicidad_estado_enum NOT NULL DEFAULT 'PENDIENTE',
+  mp_preapproval_id  VARCHAR(120),
+  mp_plan_id         VARCHAR(120),
+  mp_status          VARCHAR(50),
+  fecha_inicio       TIMESTAMP WITH TIME ZONE,
+  fecha_fin          TIMESTAMP WITH TIME ZONE,
+  fecha_creacion     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  fecha_actualizacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_suscripcion_publicidad_tenant
+    FOREIGN KEY (tenant_id) REFERENCES tenant(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_suscripcion_publicidad_usuario
+    FOREIGN KEY (usuario_id) REFERENCES usuario(id)
+    ON DELETE CASCADE
+);
+
 -- PUBLICACION
 CREATE TABLE publicacion (
   id                   BIGSERIAL PRIMARY KEY,
@@ -474,6 +512,11 @@ CREATE INDEX idx_reserva_usuario_id ON reserva (usuario_id);
 CREATE INDEX idx_reserva_fecha_reserva ON reserva (fecha_reserva);
 CREATE INDEX idx_reserva_mesa_reserva_id ON reserva_mesa (reserva_id);
 CREATE INDEX idx_reserva_mesa_mesa_id ON reserva_mesa (mesa_id);
+CREATE INDEX idx_suscripcion_publicidad_tenant_id ON suscripcion_publicidad (tenant_id);
+CREATE INDEX idx_suscripcion_publicidad_usuario_id ON suscripcion_publicidad (usuario_id);
+CREATE UNIQUE INDEX uq_suscripcion_publicidad_mp_preapproval_id
+  ON suscripcion_publicidad (mp_preapproval_id)
+  WHERE mp_preapproval_id IS NOT NULL;
 CREATE INDEX idx_publicacion_negocio_id ON publicacion (negocio_id);
 CREATE INDEX idx_publicacion_autor_id ON publicacion (autor_id);
 CREATE INDEX idx_media_publicacion_id ON media (publicacion_id);
@@ -568,6 +611,7 @@ ALTER TABLE negocio               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mesa                  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reserva               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reserva_mesa          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE suscripcion_publicidad ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categoria             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE publicacion           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE media                 ENABLE ROW LEVEL SECURITY;
@@ -766,6 +810,33 @@ BEGIN
           WHERE m.id = reserva_mesa.mesa_id
             AND current_setting('app.tenant_id', true) IS NOT NULL
             AND n.tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      );
+    $pol$;
+  END IF;
+END$$;
+
+-- 4.4) suscripcion_publicidad: por tenant
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'suscripcion_publicidad'
+  ) THEN
+    EXECUTE $pol$
+      CREATE POLICY suscripcion_publicidad_tenant_isolation ON suscripcion_publicidad
+      USING (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR (
+          current_setting('app.tenant_id', true) IS NOT NULL
+          AND tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      )
+      WITH CHECK (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR (
+          current_setting('app.tenant_id', true) IS NOT NULL
+          AND tenant_id = current_setting('app.tenant_id')::BIGINT
         )
       );
     $pol$;

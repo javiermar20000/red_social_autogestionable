@@ -2962,6 +2962,76 @@ function App() {
 
   const businessListForForms = isAdmin ? businesses : myBusinesses;
   const showClientBottomNav = currentUser?.rol === 'CLIENTE';
+  const showAdminBottomNav = (isAdmin || isOferente) && !showClientBottomNav;
+  const adminApprovalCount = adminQueues.publications.length;
+  const adminPanelNavItems = useMemo(() => {
+    const items = [
+      {
+        id: 'perfil',
+        label: 'Perfil',
+        description: 'Datos del negocio',
+        icon: Building2,
+      },
+      {
+        id: 'publicaciones',
+        label: 'Publicaciones',
+        description: 'Crear, editar y revisar',
+        icon: FileText,
+      },
+    ];
+    if (isAdmin || isOferente) {
+      items.push({
+        id: 'publicidad',
+        label: 'Publicidad',
+        description: isAdmin ? 'Destacados del feed' : 'Planes y visibilidad',
+        icon: Megaphone,
+      });
+    }
+    items.push(
+      {
+        id: 'estadisticas',
+        label: 'Estadísticas',
+        description: 'Rendimiento y visitas',
+        icon: BarChart3,
+      },
+      {
+        id: 'reservas',
+        label: 'Reservas',
+        description: 'Mesas y disponibilidad',
+        icon: CalendarDays,
+      }
+    );
+    if (isAdmin) {
+      items.push({
+        id: 'aprobaciones',
+        label: 'Aprobaciones',
+        description: adminApprovalCount ? `${adminApprovalCount} pendientes` : 'Sin pendientes',
+        icon: ShieldCheck,
+        badge: adminApprovalCount,
+      });
+    }
+    return items;
+  }, [isAdmin, isOferente, adminApprovalCount]);
+  const adminPanelActionItems = useMemo(
+    () => [
+      {
+        id: 'agregar-negocio',
+        label: 'Agregar negocio',
+        description: 'Nuevo local',
+        icon: Building2,
+        onClick: () => openCreateDialog('negocio'),
+      },
+      {
+        id: 'agregar-alimentos',
+        label: 'Agregar alimentos',
+        description: 'Nueva publicación',
+        icon: FileText,
+        onClick: () => openCreateDialog('publicacion'),
+      },
+    ],
+    [openCreateDialog]
+  );
+  const adminPanelBottomItems = useMemo(() => adminPanelNavItems, [adminPanelNavItems]);
   const reservationsForUser = useMemo(() => {
     if (!currentUser?.id) return [];
     return (Array.isArray(reservations) ? reservations : []).filter(
@@ -4453,7 +4523,7 @@ function App() {
         currentUser={currentUser}
       />
 
-      <main className={cn('container px-4 py-6 space-y-6', showClientBottomNav && 'pb-24')}>
+      <main className={cn('container px-4 py-6 space-y-6', (showClientBottomNav || showAdminBottomNav) && 'pb-24')}>
         {showBusinessProfile ? (
           <section className="space-y-6">
             <div className="rounded-2xl bg-card p-6 shadow-soft">
@@ -4786,135 +4856,74 @@ function App() {
       )}
         {(isOferente || isAdmin) && (
           <section className="rounded-2xl bg-card p-5 shadow-soft">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">{isAdmin ? 'Panel del administrador' : 'Panel del oferente'}</p>
-                <h4 className="text-xl font-semibold">Centro de gestión</h4>
-                <p className="text-sm text-muted-foreground">
-                  {isAdmin
-                    ? 'Administra publicaciones, publicidad y validaciones en un solo lugar.'
-                    : 'Actualiza tu perfil, publicaciones, catálogo y publicidad de forma clara.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => openCreateDialog('negocio')} className="gap-2">
-                  <Building2 className="h-4 w-4" aria-hidden="true" />
-                  Agregar negocio
-                </Button>
-                <Button variant="outline" onClick={() => openCreateDialog('publicacion')} className="gap-2">
-                  <FileText className="h-4 w-4" aria-hidden="true" />
-                  Agregar alimentos
-                </Button>
-                {isAdmin && (
-                  <Button variant="outline" onClick={loadAdminQueues} className="gap-2">
-                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                    Actualizar pendientes
-                  </Button>
-                )}
-              </div>
-            </div>
-            <Tabs value={adminPanelTab} onValueChange={setAdminPanelTab} className="mt-5">
-              <TabsList
-                className={cn(
-                  'grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0',
-                  isAdmin ? 'sm:grid-cols-4 xl:grid-cols-6' : 'sm:grid-cols-5 xl:grid-cols-5'
-                )}
-              >
-                <TabsTrigger
-                  value="perfil"
-                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
-                    <Building2 className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <span className="flex flex-col">
-                    <span className="text-sm font-semibold">Perfil</span>
-                    <span className="text-xs text-muted-foreground">Datos del negocio</span>
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="publicaciones"
-                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
-                    <FileText className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <span className="flex flex-col">
-                    <span className="text-sm font-semibold">Publicaciones</span>
-                    <span className="text-xs text-muted-foreground">Crear, editar y revisar</span>
-                  </span>
-                </TabsTrigger>
-                {isOferente && !isAdmin && (
-                  <TabsTrigger
-                    value="publicidad"
-                    className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
-                  >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
-                      <Megaphone className="h-4 w-4" aria-hidden="true" />
-                    </span>
-                    <span className="flex flex-col">
-                      <span className="text-sm font-semibold">Publicidad</span>
-                      <span className="text-xs text-muted-foreground">Planes y visibilidad</span>
-                    </span>
-                  </TabsTrigger>
-                )}
-                <TabsTrigger
-                  value="estadisticas"
-                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
-                    <BarChart3 className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <span className="flex flex-col">
-                    <span className="text-sm font-semibold">Estadísticas</span>
-                    <span className="text-xs text-muted-foreground">Rendimiento y visitas</span>
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="reservas"
-                  className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
-                    <CalendarDays className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <span className="flex flex-col">
-                    <span className="text-sm font-semibold">Reservas</span>
-                    <span className="text-xs text-muted-foreground">Mesas y disponibilidad</span>
-                  </span>
-                </TabsTrigger>
-                {isAdmin && (
-                  <TabsTrigger
-                    value="aprobaciones"
-                    className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
-                  >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
-                      <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                    </span>
-                    <span className="flex flex-col">
-                      <span className="text-sm font-semibold">Aprobaciones</span>
-                      <span className="text-xs text-muted-foreground">
-                        {adminQueues.publications.length} pendientes
-                      </span>
-                    </span>
-                  </TabsTrigger>
-                )}
-                {isAdmin && (
-                  <TabsTrigger
-                    value="publicidad"
-                    className="h-auto w-full items-start justify-start gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
-                  >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
-                      <Megaphone className="h-4 w-4" aria-hidden="true" />
-                    </span>
-                    <span className="flex flex-col">
-                      <span className="text-sm font-semibold">Publicidad</span>
-                      <span className="text-xs text-muted-foreground">Destacados del feed</span>
-                    </span>
-                  </TabsTrigger>
-                )}
-              </TabsList>
+            <div className="md:flex md:gap-6">
+              <aside className="hidden md:flex md:w-64 md:flex-col md:gap-3 md:rounded-2xl md:border md:border-border md:bg-muted/30 md:p-4 md:sticky md:top-24 md:h-[calc(100vh-7rem)] md:overflow-y-auto">
+                <div className="space-y-2">
+                  {adminPanelActionItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={item.onClick}
+                        className="flex w-full items-start gap-3 rounded-xl border border-dashed border-border/70 bg-muted/40 px-3 py-2 text-left transition hover:border-primary/40 hover:bg-muted/60"
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background text-foreground shadow-soft">
+                          <Icon className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <span className="flex flex-col">
+                          <span className="text-sm font-semibold">{item.label}</span>
+                          {item.description && (
+                            <span className="text-xs text-muted-foreground">{item.description}</span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <nav className="mt-4 space-y-2 border-t border-border/70 pt-4">
+                  {adminPanelNavItems.map((item) => {
+                    const isActive = adminPanelTab === item.id;
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setAdminPanelTab(item.id)}
+                        className={cn(
+                          'flex w-full items-start gap-3 rounded-xl border px-3 py-2 text-left transition',
+                          isActive
+                            ? 'border-primary/40 bg-primary/5'
+                            : 'border-border bg-background/60 hover:border-primary/40 hover:bg-muted/60'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'flex h-9 w-9 items-center justify-center rounded-lg shadow-soft',
+                            isActive ? 'bg-primary/10 text-primary' : 'bg-background text-foreground'
+                          )}
+                        >
+                          <Icon className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <span className="flex flex-1 flex-col">
+                          <span className="text-sm font-semibold">{item.label}</span>
+                          {item.description && (
+                            <span className="text-xs text-muted-foreground">{item.description}</span>
+                          )}
+                        </span>
+                        {typeof item.badge === 'number' && item.badge > 0 && (
+                          <span className="ml-auto rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </aside>
 
-              <TabsContent value="perfil" className="mt-6 space-y-4">
+              <Tabs value={adminPanelTab} onValueChange={setAdminPanelTab} className="min-w-0 flex-1">
+                <TabsContent value="perfil" className="mt-0 space-y-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
                     <Building2 className="h-5 w-5" aria-hidden="true" />
@@ -4923,6 +4932,16 @@ function App() {
                     <p className="text-sm text-muted-foreground">Perfil del negocio</p>
                     <h4 className="text-lg font-semibold">Actualiza la información visible</h4>
                   </div>
+                </div>
+                <div className="flex flex-wrap gap-2 md:hidden">
+                  <Button variant="outline" onClick={() => openCreateDialog('negocio')} className="gap-2">
+                    <Building2 className="h-4 w-4" aria-hidden="true" />
+                    Agregar negocio
+                  </Button>
+                  <Button variant="outline" onClick={() => openCreateDialog('publicacion')} className="gap-2">
+                    <FileText className="h-4 w-4" aria-hidden="true" />
+                    Agregar alimentos
+                  </Button>
                 </div>
                 {businessListForForms.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -5136,7 +5155,7 @@ function App() {
                 )}
               </TabsContent>
 
-              <TabsContent value="publicaciones" className="mt-6 space-y-6">
+              <TabsContent value="publicaciones" className="mt-0 space-y-6">
                 <div className="rounded-2xl border border-border bg-muted/30 p-4">
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
@@ -5182,7 +5201,7 @@ function App() {
               </TabsContent>
 
               {isAdmin && (
-                <TabsContent value="aprobaciones" className="mt-6 space-y-6">
+                <TabsContent value="aprobaciones" className="mt-0 space-y-6">
                   <div className="rounded-2xl border border-border bg-muted/30 p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div className="flex items-start gap-3">
@@ -5239,7 +5258,7 @@ function App() {
               )}
 
               {isAdmin && (
-                <TabsContent value="publicidad" className="mt-6 space-y-6">
+                <TabsContent value="publicidad" className="mt-0 space-y-6">
                   <div className="rounded-2xl border border-border bg-muted/30 p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div className="flex items-start gap-3">
@@ -5414,7 +5433,7 @@ function App() {
               )}
 
               {isOferente && !isAdmin && (
-                <TabsContent value="publicidad" className="mt-6 space-y-6">
+                <TabsContent value="publicidad" className="mt-0 space-y-6">
                   <div className="rounded-2xl border border-border bg-muted/30 p-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="flex items-start gap-3">
@@ -5521,7 +5540,7 @@ function App() {
                 </TabsContent>
               )}
 
-              <TabsContent value="estadisticas" className="mt-6 space-y-6">
+              <TabsContent value="estadisticas" className="mt-0 space-y-6">
                 <div className="rounded-2xl border border-border bg-muted/30 p-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-start gap-3">
@@ -5612,7 +5631,7 @@ function App() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="reservas" className="mt-6 space-y-4">
+              <TabsContent value="reservas" className="mt-0 space-y-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
                     <CalendarDays className="h-5 w-5" aria-hidden="true" />
@@ -6139,6 +6158,7 @@ function App() {
               </TabsContent>
 
             </Tabs>
+          </div>
           </section>
         )}
 
@@ -6236,6 +6256,43 @@ function App() {
               </span>
               P. guardadas
             </button>
+          </div>
+        </nav>
+      )}
+
+      {showAdminBottomNav && (
+        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur md:hidden">
+          <div className="container flex items-center gap-2 overflow-x-auto px-3 py-3">
+            {adminPanelBottomItems.map((item) => {
+              const Icon = item.icon;
+              const isAction = Boolean(item.onClick);
+              const isActive = !isAction && adminPanelTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (item.onClick) {
+                      item.onClick();
+                    } else {
+                      setAdminPanelTab(item.id);
+                    }
+                  }}
+                  className={cn(
+                    'relative flex min-w-[64px] flex-col items-center gap-1 text-[11px] font-semibold',
+                    isActive ? 'text-rose-600' : 'text-muted-foreground'
+                  )}
+                >
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                  <span className="whitespace-nowrap">{item.label}</span>
+                  {typeof item.badge === 'number' && item.badge > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </nav>
       )}

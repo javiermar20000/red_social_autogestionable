@@ -2736,6 +2736,72 @@ router.post(
 );
 
 router.get(
+  '/admin/ads/subscriptions',
+  authMiddleware,
+  requireRole(['admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: false, optional: true, allowAdminAll: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
+
+    const subscriptions = await runWithContext({ isAdmin: true }, async (manager) => {
+      const repo = manager.getRepository(AdPlanSubscription);
+      const rows = await repo.find({
+        where: tenantId ? { tenantId } : {},
+        order: { createdAt: 'DESC' },
+      });
+      if (!rows.length) return [];
+
+      const userIds = [...new Set(rows.map((row) => row.userId))];
+      const tenantIds = [...new Set(rows.map((row) => row.tenantId))];
+      const users = await manager.getRepository(User).find({ where: { id: In(userIds) } });
+      const tenants = await manager.getRepository(Tenant).find({ where: { id: In(tenantIds) } });
+      const userMap = users.reduce<Record<string, User>>((acc, user) => {
+        acc[String(user.id)] = user;
+        return acc;
+      }, {});
+      const tenantMap = tenants.reduce<Record<string, Tenant>>((acc, tenant) => {
+        acc[String(tenant.id)] = tenant;
+        return acc;
+      }, {});
+
+      return rows.map((row) => ({
+        id: row.id,
+        tenantId: row.tenantId,
+        userId: row.userId,
+        planCode: row.planCode,
+        planId: adPlanCodeToClientId(row.planCode),
+        status: row.status,
+        mpStatus: row.mpStatus,
+        mpPreapprovalId: row.mpPreapprovalId,
+        mpPlanId: row.mpPlanId,
+        startDate: row.startDate,
+        endDate: row.endDate,
+        createdAt: row.createdAt,
+        user: userMap[String(row.userId)]
+          ? {
+              id: userMap[String(row.userId)].id,
+              nombre: userMap[String(row.userId)].nombre,
+              email: userMap[String(row.userId)].email,
+            }
+          : null,
+        tenant: tenantMap[String(row.tenantId)]
+          ? {
+              id: tenantMap[String(row.tenantId)].id,
+              nombre: tenantMap[String(row.tenantId)].nombre,
+            }
+          : null,
+      }));
+    });
+
+    res.json({ subscriptions });
+  })
+);
+
+router.get(
   '/ads/plan',
   authMiddleware,
   requireRole([RolUsuario.OFERENTE]),

@@ -128,6 +128,12 @@ const RESERVATION_SCHEDULE_OPTIONS = [
   { value: 'CENA', label: 'Cena' },
 ];
 const RESERVATION_TIME_STEP_MINUTES = 30;
+const AD_PLAN_STATUS_META = {
+  ACTIVA: { label: 'Activa', className: 'border-emerald-200 bg-emerald-100 text-emerald-700' },
+  PENDIENTE: { label: 'Pendiente', className: 'border-amber-200 bg-amber-100 text-amber-700' },
+  CANCELADA: { label: 'Cancelada', className: 'border-rose-200 bg-rose-100 text-rose-700' },
+  EXPIRADA: { label: 'Expirada', className: 'border-slate-200 bg-slate-100 text-slate-700' },
+};
 const WEEKDAY_OPTIONS = [
   { value: 1, label: 'Lun' },
   { value: 2, label: 'Mar' },
@@ -498,6 +504,9 @@ const formatShortDate = (value) => {
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+const getAdPlanStatusMeta = (status) =>
+  AD_PLAN_STATUS_META[status] || { label: status || 'Desconocido', className: 'border-border bg-muted text-foreground' };
 
 const readCacheBucket = (storageKey) => {
   const storage = getLocalStorage();
@@ -1515,6 +1524,8 @@ function App() {
   const [loadingAdminAds, setLoadingAdminAds] = useState(false);
   const [savingAdminAds, setSavingAdminAds] = useState(() => new Set());
   const [adminAdsTenantId, setAdminAdsTenantId] = useState(() => localStorage.getItem('tenantId') || '');
+  const [adminAdSubscriptions, setAdminAdSubscriptions] = useState([]);
+  const [adminAdSubscriptionsLoading, setAdminAdSubscriptionsLoading] = useState(false);
   const [myPublications, setMyPublications] = useState([]);
   const [loadingMyPublications, setLoadingMyPublications] = useState(false);
   const [editingPublicationId, setEditingPublicationId] = useState(null);
@@ -2600,6 +2611,23 @@ function App() {
     }
   };
 
+  const loadAdminAdSubscriptions = async () => {
+    if (!isAdmin) return;
+    setAdminAdSubscriptionsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (adminAdsTenantId) params.set('tenantId', adminAdsTenantId);
+      const query = params.toString();
+      const data = await fetchJson(`/admin/ads/subscriptions${query ? `?${query}` : ''}`, { headers: authHeaders });
+      setAdminAdSubscriptions(Array.isArray(data?.subscriptions) ? data.subscriptions : []);
+    } catch (err) {
+      notify('danger', err.message);
+      setAdminAdSubscriptions([]);
+    } finally {
+      setAdminAdSubscriptionsLoading(false);
+    }
+  };
+
   const handleToggleAdminAd = async (publication, enabled) => {
     if (!isAdmin || !publication?.id) return;
     const targetId = String(publication.id);
@@ -2811,6 +2839,7 @@ function App() {
 
   useEffect(() => {
     loadAdminAds();
+    loadAdminAdSubscriptions();
   }, [isAdmin, adminAdsTenantId]);
 
   useEffect(() => {
@@ -5308,6 +5337,78 @@ function App() {
                         })}
                       </div>
                     </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                          <CreditCard className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Suscripciones</p>
+                          <h4 className="text-lg font-semibold">Pagos de planes mensuales</h4>
+                          <p className="text-xs text-muted-foreground">
+                            Revisa quién tiene planes activos o pendientes.
+                          </p>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={loadAdminAdSubscriptions} className="gap-2">
+                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                        Recargar
+                      </Button>
+                    </div>
+
+                    {adminAdSubscriptionsLoading && (
+                      <p className="mt-4 text-sm text-muted-foreground">Cargando suscripciones...</p>
+                    )}
+
+                    {!adminAdSubscriptionsLoading && !adminAdSubscriptions.length && (
+                      <p className="mt-4 text-sm text-muted-foreground">No hay suscripciones registradas.</p>
+                    )}
+
+                    {!!adminAdSubscriptions.length && (
+                      <div className="mt-4 space-y-3">
+                        {adminAdSubscriptions.map((subscription) => {
+                          const planName =
+                            oferenteAdPlans.find((plan) => plan.id === subscription.planId)?.name ||
+                            subscription.planCode ||
+                            'Plan';
+                          const statusMeta = getAdPlanStatusMeta(subscription.status);
+                          return (
+                            <div
+                              key={subscription.id}
+                              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between"
+                            >
+                              <div>
+                                <p className="font-semibold">
+                                  {subscription.user?.nombre || 'Oferente'} · {planName}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {subscription.user?.email || 'Sin correo'} · Tenant:{' '}
+                                  {subscription.tenant?.nombre || subscription.tenantId || '--'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Inicio: {formatShortDate(subscription.startDate) || '--'} · Fin:{' '}
+                                  {formatShortDate(subscription.endDate) || '--'}
+                                </p>
+                                {subscription.mpStatus && (
+                                  <p className="text-xs text-muted-foreground">MP: {subscription.mpStatus}</p>
+                                )}
+                              </div>
+                              <span
+                                className={cn(
+                                  'rounded-full border px-3 py-1 text-xs font-semibold',
+                                  statusMeta.className
+                                )}
+                              >
+                                {statusMeta.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
               )}

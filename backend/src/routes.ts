@@ -3361,10 +3361,10 @@ router.post(
         } else {
           toCreate.push(
             requestRepo.create({
-              tenantId,
-              userId: user.id,
-              subscriptionId: active.id,
-              publicationId: pubId,
+              tenantId: String(tenantId),
+              userId: String(user.id),
+              subscriptionId: String(active.id),
+              publicationId: String(pubId),
               status: SolicitudPublicidadEstado.PENDIENTE,
             })
           );

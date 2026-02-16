@@ -153,8 +153,8 @@ const AdPanel = ({ open, floating = false, publications = [], loading = false, o
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Espacio publicitario</p>
-          <p className="text-sm font-semibold">Alimentos destacados</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Recomendados para usted</p>
+          <p className="text-sm font-semibold">Destacados</p>
         </div>
         {onToggle && (
           <Button variant="ghost" size="icon" onClick={onToggle} aria-label="Cerrar espacio publicitario">
@@ -181,7 +181,7 @@ const AdPanel = ({ open, floating = false, publications = [], loading = false, o
         )}
         {!loading && publications.length === 0 && (
           <div className="rounded-xl border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
-            Aún no hay publicaciones publicitarias.
+            Aún no hay publicaciones destacadas.
           </div>
         )}
         {!loading &&

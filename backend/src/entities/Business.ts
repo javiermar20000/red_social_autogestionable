@@ -8,6 +8,7 @@ export enum NegocioTipo {
   PASTELERIA = 'PASTELERIA',
   HELADERIA = 'HELADERIA',
   PANADERIA = 'PANADERIA',
+  EMBUTIDOS = 'EMBUTIDOS',
 }
 
 export enum NegocioEstado {

@@ -129,6 +129,16 @@ const AD_PLAN_STATUS_META = {
   CANCELADA: { label: 'Cancelada', className: 'border-rose-200 bg-rose-100 text-rose-700' },
   EXPIRADA: { label: 'Expirada', className: 'border-slate-200 bg-slate-100 text-slate-700' },
 };
+const AD_REQUEST_STATUS_META = {
+  PENDIENTE: { label: 'Pendiente', className: 'border-amber-200 bg-amber-100 text-amber-700' },
+  APROBADA: { label: 'Aprobada', className: 'border-emerald-200 bg-emerald-100 text-emerald-700' },
+  RECHAZADA: { label: 'Rechazada', className: 'border-rose-200 bg-rose-100 text-rose-700' },
+};
+const COMMENT_STATUS_META = {
+  VISIBLE: { label: 'Visible', className: 'border-emerald-200 bg-emerald-100 text-emerald-700' },
+  OCULTO: { label: 'Oculto', className: 'border-amber-200 bg-amber-100 text-amber-700' },
+  ELIMINADO: { label: 'Eliminado', className: 'border-rose-200 bg-rose-100 text-rose-700' },
+};
 const WEEKDAY_OPTIONS = [
   { value: 1, label: 'Lun' },
   { value: 2, label: 'Mar' },
@@ -494,6 +504,12 @@ const formatShortDate = (value) => {
 const getAdPlanStatusMeta = (status) =>
   AD_PLAN_STATUS_META[status] || { label: status || 'Desconocido', className: 'border-border bg-muted text-foreground' };
 
+const getAdRequestStatusMeta = (status) =>
+  AD_REQUEST_STATUS_META[status] || { label: status || 'Desconocido', className: 'border-border bg-muted text-foreground' };
+
+const getCommentStatusMeta = (status) =>
+  COMMENT_STATUS_META[status] || { label: status || 'Desconocido', className: 'border-border bg-muted text-foreground' };
+
 const readCacheBucket = (storageKey) => {
   const storage = getLocalStorage();
   if (!storage) return { entries: {}, order: [] };
@@ -715,6 +731,21 @@ const panaderiaCategoryTypes = [
   'DESAYUNOS',
 ];
 
+const embutidosCategoryTypes = [
+  'JAMONES',
+  'JAMON_SERRANO',
+  'JAMON_COCIDO',
+  'CHORIZOS',
+  'LONGANIZAS',
+  'SALCHICHAS',
+  'SALAMES',
+  'MORTADELAS',
+  'BUTIFARRAS',
+  'CECINAS',
+  'PATES',
+  'FIAMBRES',
+];
+
 const categoriesByBusinessType = {
   CAFETERIA: cafeCategoryTypes,
   RESTAURANTE: foodCategoryTypes,
@@ -723,15 +754,25 @@ const categoriesByBusinessType = {
   PASTELERIA: pasteleriaCategoryTypes,
   HELADERIA: heladeriaCategoryTypes,
   PANADERIA: panaderiaCategoryTypes,
+  EMBUTIDOS: embutidosCategoryTypes,
 };
 
-const defaultBusinessTypes = ['RESTAURANTE', 'CAFETERIA', 'FOODTRUCK', 'BAR', 'PASTELERIA', 'HELADERIA', 'PANADERIA'];
+const defaultBusinessTypes = [
+  'RESTAURANTE',
+  'CAFETERIA',
+  'FOODTRUCK',
+  'BAR',
+  'PASTELERIA',
+  'HELADERIA',
+  'PANADERIA',
+  'EMBUTIDOS',
+];
 const oferenteAdPlans = [
   {
     id: 'inicio',
-    name: 'Plan Inicio',
+    name: 'Plan Básico',
     description: 'Presencia básica para comenzar a destacar.',
-    price: 4990,
+    price: 9990,
     checkoutUrl: MP_PLAN_INICIO_CHECKOUT_URL,
     successPath: MP_PLAN_INICIO_SUCCESS_PATH,
     presence: 35,
@@ -750,7 +791,7 @@ const oferenteAdPlans = [
     id: 'impulso',
     name: 'Plan Impulso',
     description: 'Mayor frecuencia y alcance sostenido.',
-    price: 8990,
+    price: 14990,
     checkoutUrl: MP_PLAN_IMPULSO_CHECKOUT_URL,
     successPath: MP_PLAN_IMPULSO_SUCCESS_PATH,
     presence: 65,
@@ -769,7 +810,7 @@ const oferenteAdPlans = [
     id: 'dominio',
     name: 'Plan Dominio',
     description: 'Máxima presencia para ser el primero.',
-    price: 14990,
+    price: 19990,
     checkoutUrl: MP_PLAN_DOMINIO_CHECKOUT_URL,
     successPath: MP_PLAN_DOMINIO_SUCCESS_PATH,
     presence: 100,
@@ -1648,6 +1689,23 @@ function App() {
   });
 
   const [adminQueues, setAdminQueues] = useState({ publications: [] });
+  const [adminComments, setAdminComments] = useState([]);
+  const [adminCommentsLoading, setAdminCommentsLoading] = useState(false);
+  const [adminCommentFilter, setAdminCommentFilter] = useState('todos');
+  const [adminCommentEditingId, setAdminCommentEditingId] = useState(null);
+  const [adminCommentDraft, setAdminCommentDraft] = useState({
+    contenido: '',
+    calificacion: '',
+    esCalificacion: false,
+  });
+  const [adminCommentSaving, setAdminCommentSaving] = useState(false);
+  const [adRequests, setAdRequests] = useState([]);
+  const [adRequestsLoading, setAdRequestsLoading] = useState(false);
+  const [adRequestSelection, setAdRequestSelection] = useState([]);
+  const [adRequestsSubmitting, setAdRequestsSubmitting] = useState(false);
+  const [adminAdRequests, setAdminAdRequests] = useState([]);
+  const [adminAdRequestsLoading, setAdminAdRequestsLoading] = useState(false);
+  const [adminAdRequestFilter, setAdminAdRequestFilter] = useState('PENDIENTE');
   const [adminAdPublications, setAdminAdPublications] = useState([]);
   const [loadingAdminAds, setLoadingAdminAds] = useState(false);
   const [savingAdminAds, setSavingAdminAds] = useState(() => new Set());
@@ -2669,6 +2727,184 @@ function App() {
     }
   };
 
+  const loadAdRequests = async () => {
+    if (!isOferente || isAdmin) return;
+    setAdRequestsLoading(true);
+    try {
+      const data = await fetchJson('/ads/requests', { headers: authHeaders });
+      setAdRequests(Array.isArray(data?.requests) ? data.requests : []);
+    } catch (err) {
+      notify('danger', err.message);
+      setAdRequests([]);
+    } finally {
+      setAdRequestsLoading(false);
+    }
+  };
+
+  const submitAdRequests = async () => {
+    if (!adRequestSelection.length) return;
+    setAdRequestsSubmitting(true);
+    try {
+      const data = await fetchJson('/ads/requests', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ publicationIds: adRequestSelection }),
+      });
+      setAdRequests(Array.isArray(data?.requests) ? data.requests : []);
+      setAdRequestSelection([]);
+      notify('success', 'Solicitud enviada para revisión');
+    } catch (err) {
+      notify('danger', err.message);
+    } finally {
+      setAdRequestsSubmitting(false);
+    }
+  };
+
+  const toggleAdRequestSelection = (publicationId) => {
+    const target = String(publicationId);
+    setAdRequestSelection((prev) => {
+      const next = new Set(prev.map((value) => String(value)));
+      if (next.has(target)) {
+        next.delete(target);
+      } else {
+        next.add(target);
+      }
+      return Array.from(next);
+    });
+  };
+
+  const loadAdminAdRequests = async (filterValue = adminAdRequestFilter) => {
+    if (!isAdmin) return;
+    setAdminAdRequestsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterValue && filterValue !== 'TODOS') params.set('status', filterValue);
+      const query = params.toString();
+      const data = await fetchJson(`/admin/ads/requests${query ? `?${query}` : ''}`, { headers: authHeaders });
+      setAdminAdRequests(Array.isArray(data?.requests) ? data.requests : []);
+    } catch (err) {
+      notify('danger', err.message);
+      setAdminAdRequests([]);
+    } finally {
+      setAdminAdRequestsLoading(false);
+    }
+  };
+
+  const handleAdminAdRequestDecision = async (request, status) => {
+    if (!request?.id) return;
+    try {
+      const data = await fetchJson(`/admin/ads/requests/${request.id}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({ status }),
+      });
+      const updated = data?.request;
+      if (updated) {
+        setAdminAdRequests((prev) =>
+          prev.map((item) => (String(item.id) === String(updated.id) ? { ...item, ...updated } : item))
+        );
+      }
+      notify('success', status === 'APROBADA' ? 'Solicitud aprobada' : 'Solicitud rechazada');
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
+  const loadAdminComments = async (filterValue = adminCommentFilter) => {
+    if (!isAdmin) return;
+    setAdminCommentsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterValue === 'comentarios') params.set('esCalificacion', 'false');
+      if (filterValue === 'calificaciones') params.set('esCalificacion', 'true');
+      params.set('limit', '200');
+      const query = params.toString();
+      const data = await fetchJson(`/admin/comments${query ? `?${query}` : ''}`, { headers: authHeaders });
+      setAdminComments(Array.isArray(data?.comments) ? data.comments : []);
+    } catch (err) {
+      notify('danger', err.message);
+      setAdminComments([]);
+    } finally {
+      setAdminCommentsLoading(false);
+    }
+  };
+
+  const startAdminCommentEdit = (comment) => {
+    if (!comment?.id) return;
+    setAdminCommentEditingId(String(comment.id));
+    setAdminCommentDraft({
+      contenido: String(comment.contenido || ''),
+      calificacion: comment.esCalificacion ? String(comment.calificacion ?? 1) : '',
+      esCalificacion: Boolean(comment.esCalificacion),
+    });
+  };
+
+  const cancelAdminCommentEdit = () => {
+    setAdminCommentEditingId(null);
+    setAdminCommentDraft({ contenido: '', calificacion: '', esCalificacion: false });
+  };
+
+  const saveAdminCommentEdit = async () => {
+    if (!adminCommentEditingId) return;
+    const contenido = String(adminCommentDraft.contenido || '').trim();
+    if (!contenido) {
+      notify('warning', 'El contenido es obligatorio');
+      return;
+    }
+    const payload = { contenido };
+    if (adminCommentDraft.esCalificacion) {
+      const ratingValue = Number(adminCommentDraft.calificacion);
+      if (!Number.isInteger(ratingValue) || ratingValue < 1 || ratingValue > 5) {
+        notify('warning', 'La calificación debe estar entre 1 y 5');
+        return;
+      }
+      payload.calificacion = ratingValue;
+    }
+    setAdminCommentSaving(true);
+    try {
+      const data = await fetchJson(`/admin/comments/${adminCommentEditingId}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      });
+      const updated = data?.comment;
+      if (updated) {
+        setAdminComments((prev) =>
+          prev.map((item) => (String(item.id) === String(updated.id) ? { ...item, ...updated } : item))
+        );
+      }
+      cancelAdminCommentEdit();
+      notify('success', 'Comentario actualizado');
+    } catch (err) {
+      notify('danger', err.message);
+    } finally {
+      setAdminCommentSaving(false);
+    }
+  };
+
+  const deleteAdminComment = async (comment) => {
+    if (!comment?.id) return;
+    if (!window.confirm('¿Eliminar este comentario?')) return;
+    try {
+      const data = await fetchJson(`/admin/comments/${comment.id}`, {
+        method: 'DELETE',
+        headers: authHeaders,
+      });
+      const updated = data?.comment;
+      if (updated) {
+        setAdminComments((prev) =>
+          prev.map((item) => (String(item.id) === String(updated.id) ? { ...item, ...updated } : item))
+        );
+      }
+      if (adminCommentEditingId === String(comment.id)) {
+        cancelAdminCommentEdit();
+      }
+      notify('success', 'Comentario eliminado');
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
   const loadAdminAds = async () => {
     if (!isAdmin) return;
     setLoadingAdminAds(true);
@@ -2879,6 +3115,27 @@ function App() {
   }, [currentUser]);
 
   useEffect(() => {
+    if (isAdmin && adminPanelTab === 'comentarios') {
+      loadAdminComments(adminCommentFilter);
+    }
+  }, [isAdmin, adminPanelTab, adminCommentFilter]);
+
+  useEffect(() => {
+    if (isAdmin && adminPanelTab === 'publicidad') {
+      loadAdminAdRequests(adminAdRequestFilter);
+    }
+  }, [isAdmin, adminPanelTab, adminAdRequestFilter]);
+
+  useEffect(() => {
+    if (isOferente && !isAdmin && adminPanelTab === 'publicidad' && activeAdPlan) {
+      loadAdRequests();
+      if (!loadingMyPublications && !myPublications.length) {
+        loadMyPublications();
+      }
+    }
+  }, [isOferente, isAdmin, adminPanelTab, activeAdPlan?.id, loadingMyPublications, myPublications.length]);
+
+  useEffect(() => {
     loadAdminAds();
     loadAdminAdSubscriptions();
   }, [isAdmin, adminAdsTenantId]);
@@ -3044,6 +3301,12 @@ function App() {
     );
     if (isAdmin) {
       items.push({
+        id: 'comentarios',
+        label: 'Comentarios',
+        description: 'Moderar opiniones',
+        icon: MessageCircle,
+      });
+      items.push({
         id: 'aprobaciones',
         label: 'Aprobaciones',
         description: adminApprovalCount ? `${adminApprovalCount} pendientes` : 'Sin pendientes',
@@ -3073,6 +3336,17 @@ function App() {
     [openCreateDialog]
   );
   const adminPanelBottomItems = useMemo(() => adminPanelNavItems, [adminPanelNavItems]);
+  const adminCommentFilters = [
+    { value: 'todos', label: 'Todos' },
+    { value: 'comentarios', label: 'Comentarios' },
+    { value: 'calificaciones', label: 'Calificaciones' },
+  ];
+  const adminAdRequestFilters = [
+    { value: 'TODOS', label: 'Todos' },
+    { value: 'PENDIENTE', label: 'Pendientes' },
+    { value: 'APROBADA', label: 'Aprobadas' },
+    { value: 'RECHAZADA', label: 'Rechazadas' },
+  ];
   const reservationsForUser = useMemo(() => {
     if (!currentUser?.id) return [];
     return (Array.isArray(reservations) ? reservations : []).filter(
@@ -3084,6 +3358,13 @@ function App() {
     const list = clientCommentsByUser?.[String(currentUser.id)];
     return Array.isArray(list) ? list : [];
   }, [clientCommentsByUser, currentUser]);
+  const adRequestByPublication = useMemo(() => {
+    return (Array.isArray(adRequests) ? adRequests : []).reduce((acc, request) => {
+      if (!request?.publicationId) return acc;
+      acc[String(request.publicationId)] = request;
+      return acc;
+    }, {});
+  }, [adRequests]);
   const reservationBusiness = useMemo(() => {
     if (!reservationBusinessId) return null;
     return businesses.find((b) => String(b.id) === String(reservationBusinessId)) || null;
@@ -5118,7 +5399,7 @@ function App() {
                         ))}
                       </select>
                     </div>
-                    <div>
+                    <div className="md:col-span-2">
                       <Label>Tipo principal</Label>
                       <select
                         className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
@@ -5419,6 +5700,185 @@ function App() {
               </TabsContent>
 
               {isAdmin && (
+                <TabsContent value="comentarios" className="mt-0 space-y-6">
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                          <MessageCircle className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Moderación de comentarios</p>
+                          <h4 className="text-lg font-semibold">Gestiona opiniones y calificaciones</h4>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => loadAdminComments(adminCommentFilter)} className="gap-2">
+                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                        Recargar
+                      </Button>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {adminCommentFilters.map((filter) => (
+                        <Button
+                          key={filter.value}
+                          size="sm"
+                          variant={adminCommentFilter === filter.value ? 'default' : 'outline'}
+                          onClick={() => setAdminCommentFilter(filter.value)}
+                        >
+                          {filter.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {adminCommentsLoading && (
+                        <div className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                          Cargando comentarios...
+                        </div>
+                      )}
+                      {!adminCommentsLoading && !adminComments.length && (
+                        <div className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                          No hay comentarios para mostrar.
+                        </div>
+                      )}
+                      {!adminCommentsLoading &&
+                        adminComments.map((comment) => {
+                          const isEditing = String(adminCommentEditingId) === String(comment.id);
+                          const statusMeta = getCommentStatusMeta(comment.estado);
+                          const isDeleted = comment.estado === 'ELIMINADO';
+                          return (
+                            <div
+                              key={comment.id}
+                              className="rounded-xl border border-border bg-background/80 p-4 shadow-soft"
+                            >
+                              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                    <span
+                                      className={cn(
+                                        'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                                        statusMeta.className
+                                      )}
+                                    >
+                                      {statusMeta.label}
+                                    </span>
+                                    <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                      {comment.esCalificacion ? 'Calificación' : 'Comentario'}
+                                    </span>
+                                    {comment.esCalificacion && (
+                                      <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                        {comment.calificacion ?? '--'}/5
+                                      </span>
+                                    )}
+                                    {comment.fechaCreacion && (
+                                      <span>{formatShortDate(comment.fechaCreacion)}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm font-semibold">{comment.userName || 'Usuario'}</p>
+                                  {comment.publication?.titulo && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Publicación: {comment.publication.titulo}
+                                    </p>
+                                  )}
+                                  {comment.publication?.businessName && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Negocio: {comment.publication.businessName}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {isEditing ? (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="danger"
+                                        onClick={saveAdminCommentEdit}
+                                        disabled={adminCommentSaving}
+                                      >
+                                        Guardar
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={cancelAdminCommentEdit}
+                                        disabled={adminCommentSaving}
+                                      >
+                                        Cancelar
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => startAdminCommentEdit(comment)}
+                                        disabled={isDeleted}
+                                      >
+                                        Editar
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={() => deleteAdminComment(comment)}
+                                        disabled={isDeleted}
+                                      >
+                                        Eliminar
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="mt-3 space-y-2">
+                                {isEditing ? (
+                                  <textarea
+                                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                                    rows={3}
+                                    value={adminCommentDraft.contenido}
+                                    onChange={(e) =>
+                                      setAdminCommentDraft((prev) => ({ ...prev, contenido: e.target.value }))
+                                    }
+                                  />
+                                ) : (
+                                  <p
+                                    className={cn(
+                                      'text-sm',
+                                      isDeleted ? 'text-muted-foreground line-through' : 'text-foreground'
+                                    )}
+                                  >
+                                    {comment.contenido || 'Sin contenido'}
+                                  </p>
+                                )}
+                                {comment.esCalificacion && (
+                                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                    <span>Calificación:</span>
+                                    {isEditing ? (
+                                      <select
+                                        className="rounded-md border border-input bg-background px-2 py-1 text-xs shadow-soft"
+                                        value={adminCommentDraft.calificacion}
+                                        onChange={(e) =>
+                                          setAdminCommentDraft((prev) => ({ ...prev, calificacion: e.target.value }))
+                                        }
+                                      >
+                                        {[1, 2, 3, 4, 5].map((value) => (
+                                          <option key={value} value={value}>
+                                            {value}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-foreground">{comment.calificacion ?? '--'}</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </TabsContent>
+              )}
+
+              {isAdmin && (
                 <TabsContent value="aprobaciones" className="mt-0 space-y-6">
                   <div className="rounded-2xl border border-border bg-muted/30 p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -5573,6 +6033,106 @@ function App() {
                           );
                         })}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                          <Megaphone className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Solicitudes de publicidad</p>
+                          <h4 className="text-lg font-semibold">Revisión de publicaciones sugeridas</h4>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => loadAdminAdRequests(adminAdRequestFilter)} className="gap-2">
+                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                        Recargar
+                      </Button>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {adminAdRequestFilters.map((filter) => (
+                        <Button
+                          key={filter.value}
+                          size="sm"
+                          variant={adminAdRequestFilter === filter.value ? 'default' : 'outline'}
+                          onClick={() => setAdminAdRequestFilter(filter.value)}
+                        >
+                          {filter.label}
+                        </Button>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {adminAdRequestsLoading && (
+                        <p className="text-sm text-muted-foreground">Cargando solicitudes...</p>
+                      )}
+                      {!adminAdRequestsLoading && !adminAdRequests.length && (
+                        <p className="text-sm text-muted-foreground">No hay solicitudes para mostrar.</p>
+                      )}
+                      {!adminAdRequestsLoading &&
+                        adminAdRequests.map((request) => {
+                          const statusMeta = getAdRequestStatusMeta(request.status);
+                          const planName =
+                            oferenteAdPlans.find((plan) => plan.id === request.planId)?.name ||
+                            request.planCode ||
+                            'Plan';
+                          const isApproved = request.status === 'APROBADA';
+                          const isRejected = request.status === 'RECHAZADA';
+                          return (
+                            <div
+                              key={request.id}
+                              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between"
+                            >
+                              <div>
+                                <p className="font-semibold">
+                                  {request.user?.nombre || 'Oferente'} · {planName}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {request.user?.email || 'Sin correo'} · Tenant:{' '}
+                                  {request.tenant?.nombre || request.tenantId || '--'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Publicación: {request.publication?.titulo || request.publicationId}
+                                </p>
+                                {request.publication?.businessName && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Negocio: {request.publication.businessName}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={cn(
+                                    'rounded-full border px-3 py-1 text-xs font-semibold',
+                                    statusMeta.className
+                                  )}
+                                >
+                                  {statusMeta.label}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleAdminAdRequestDecision(request, 'APROBADA')}
+                                  disabled={isApproved}
+                                >
+                                  Aprobar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleAdminAdRequestDecision(request, 'RECHAZADA')}
+                                  disabled={isRejected}
+                                >
+                                  Rechazar
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
 
@@ -5753,6 +6313,97 @@ function App() {
                       <p className="mt-4 text-xs text-muted-foreground">
                         Aún no tienes un plan activo. Selecciona uno para aumentar tu visibilidad.
                       </p>
+                    )}
+
+                    {activeAdPlan && (
+                      <div className="mt-5 rounded-2xl border border-border bg-card/90 p-4 shadow-soft">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Solicitudes de publicidad</p>
+                            <h5 className="text-lg font-semibold">Elige publicaciones para mostrar</h5>
+                            <p className="text-xs text-muted-foreground">
+                              Selecciona publicaciones publicadas y envía la solicitud para revisión del administrador.
+                            </p>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={loadAdRequests} className="gap-2">
+                            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                            Recargar
+                          </Button>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {adRequestsLoading && (
+                            <p className="text-sm text-muted-foreground">Cargando solicitudes...</p>
+                          )}
+                          {!adRequestsLoading &&
+                            (myPublications || [])
+                              .filter((pub) => pub.estado === 'PUBLICADA')
+                              .map((pub) => {
+                                const request = adRequestByPublication[String(pub.id)];
+                                const statusMeta = request ? getAdRequestStatusMeta(request.status) : null;
+                                const isSelected = adRequestSelection.includes(String(pub.id));
+                                const isApproved = request?.status === 'APROBADA';
+                                return (
+                                  <label
+                                    key={pub.id}
+                                    className={cn(
+                                      'flex flex-col gap-2 rounded-xl border border-border bg-background p-3 shadow-soft sm:flex-row sm:items-center sm:justify-between',
+                                      isApproved && 'opacity-70'
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 accent-primary"
+                                        checked={isSelected}
+                                        onChange={() => toggleAdRequestSelection(pub.id)}
+                                        disabled={isApproved}
+                                      />
+                                      <div>
+                                        <p className="text-sm font-semibold">{pub.titulo}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {pub.business?.name || 'Negocio'} · {pub.esPublicidad ? 'En publicidad' : 'No visible'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {statusMeta && (
+                                        <span
+                                          className={cn(
+                                            'rounded-full border px-3 py-1 text-[10px] font-semibold',
+                                            statusMeta.className
+                                          )}
+                                        >
+                                          {statusMeta.label}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </label>
+                                );
+                              })}
+
+                          {!adRequestsLoading &&
+                            !(myPublications || []).some((pub) => pub.estado === 'PUBLICADA') && (
+                              <p className="text-sm text-muted-foreground">
+                                No tienes publicaciones publicadas para solicitar publicidad.
+                              </p>
+                            )}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="danger"
+                            onClick={submitAdRequests}
+                            disabled={!adRequestSelection.length || adRequestsSubmitting}
+                          >
+                            {adRequestsSubmitting ? 'Enviando...' : 'Enviar solicitud'}
+                          </Button>
+                          <span className="text-xs text-muted-foreground">
+                            {adRequestSelection.length} seleccionadas
+                          </span>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </TabsContent>

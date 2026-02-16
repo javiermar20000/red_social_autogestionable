@@ -14,6 +14,7 @@ import { ReservationTable, MesaEstado } from './entities/ReservationTable.js';
 import { Reservation, ReservaEstado, ReservaHorario } from './entities/Reservation.js';
 import { ReservationTableLink } from './entities/ReservationTableLink.js';
 import { AdPlanSubscription, AdPlanCode, AdPlanStatus } from './entities/AdPlanSubscription.js';
+import { AdPublicationRequest, SolicitudPublicidadEstado } from './entities/AdPublicationRequest.js';
 import { EntityManager, In, LessThan } from 'typeorm';
 import { runWithContext } from './utils/rls.js';
 import sharp from 'sharp';
@@ -166,6 +167,20 @@ const resolveAdPlanStatus = (mpStatus: string | null | undefined) => {
   if (['cancelled', 'canceled', 'paused', 'suspended'].includes(normalized)) return AdPlanStatus.CANCELADA;
   if (['expired'].includes(normalized)) return AdPlanStatus.EXPIRADA;
   return AdPlanStatus.PENDIENTE;
+};
+
+const fetchActiveAdSubscription = async (manager: EntityManager, userId: string) => {
+  const repo = manager.getRepository(AdPlanSubscription);
+  const now = new Date();
+  let subscription = await repo.findOne({
+    where: { userId, status: AdPlanStatus.ACTIVA },
+    order: { startDate: 'DESC', createdAt: 'DESC' },
+  });
+  if (subscription?.endDate && subscription.endDate <= now) {
+    await repo.update({ id: subscription.id }, { status: AdPlanStatus.EXPIRADA });
+    subscription = null;
+  }
+  return subscription;
 };
 
 const parseOptionalDate = (value: unknown) => {
@@ -762,6 +777,21 @@ const categoriaTiposPanaderia: CategoriaTipo[] = [
   CategoriaTipo.DESAYUNOS,
 ];
 
+const categoriaTiposEmbutidos: CategoriaTipo[] = [
+  CategoriaTipo.JAMONES,
+  CategoriaTipo.JAMON_SERRANO,
+  CategoriaTipo.JAMON_COCIDO,
+  CategoriaTipo.CHORIZOS,
+  CategoriaTipo.LONGANIZAS,
+  CategoriaTipo.SALCHICHAS,
+  CategoriaTipo.SALAMES,
+  CategoriaTipo.MORTADELAS,
+  CategoriaTipo.BUTIFARRAS,
+  CategoriaTipo.CECINAS,
+  CategoriaTipo.PATES,
+  CategoriaTipo.FIAMBRES,
+];
+
 const categoriasPermitidasPorNegocio: Partial<Record<NegocioTipo, CategoriaTipo[]>> = {
   [NegocioTipo.CAFETERIA]: categoriaTiposCafe,
   [NegocioTipo.RESTAURANTE]: categoriaTiposComida,
@@ -770,6 +800,7 @@ const categoriasPermitidasPorNegocio: Partial<Record<NegocioTipo, CategoriaTipo[
   [NegocioTipo.PASTELERIA]: categoriaTiposPasteleria,
   [NegocioTipo.HELADERIA]: categoriaTiposHeladeria,
   [NegocioTipo.PANADERIA]: categoriaTiposPanaderia,
+  [NegocioTipo.EMBUTIDOS]: categoriaTiposEmbutidos,
 };
 
 // ========================
@@ -2970,6 +3001,431 @@ router.get(
 );
 
 router.get(
+  '/admin/ads/requests',
+  authMiddleware,
+  requireRole(['admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    let tenantId: string | null;
+    try {
+      tenantId = resolveTenantScope(req, { allowPublic: false, optional: true, allowAdminAll: true });
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
+
+    const statusRaw = typeof req.query.status === 'string' ? req.query.status : null;
+    const status =
+      statusRaw && Object.values(SolicitudPublicidadEstado).includes(statusRaw as SolicitudPublicidadEstado)
+        ? (statusRaw as SolicitudPublicidadEstado)
+        : null;
+
+    const requests = await runWithContext({ tenantId: tenantId ?? undefined, isAdmin: true }, async (manager) => {
+      const repo = manager.getRepository(AdPublicationRequest);
+      const where: Record<string, unknown> = {};
+      if (tenantId) where.tenantId = tenantId;
+      if (status) where.status = status;
+      const rows = await repo.find({
+        where,
+        order: { createdAt: 'DESC' },
+      });
+      if (!rows.length) return [];
+
+      const subscriptionIds = [...new Set(rows.map((row) => row.subscriptionId))];
+      const publicationIds = [...new Set(rows.map((row) => row.publicationId))];
+      const userIds = [...new Set(rows.map((row) => row.userId))];
+      const tenantIds = [...new Set(rows.map((row) => row.tenantId))];
+
+      const [subscriptions, publications, users, tenants] = await Promise.all([
+        manager.getRepository(AdPlanSubscription).find({ where: { id: In(subscriptionIds) } }),
+        manager.getRepository(Publication).find({ where: { id: In(publicationIds) } }),
+        manager.getRepository(User).find({ where: { id: In(userIds) } }),
+        manager.getRepository(Tenant).find({ where: { id: In(tenantIds) } }),
+      ]);
+
+      const publicationMap = publications.reduce<Record<string, Publication>>((acc, pub) => {
+        acc[pub.id] = pub;
+        return acc;
+      }, {});
+      const subscriptionMap = subscriptions.reduce<Record<string, AdPlanSubscription>>((acc, sub) => {
+        acc[sub.id] = sub;
+        return acc;
+      }, {});
+      const userMap = users.reduce<Record<string, User>>((acc, user) => {
+        acc[user.id] = user;
+        return acc;
+      }, {});
+      const tenantMap = tenants.reduce<Record<string, Tenant>>((acc, tenant) => {
+        acc[tenant.id] = tenant;
+        return acc;
+      }, {});
+
+      const businessIds = [...new Set(publications.map((pub) => pub.businessId).filter(Boolean))];
+      const businesses = businessIds.length
+        ? await manager.getRepository(Business).find({ where: { id: In(businessIds) } })
+        : [];
+      const businessMap = businesses.reduce<Record<string, Business>>((acc, biz) => {
+        acc[biz.id] = biz;
+        return acc;
+      }, {});
+
+      return rows.map((row) => {
+        const subscription = subscriptionMap[row.subscriptionId];
+        const publication = publicationMap[row.publicationId];
+        const business = publication ? businessMap[String(publication.businessId)] : null;
+        return {
+          id: row.id,
+          tenantId: row.tenantId,
+          userId: row.userId,
+          subscriptionId: row.subscriptionId,
+          status: row.status,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          planCode: subscription?.planCode || null,
+          planId: subscription?.planCode ? adPlanCodeToClientId(subscription.planCode) : null,
+          subscriptionStatus: subscription?.status || null,
+          user: userMap[row.userId]
+            ? {
+                id: userMap[row.userId].id,
+                nombre: userMap[row.userId].nombre,
+                email: userMap[row.userId].email,
+              }
+            : null,
+          tenant: tenantMap[row.tenantId]
+            ? {
+                id: tenantMap[row.tenantId].id,
+                nombre: tenantMap[row.tenantId].nombre,
+              }
+            : null,
+          publication: publication
+            ? {
+                id: publication.id,
+                titulo: publication.titulo,
+                estado: publication.estado,
+                esPublicidad: publication.esPublicidad,
+                businessId: publication.businessId,
+                businessName: business?.name || null,
+              }
+            : null,
+        };
+      });
+    });
+
+    res.json({ requests });
+  })
+);
+
+router.patch(
+  '/admin/ads/requests/:id',
+  authMiddleware,
+  requireRole(['admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const requestId = req.params.id;
+    const statusRaw = String(req.body?.status || '').trim().toUpperCase();
+    if (!Object.values(SolicitudPublicidadEstado).includes(statusRaw as SolicitudPublicidadEstado)) {
+      return res.status(400).json({ message: 'Estado inválido' });
+    }
+    const status = statusRaw as SolicitudPublicidadEstado;
+
+    const payload = await runWithContext({ isAdmin: true }, async (manager) => {
+      const requestRepo = manager.getRepository(AdPublicationRequest);
+      const publicationRepo = manager.getRepository(Publication);
+
+      const request = await requestRepo.findOne({ where: { id: requestId } });
+      if (!request) throw new Error('Solicitud no encontrada');
+
+      const subscription = await manager.getRepository(AdPlanSubscription).findOne({
+        where: { id: request.subscriptionId },
+      });
+      if (!subscription) throw new Error('Suscripción no encontrada');
+      if (status === SolicitudPublicidadEstado.APROBADA && subscription.status !== AdPlanStatus.ACTIVA) {
+        throw new Error('La suscripción no está activa');
+      }
+
+      const publication = await publicationRepo.findOne({ where: { id: request.publicationId } });
+      if (!publication) throw new Error('Publicación no encontrada');
+      if (status === SolicitudPublicidadEstado.APROBADA && publication.estado !== PublicacionEstado.PUBLICADA) {
+        throw new Error('Solo publicaciones publicadas pueden mostrarse en publicidad');
+      }
+
+      await requestRepo.update({ id: requestId }, { status });
+
+      if (status === SolicitudPublicidadEstado.APROBADA) {
+        await publicationRepo.update({ id: publication.id }, { esPublicidad: true });
+      }
+      if (status === SolicitudPublicidadEstado.RECHAZADA) {
+        const approvedCount = await requestRepo.count({
+          where: { publicationId: publication.id, status: SolicitudPublicidadEstado.APROBADA },
+        });
+        if (approvedCount === 0) {
+          await publicationRepo.update({ id: publication.id }, { esPublicidad: false });
+        }
+      }
+
+      const user = await manager.getRepository(User).findOne({ where: { id: request.userId } });
+      const tenant = await manager.getRepository(Tenant).findOne({ where: { id: request.tenantId } });
+      const business = await manager.getRepository(Business).findOne({ where: { id: publication.businessId } });
+
+      return {
+        id: request.id,
+        tenantId: request.tenantId,
+        userId: request.userId,
+        subscriptionId: request.subscriptionId,
+        status,
+        createdAt: request.createdAt,
+        updatedAt: request.updatedAt,
+        planCode: subscription.planCode,
+        planId: adPlanCodeToClientId(subscription.planCode),
+        subscriptionStatus: subscription.status,
+        user: user
+          ? {
+              id: user.id,
+              nombre: user.nombre,
+              email: user.email,
+            }
+          : null,
+        tenant: tenant
+          ? {
+              id: tenant.id,
+              nombre: tenant.nombre,
+            }
+          : null,
+        publication: publication
+          ? {
+              id: publication.id,
+              titulo: publication.titulo,
+              estado: publication.estado,
+              esPublicidad: status === SolicitudPublicidadEstado.APROBADA ? true : publication.esPublicidad,
+              businessId: publication.businessId,
+              businessName: business?.name || null,
+            }
+          : null,
+      };
+    });
+
+    res.json({ request: payload });
+  })
+);
+
+router.get(
+  '/ads/requests',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const user = req.auth?.user;
+    if (!user) return res.status(401).json({ message: 'No autenticado' });
+    ensureUserReady(user, { requireTenant: false });
+    const tenantId = user.tenantId;
+    if (!tenantId) return res.status(400).json({ message: 'tenantId es requerido' });
+
+    const payload = await runWithContext({ tenantId }, async (manager) => {
+      const active = await fetchActiveAdSubscription(manager, user.id);
+      if (!active) {
+        return { plan: null, requests: [] };
+      }
+
+      const repo = manager.getRepository(AdPublicationRequest);
+      const rows = await repo.find({
+        where: { subscriptionId: active.id },
+        order: { createdAt: 'DESC' },
+      });
+      if (!rows.length) {
+        return {
+          plan: {
+            id: active.id,
+            planId: adPlanCodeToClientId(active.planCode),
+            planCode: active.planCode,
+            status: active.status,
+            startDate: active.startDate,
+            endDate: active.endDate,
+          },
+          requests: [],
+        };
+      }
+
+      const publicationIds = [...new Set(rows.map((row) => row.publicationId))];
+      const publications = await manager.getRepository(Publication).find({ where: { id: In(publicationIds) } });
+      const publicationMap = publications.reduce<Record<string, Publication>>((acc, pub) => {
+        acc[pub.id] = pub;
+        return acc;
+      }, {});
+
+      const businessIds = [...new Set(publications.map((pub) => pub.businessId).filter(Boolean))];
+      const businesses = businessIds.length
+        ? await manager.getRepository(Business).find({ where: { id: In(businessIds) } })
+        : [];
+      const businessMap = businesses.reduce<Record<string, Business>>((acc, biz) => {
+        acc[biz.id] = biz;
+        return acc;
+      }, {});
+
+      return {
+        plan: {
+          id: active.id,
+          planId: adPlanCodeToClientId(active.planCode),
+          planCode: active.planCode,
+          status: active.status,
+          startDate: active.startDate,
+          endDate: active.endDate,
+        },
+        requests: rows.map((row) => {
+          const publication = publicationMap[row.publicationId];
+          const business = publication ? businessMap[String(publication.businessId)] : null;
+          return {
+            id: row.id,
+            publicationId: row.publicationId,
+            subscriptionId: row.subscriptionId,
+            status: row.status,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+            publication: publication
+              ? {
+                  id: publication.id,
+                  titulo: publication.titulo,
+                  estado: publication.estado,
+                  esPublicidad: publication.esPublicidad,
+                  businessId: publication.businessId,
+                  businessName: business?.name || null,
+                }
+              : null,
+          };
+        }),
+      };
+    });
+
+    res.json(payload);
+  })
+);
+
+router.post(
+  '/ads/requests',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const user = req.auth?.user;
+    if (!user) return res.status(401).json({ message: 'No autenticado' });
+    ensureUserReady(user, { requireTenant: false });
+    const tenantId = user.tenantId;
+    if (!tenantId) return res.status(400).json({ message: 'tenantId es requerido' });
+
+    const rawIds = Array.isArray(req.body?.publicationIds) ? req.body.publicationIds : [];
+    const publicationIds = Array.from(
+      new Set(
+        rawIds
+          .map((value) => String(value || '').trim())
+          .filter((value) => value)
+      )
+    );
+    if (!publicationIds.length) {
+      return res.status(400).json({ message: 'Selecciona al menos una publicación' });
+    }
+
+    const payload = await runWithContext({ tenantId }, async (manager) => {
+      const active = await fetchActiveAdSubscription(manager, user.id);
+      if (!active) throw new Error('No tienes un plan activo');
+
+      const businessRepo = manager.getRepository(Business);
+      const businesses = await businessRepo.find({ where: { tenantId, ownerId: user.id } });
+      const businessIds = businesses.map((b) => b.id);
+      if (!businessIds.length) throw new Error('No tienes negocios activos');
+
+      const publicationRepo = manager.getRepository(Publication);
+      const publications = await publicationRepo.find({
+        where: {
+          id: In(publicationIds),
+          businessId: In(businessIds),
+          estado: PublicacionEstado.PUBLICADA,
+        },
+      });
+      if (publications.length !== publicationIds.length) {
+        throw new Error('Alguna publicación no es válida o no está publicada');
+      }
+
+      const requestRepo = manager.getRepository(AdPublicationRequest);
+      const existing = await requestRepo.find({
+        where: { subscriptionId: active.id, publicationId: In(publicationIds) },
+      });
+      const existingMap = existing.reduce<Record<string, AdPublicationRequest>>((acc, row) => {
+        acc[String(row.publicationId)] = row;
+        return acc;
+      }, {});
+
+      const updates: Promise<unknown>[] = [];
+      const toCreate: AdPublicationRequest[] = [];
+      publicationIds.forEach((pubId) => {
+        const current = existingMap[String(pubId)];
+        if (current) {
+          if (current.status !== SolicitudPublicidadEstado.APROBADA) {
+            updates.push(
+              requestRepo.update({ id: current.id }, { status: SolicitudPublicidadEstado.PENDIENTE })
+            );
+          }
+        } else {
+          toCreate.push(
+            requestRepo.create({
+              tenantId,
+              userId: user.id,
+              subscriptionId: active.id,
+              publicationId: pubId,
+              status: SolicitudPublicidadEstado.PENDIENTE,
+            })
+          );
+        }
+      });
+      if (updates.length) await Promise.all(updates);
+      if (toCreate.length) await requestRepo.save(toCreate);
+
+      const rows = await requestRepo.find({
+        where: { subscriptionId: active.id, publicationId: In(publicationIds) },
+        order: { createdAt: 'DESC' },
+      });
+
+      const publicationMap = publications.reduce<Record<string, Publication>>((acc, pub) => {
+        acc[pub.id] = pub;
+        return acc;
+      }, {});
+      const businessMap = businesses.reduce<Record<string, Business>>((acc, biz) => {
+        acc[biz.id] = biz;
+        return acc;
+      }, {});
+
+      return {
+        plan: {
+          id: active.id,
+          planId: adPlanCodeToClientId(active.planCode),
+          planCode: active.planCode,
+          status: active.status,
+          startDate: active.startDate,
+          endDate: active.endDate,
+        },
+        requests: rows.map((row) => {
+          const publication = publicationMap[row.publicationId];
+          const business = publication ? businessMap[String(publication.businessId)] : null;
+          return {
+            id: row.id,
+            publicationId: row.publicationId,
+            subscriptionId: row.subscriptionId,
+            status: row.status,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+            publication: publication
+              ? {
+                  id: publication.id,
+                  titulo: publication.titulo,
+                  estado: publication.estado,
+                  esPublicidad: publication.esPublicidad,
+                  businessId: publication.businessId,
+                  businessName: business?.name || null,
+                }
+              : null,
+          };
+        }),
+      };
+    });
+
+    res.json(payload);
+  })
+);
+
+router.get(
   '/ads/plan',
   authMiddleware,
   requireRole([RolUsuario.OFERENTE]),
@@ -3203,6 +3659,231 @@ router.post(
       });
     });
     res.json({ message: 'Publicación rechazada' });
+  })
+);
+
+router.get(
+  '/admin/comments',
+  authMiddleware,
+  requireRole(['admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const esCalificacionRaw = typeof req.query.esCalificacion === 'string' ? req.query.esCalificacion : null;
+    const esCalificacion =
+      esCalificacionRaw === 'true' ? true : esCalificacionRaw === 'false' ? false : undefined;
+    const estadoRaw = typeof req.query.estado === 'string' ? req.query.estado : null;
+    const estado = estadoRaw && Object.values(ComentarioEstado).includes(estadoRaw as ComentarioEstado)
+      ? (estadoRaw as ComentarioEstado)
+      : null;
+    const limitRaw = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : NaN;
+    const offsetRaw = typeof req.query.offset === 'string' ? Number.parseInt(req.query.offset, 10) : NaN;
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 120;
+    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+    const { rows, total } = await runWithContext({ isAdmin: true }, async (manager) => {
+      const repo = manager.getRepository(Comment);
+      const where: Record<string, unknown> = {};
+      if (esCalificacion !== undefined) where.esCalificacion = esCalificacion;
+      if (estado) where.estado = estado;
+      const [rows, total] = await repo.findAndCount({
+        where,
+        order: { fechaCreacion: 'DESC' },
+        take: limit,
+        skip: offset,
+      });
+      return { rows, total };
+    });
+
+    if (!rows.length) return res.json({ comments: [], total });
+
+    const userIds = Array.from(new Set(rows.map((row) => row.userId).filter(Boolean)));
+    const publicationIds = Array.from(new Set(rows.map((row) => row.publicationId).filter(Boolean)));
+    const [users, publications] = await runWithContext({ isAdmin: true }, (manager) =>
+      Promise.all([
+        userIds.length ? manager.getRepository(User).find({ where: { id: In(userIds) } }) : Promise.resolve([]),
+        publicationIds.length
+          ? manager.getRepository(Publication).find({ where: { id: In(publicationIds) } })
+          : Promise.resolve([]),
+      ])
+    );
+
+    const userMap = (users || []).reduce<Record<string, User>>((acc, user) => {
+      acc[user.id] = user;
+      return acc;
+    }, {});
+    const publicationMap = (publications || []).reduce<Record<string, Publication>>((acc, pub) => {
+      acc[pub.id] = pub;
+      return acc;
+    }, {});
+    const businessIds = Array.from(
+      new Set(
+        (publications || [])
+          .map((pub) => pub.businessId)
+          .filter(Boolean)
+          .map((id) => String(id))
+      )
+    );
+    const businesses = await runWithContext({ isAdmin: true }, (manager) =>
+      businessIds.length ? manager.getRepository(Business).find({ where: { id: In(businessIds) } }) : Promise.resolve([])
+    );
+    const businessMap = (businesses || []).reduce<Record<string, Business>>((acc, business) => {
+      acc[business.id] = business;
+      return acc;
+    }, {});
+
+    const comments = rows.map((comment) => {
+      const user = userMap[comment.userId];
+      const publication = publicationMap[comment.publicationId];
+      const business = publication ? businessMap[String(publication.businessId)] : null;
+      return {
+        id: comment.id,
+        publicationId: comment.publicationId,
+        userId: comment.userId,
+        userName: user?.nombre || 'Usuario',
+        contenido: comment.contenido,
+        parentId: comment.parentId,
+        fechaCreacion: comment.fechaCreacion,
+        esCalificacion: comment.esCalificacion,
+        calificacion: comment.calificacion,
+        estado: comment.estado,
+        publication: publication
+          ? {
+              id: publication.id,
+              titulo: publication.titulo,
+              businessId: publication.businessId,
+              businessName: business?.name || null,
+            }
+          : null,
+      };
+    });
+
+    res.json({ comments, total });
+  })
+);
+
+router.patch(
+  '/admin/comments/:id',
+  authMiddleware,
+  requireRole(['admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const commentId = req.params.id;
+    const contenidoRaw = req.body?.contenido;
+    const calificacionRaw = req.body?.calificacion;
+    const estadoRaw = req.body?.estado;
+
+    const updated = await runWithContext({ isAdmin: true }, async (manager) => {
+      const repo = manager.getRepository(Comment);
+      const comment = await repo.findOne({ where: { id: commentId } });
+      if (!comment) throw new Error('Comentario no encontrado');
+
+      const updates: Partial<Comment> = {};
+      if (typeof contenidoRaw === 'string') {
+        const trimmed = contenidoRaw.trim();
+        if (!trimmed) throw new Error('El contenido es obligatorio');
+        updates.contenido = trimmed;
+      }
+      if (calificacionRaw !== undefined) {
+        if (!comment.esCalificacion) throw new Error('La calificación solo aplica a comentarios de rating');
+        const ratingValue = Number(calificacionRaw);
+        if (!Number.isInteger(ratingValue) || ratingValue < 1 || ratingValue > 5) {
+          throw new Error('La calificación debe estar entre 1 y 5');
+        }
+        updates.calificacion = ratingValue;
+      }
+      if (estadoRaw !== undefined) {
+        const estado = String(estadoRaw).toUpperCase();
+        if (!Object.values(ComentarioEstado).includes(estado as ComentarioEstado)) {
+          throw new Error('Estado inválido');
+        }
+        updates.estado = estado as ComentarioEstado;
+      }
+      if (!Object.keys(updates).length) {
+        return comment;
+      }
+      await repo.update({ id: commentId }, updates);
+      return repo.findOne({ where: { id: commentId } });
+    });
+
+    if (!updated) throw new Error('Comentario no encontrado');
+
+    const payload = await runWithContext({ isAdmin: true }, async (manager) => {
+      const user = await manager.getRepository(User).findOne({ where: { id: updated.userId } });
+      const publication = await manager.getRepository(Publication).findOne({ where: { id: updated.publicationId } });
+      const business = publication
+        ? await manager.getRepository(Business).findOne({ where: { id: publication.businessId } })
+        : null;
+      return {
+        id: updated.id,
+        publicationId: updated.publicationId,
+        userId: updated.userId,
+        userName: user?.nombre || 'Usuario',
+        contenido: updated.contenido,
+        parentId: updated.parentId,
+        fechaCreacion: updated.fechaCreacion,
+        esCalificacion: updated.esCalificacion,
+        calificacion: updated.calificacion,
+        estado: updated.estado,
+        publication: publication
+          ? {
+              id: publication.id,
+              titulo: publication.titulo,
+              businessId: publication.businessId,
+              businessName: business?.name || null,
+            }
+          : null,
+      };
+    });
+
+    res.json({ comment: payload });
+  })
+);
+
+router.delete(
+  '/admin/comments/:id',
+  authMiddleware,
+  requireRole(['admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const commentId = req.params.id;
+    const updated = await runWithContext({ isAdmin: true }, async (manager) => {
+      const repo = manager.getRepository(Comment);
+      const comment = await repo.findOne({ where: { id: commentId } });
+      if (!comment) throw new Error('Comentario no encontrado');
+      if (comment.estado !== ComentarioEstado.ELIMINADO) {
+        await repo.update({ id: commentId }, { estado: ComentarioEstado.ELIMINADO });
+      }
+      return repo.findOne({ where: { id: commentId } });
+    });
+
+    if (!updated) throw new Error('Comentario no encontrado');
+
+    const payload = await runWithContext({ isAdmin: true }, async (manager) => {
+      const user = await manager.getRepository(User).findOne({ where: { id: updated.userId } });
+      const publication = await manager.getRepository(Publication).findOne({ where: { id: updated.publicationId } });
+      const business = publication
+        ? await manager.getRepository(Business).findOne({ where: { id: publication.businessId } })
+        : null;
+      return {
+        id: updated.id,
+        publicationId: updated.publicationId,
+        userId: updated.userId,
+        userName: user?.nombre || 'Usuario',
+        contenido: updated.contenido,
+        parentId: updated.parentId,
+        fechaCreacion: updated.fechaCreacion,
+        esCalificacion: updated.esCalificacion,
+        calificacion: updated.calificacion,
+        estado: updated.estado,
+        publication: publication
+          ? {
+              id: publication.id,
+              titulo: publication.titulo,
+              businessId: publication.businessId,
+              businessName: business?.name || null,
+            }
+          : null,
+      };
+    });
+
+    res.json({ comment: payload });
   })
 );
 

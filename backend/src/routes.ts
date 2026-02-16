@@ -209,7 +209,7 @@ const normalizeTimeValue = (value: unknown): string | null => {
 };
 
 const RESERVATION_DURATION_MINUTES = 60;
-const DEFAULT_OPERATING_DAYS = [1, 2, 3, 4, 5, 6, 0];
+const DEFAULT_OPERATING_DAYS = [1, 2, 3, 4, 5];
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const normalizeDateValue = (value: unknown): string | null => {
@@ -604,6 +604,16 @@ const categoriaTiposCafe: CategoriaTipo[] = [
   CategoriaTipo.MACCHIATO,
   CategoriaTipo.COLD_BREW,
   CategoriaTipo.AFFOGATO,
+  CategoriaTipo.TE,
+  CategoriaTipo.CHOCOLATE_CALIENTE,
+  CategoriaTipo.FRAPPE,
+  CategoriaTipo.SMOOTHIES,
+  CategoriaTipo.JUGOS,
+  CategoriaTipo.PANADERIA,
+  CategoriaTipo.PASTELERIA,
+  CategoriaTipo.DESAYUNOS,
+  CategoriaTipo.GALLETAS,
+  CategoriaTipo.TORTAS,
 ];
 
 const categoriaTiposComida: CategoriaTipo[] = [
@@ -614,9 +624,21 @@ const categoriaTiposComida: CategoriaTipo[] = [
   CategoriaTipo.COMIDA_MEXICANA,
   CategoriaTipo.COMIDA_CHINA,
   CategoriaTipo.COMIDA_INDIAN,
+  CategoriaTipo.COMIDA_PERUANA,
+  CategoriaTipo.COMIDA_THAI,
+  CategoriaTipo.COMIDA_JAPONESA,
+  CategoriaTipo.COMIDA_COREANA,
+  CategoriaTipo.COMIDA_MEDITERRANEA,
+  CategoriaTipo.COMIDA_ARABE,
   CategoriaTipo.POSTRES,
   CategoriaTipo.SANDWICHES,
   CategoriaTipo.ENSALADAS,
+  CategoriaTipo.MARISCOS,
+  CategoriaTipo.PARRILLAS,
+  CategoriaTipo.SOPAS,
+  CategoriaTipo.VEGANA,
+  CategoriaTipo.VEGETARIANA,
+  CategoriaTipo.ENTRADAS,
 ];
 
 const categoriaTiposBar: CategoriaTipo[] = [
@@ -625,6 +647,14 @@ const categoriaTiposBar: CategoriaTipo[] = [
   CategoriaTipo.COCTELES,
   CategoriaTipo.DESTILADOS,
   CategoriaTipo.BEBIDAS_SIN_ALCOHOL,
+  CategoriaTipo.WHISKY,
+  CategoriaTipo.RON,
+  CategoriaTipo.GIN,
+  CategoriaTipo.VODKA,
+  CategoriaTipo.TEQUILA,
+  CategoriaTipo.MOCKTAILS,
+  CategoriaTipo.SHOTS,
+  CategoriaTipo.APERITIVOS,
   CategoriaTipo.TAPAS,
   CategoriaTipo.PICOTEO,
 ];
@@ -635,10 +665,20 @@ const categoriaTiposFoodtruck: CategoriaTipo[] = [
   CategoriaTipo.BURRITOS,
   CategoriaTipo.AREPAS,
   CategoriaTipo.EMPANADAS,
+  CategoriaTipo.COMPLETOS,
+  CategoriaTipo.CHORIPAN,
+  CategoriaTipo.QUESADILLAS,
+  CategoriaTipo.NACHOS,
   CategoriaTipo.PAPAS_FRITAS,
   CategoriaTipo.WRAPS,
   CategoriaTipo.BROCHETAS,
   CategoriaTipo.HELADOS,
+  CategoriaTipo.CHURROS,
+  CategoriaTipo.CREPES,
+  CategoriaTipo.WAFFLES,
+  CategoriaTipo.KEBABS,
+  CategoriaTipo.HAMBURGUESAS,
+  CategoriaTipo.SANDWICHES,
 ];
 
 const categoriasPermitidasPorNegocio: Partial<Record<NegocioTipo, CategoriaTipo[]>> = {

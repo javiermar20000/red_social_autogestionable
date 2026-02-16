@@ -143,7 +143,7 @@ const WEEKDAY_OPTIONS = [
   { value: 6, label: 'Sáb' },
   { value: 0, label: 'Dom' },
 ];
-const DEFAULT_OPERATING_DAYS = WEEKDAY_OPTIONS.map((day) => day.value);
+const DEFAULT_OPERATING_DAYS = WEEKDAY_OPTIONS.filter((day) => day.value >= 1 && day.value <= 5).map((day) => day.value);
 
 const getTableStatusMeta = (status) =>
   TABLE_STATUS_OPTIONS.find((option) => option.value === status) || TABLE_STATUS_OPTIONS[0];
@@ -616,6 +616,16 @@ const cafeCategoryTypes = [
   'MACCHIATO',
   'COLD_BREW',
   'AFFOGATO',
+  'TE',
+  'CHOCOLATE_CALIENTE',
+  'FRAPPE',
+  'SMOOTHIES',
+  'JUGOS',
+  'PANADERIA',
+  'PASTELERIA',
+  'DESAYUNOS',
+  'GALLETAS',
+  'TORTAS',
 ];
 
 const foodCategoryTypes = [
@@ -626,9 +636,21 @@ const foodCategoryTypes = [
   'COMIDA_MEXICANA',
   'COMIDA_CHINA',
   'COMIDA_INDIAN',
+  'COMIDA_PERUANA',
+  'COMIDA_THAI',
+  'COMIDA_JAPONESA',
+  'COMIDA_COREANA',
+  'COMIDA_MEDITERRANEA',
+  'COMIDA_ARABE',
   'POSTRES',
   'SANDWICHES',
   'ENSALADAS',
+  'MARISCOS',
+  'PARRILLAS',
+  'SOPAS',
+  'VEGANA',
+  'VEGETARIANA',
+  'ENTRADAS',
 ];
 
 const barCategoryTypes = [
@@ -637,6 +659,14 @@ const barCategoryTypes = [
   'COCTELES',
   'DESTILADOS',
   'BEBIDAS_SIN_ALCOHOL',
+  'WHISKY',
+  'RON',
+  'GIN',
+  'VODKA',
+  'TEQUILA',
+  'MOCKTAILS',
+  'SHOTS',
+  'APERITIVOS',
   'TAPAS',
   'PICOTEO',
 ];
@@ -647,10 +677,20 @@ const foodtruckCategoryTypes = [
   'BURRITOS',
   'AREPAS',
   'EMPANADAS',
+  'COMPLETOS',
+  'CHORIPAN',
+  'QUESADILLAS',
+  'NACHOS',
   'PAPAS_FRITAS',
   'WRAPS',
   'BROCHETAS',
   'HELADOS',
+  'CHURROS',
+  'CREPES',
+  'WAFFLES',
+  'KEBABS',
+  'HAMBURGUESAS',
+  'SANDWICHES',
 ];
 
 const categoriesByBusinessType = {
@@ -1579,6 +1619,13 @@ function App() {
   const [reservationScanResult, setReservationScanResult] = useState(null);
   const [reservationScanOverlayOpen, setReservationScanOverlayOpen] = useState(false);
   const [reservationScanSession, setReservationScanSession] = useState(0);
+  const [reservationSectionOpen, setReservationSectionOpen] = useState({
+    tables: false,
+    hours: false,
+    availability: false,
+    reservations: false,
+    configured: false,
+  });
 
   const resetPublicationForm = () => {
     setPublicationForm({
@@ -1596,6 +1643,12 @@ function App() {
     });
     setEditingPublicationId(null);
   };
+
+  const toggleReservationSection = (key) => {
+    setReservationSectionOpen((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const isReservationSectionOpen = (key) => Boolean(reservationSectionOpen[key]);
 
   const openCreateDialog = (tab = 'publicacion') => {
     const nextTab = typeof tab === 'string' ? tab : 'publicacion';
@@ -3162,6 +3215,21 @@ function App() {
     return categoryTypes;
   }, [selectedBusinessForPublication, categoryTypes]);
 
+  const uniqueCategoryTypesForBusiness = useMemo(() => {
+    const seen = new Set();
+    const unique = [];
+    (allowedCategoryTypesForBusiness || []).forEach((type) => {
+      const rawValue = typeof type === 'object' ? type.type || type.name || type.id : type;
+      if (!rawValue) return;
+      const optionValue = String(rawValue);
+      const key = optionValue.toUpperCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      unique.push(optionValue);
+    });
+    return unique;
+  }, [allowedCategoryTypesForBusiness]);
+
   useEffect(() => {
     if (!publicationForm.businessId && businessListForForms.length) {
       setPublicationForm((prev) => ({ ...prev, businessId: businessListForForms[0].id }));
@@ -3169,7 +3237,7 @@ function App() {
   }, [businessListForForms, publicationForm.businessId]);
 
   useEffect(() => {
-    const allowed = new Set((allowedCategoryTypesForBusiness || []).map((t) => String(t)));
+    const allowed = new Set((uniqueCategoryTypesForBusiness || []).map((t) => String(t)));
     setPublicationForm((prev) => {
       const current = (prev.categoryTypes || []).filter(Boolean);
       const filteredTypes = current.filter((t) => allowed.has(String(t))).slice(0, 1);
@@ -3177,7 +3245,7 @@ function App() {
       if (!changed) return prev;
       return { ...prev, categoryTypes: filteredTypes, categoryIds: filteredTypes.length ? (prev.categoryIds || []).slice(0, 1) : [] };
     });
-  }, [allowedCategoryTypesForBusiness]);
+  }, [uniqueCategoryTypesForBusiness]);
 
   useEffect(() => {
     if (typeof sessionStorage === 'undefined') return;
@@ -3435,6 +3503,7 @@ function App() {
         loadBusinesses();
       }
       loadAdminQueues();
+      setCreateOpen(false);
     } catch (err) {
       notify('danger', err.message);
     }
@@ -5632,7 +5701,7 @@ function App() {
               </TabsContent>
 
               <TabsContent value="reservas" className="mt-0 space-y-4">
-                <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
                     <CalendarDays className="h-5 w-5" aria-hidden="true" />
                   </div>
@@ -5663,493 +5732,585 @@ function App() {
                     </div>
 
                     <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-                        <div>
-                          <h5 className="font-semibold">Agregar mesas</h5>
-                          <p className="text-xs text-muted-foreground">
-                            Define la cantidad de sillas y el estado inicial.
-                          </p>
-                        </div>
-                        <div className="space-y-4">
-                          <div>
-                            <p className="text-xs uppercase tracking-wide text-muted-foreground">Mesa individual</p>
-                            <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Nombre de la mesa</Label>
-                                <Input
-                                  placeholder="Ej: Mesa 1"
-                                  value={reservationTableDraft.label}
-                                  aria-label="Nombre de la mesa"
-                                  onChange={(e) =>
-                                    setReservationTableDraft((prev) => ({ ...prev, label: e.target.value }))
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Cantidad de sillas</Label>
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  placeholder="Ej: 4"
-                                  value={reservationTableDraft.seats}
-                                  aria-label="Cantidad de sillas"
-                                  onChange={(e) =>
-                                    setReservationTableDraft((prev) => ({ ...prev, seats: e.target.value }))
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Estado inicial</Label>
-                                <select
-                                  className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
-                                  value={reservationTableDraft.status}
-                                  onChange={(e) =>
-                                    setReservationTableDraft((prev) => ({ ...prev, status: e.target.value }))
-                                  }
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-border bg-card p-4">
+                          <button
+                            type="button"
+                            className="flex w-full items-start justify-between gap-3 text-left"
+                            aria-expanded={isReservationSectionOpen('tables')}
+                            onClick={() => toggleReservationSection('tables')}
+                          >
+                            <div>
+                              <h5 className="font-semibold">Agregar mesas</h5>
+                              <p className="text-xs text-muted-foreground">
+                                Define la cantidad de sillas y el estado inicial.
+                              </p>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {isReservationSectionOpen('tables') ? 'Ocultar' : 'Mostrar'}
+                            </span>
+                          </button>
+                          {isReservationSectionOpen('tables') && (
+                            <div className="mt-4 space-y-4">
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Mesa individual</p>
+                                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Nombre de la mesa</Label>
+                                    <Input
+                                      placeholder="Ej: Mesa 1"
+                                      value={reservationTableDraft.label}
+                                      aria-label="Nombre de la mesa"
+                                      onChange={(e) =>
+                                        setReservationTableDraft((prev) => ({ ...prev, label: e.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Cantidad de sillas</Label>
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      placeholder="Ej: 4"
+                                      value={reservationTableDraft.seats}
+                                      aria-label="Cantidad de sillas"
+                                      onChange={(e) =>
+                                        setReservationTableDraft((prev) => ({ ...prev, seats: e.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Estado inicial</Label>
+                                    <select
+                                      className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                                      value={reservationTableDraft.status}
+                                      onChange={(e) =>
+                                        setReservationTableDraft((prev) => ({ ...prev, status: e.target.value }))
+                                      }
+                                    >
+                                      {TABLE_STATUS_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="mt-3 w-full sm:w-auto"
+                                  onClick={handleReservationAdminAddTable}
                                 >
-                                  {TABLE_STATUS_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  Agregar mesa
+                                </Button>
                               </div>
                             </div>
-                            <Button type="button" variant="outline" className="mt-3" onClick={handleReservationAdminAddTable}>
-                              Agregar mesa
-                            </Button>
-                          </div>
+                          )}
+                        </div>
 
-                          <div className="border-t border-border/70 pt-4 space-y-3">
+                        <div className="rounded-xl border border-border bg-card p-4">
+                          <button
+                            type="button"
+                            className="flex w-full items-start justify-between gap-3 text-left"
+                            aria-expanded={isReservationSectionOpen('hours')}
+                            onClick={() => toggleReservationSection('hours')}
+                          >
                             <div>
                               <h6 className="font-semibold">Horario de funcionamiento</h6>
                               <p className="text-xs text-muted-foreground">
                                 Define los rangos en los que el local acepta reservas.
                               </p>
                             </div>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Mañana desde</Label>
-                                <Input
-                                  type="time"
-                                  value={reservationHoursDraft.morningStart}
-                                  onChange={(e) =>
-                                    setReservationHoursDraft((prev) => ({ ...prev, morningStart: e.target.value }))
-                                  }
-                                />
+                            <span className="text-xs text-muted-foreground">
+                              {isReservationSectionOpen('hours') ? 'Ocultar' : 'Mostrar'}
+                            </span>
+                          </button>
+                          {isReservationSectionOpen('hours') && (
+                            <div className="mt-4 space-y-3">
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Mañana desde</Label>
+                                  <Input
+                                    type="time"
+                                    value={reservationHoursDraft.morningStart}
+                                    onChange={(e) =>
+                                      setReservationHoursDraft((prev) => ({ ...prev, morningStart: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Mañana hasta</Label>
+                                  <Input
+                                    type="time"
+                                    value={reservationHoursDraft.morningEnd}
+                                    onChange={(e) =>
+                                      setReservationHoursDraft((prev) => ({ ...prev, morningEnd: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Tarde desde</Label>
+                                  <Input
+                                    type="time"
+                                    value={reservationHoursDraft.afternoonStart}
+                                    onChange={(e) =>
+                                      setReservationHoursDraft((prev) => ({ ...prev, afternoonStart: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Tarde hasta</Label>
+                                  <Input
+                                    type="time"
+                                    value={reservationHoursDraft.afternoonEnd}
+                                    onChange={(e) =>
+                                      setReservationHoursDraft((prev) => ({ ...prev, afternoonEnd: e.target.value }))
+                                    }
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Mañana hasta</Label>
-                                <Input
-                                  type="time"
-                                  value={reservationHoursDraft.morningEnd}
-                                  onChange={(e) =>
-                                    setReservationHoursDraft((prev) => ({ ...prev, morningEnd: e.target.value }))
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Tarde desde</Label>
-                                <Input
-                                  type="time"
-                                  value={reservationHoursDraft.afternoonStart}
-                                  onChange={(e) =>
-                                    setReservationHoursDraft((prev) => ({ ...prev, afternoonStart: e.target.value }))
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Tarde hasta</Label>
-                                <Input
-                                  type="time"
-                                  value={reservationHoursDraft.afternoonEnd}
-                                  onChange={(e) =>
-                                    setReservationHoursDraft((prev) => ({ ...prev, afternoonEnd: e.target.value }))
-                                  }
-                                />
+                              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="w-full sm:w-auto"
+                                  disabled={reservationHoursSaving}
+                                  onClick={handleSaveReservationHours}
+                                >
+                                  {reservationHoursSaving ? 'Guardando...' : 'Guardar horarios'}
+                                </Button>
+                                <p className="text-xs text-muted-foreground">
+                                  Si dejas un rango vacío, no se considerará en la disponibilidad.
+                                </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                disabled={reservationHoursSaving}
-                                onClick={handleSaveReservationHours}
-                              >
-                                {reservationHoursSaving ? 'Guardando...' : 'Guardar horarios'}
-                              </Button>
-                              <p className="text-xs text-muted-foreground">
-                                Si dejas un rango vacío, no se considerará en la disponibilidad.
-                              </p>
-                            </div>
-                          </div>
+                          )}
+                        </div>
 
-                          <div className="border-t border-border/70 pt-4 space-y-4">
+                        <div className="rounded-xl border border-border bg-card p-4">
+                          <button
+                            type="button"
+                            className="flex w-full items-start justify-between gap-3 text-left"
+                            aria-expanded={isReservationSectionOpen('availability')}
+                            onClick={() => toggleReservationSection('availability')}
+                          >
                             <div>
                               <h6 className="font-semibold">Disponibilidad semanal y cierres</h6>
                               <p className="text-xs text-muted-foreground">
                                 Define los días de funcionamiento, feriados propios, vacaciones y cierres temporales.
                               </p>
                             </div>
-
-                            <div className="space-y-2">
-                              <Label className="text-xs">Días de funcionamiento</Label>
-                              <div className="flex flex-wrap gap-2">
-                                {WEEKDAY_OPTIONS.map((day) => {
-                                  const isActive = Array.isArray(reservationAvailabilityDraft.operatingDays)
-                                    ? reservationAvailabilityDraft.operatingDays.includes(day.value)
-                                    : false;
-                                  return (
-                                    <Button
-                                      key={day.value}
-                                      type="button"
-                                      size="sm"
-                                      variant={isActive ? 'danger' : 'outline'}
-                                      aria-pressed={isActive}
-                                      onClick={() => toggleReservationOperatingDay(day.value)}
-                                    >
-                                      {day.label}
-                                    </Button>
-                                  );
-                                })}
+                            <span className="text-xs text-muted-foreground">
+                              {isReservationSectionOpen('availability') ? 'Ocultar' : 'Mostrar'}
+                            </span>
+                          </button>
+                          {isReservationSectionOpen('availability') && (
+                            <div className="mt-4 space-y-4">
+                              <div className="space-y-2">
+                                <Label className="text-xs">Días de funcionamiento</Label>
+                                <div className="flex flex-wrap gap-2">
+                                  {WEEKDAY_OPTIONS.map((day) => {
+                                    const isActive = Array.isArray(reservationAvailabilityDraft.operatingDays)
+                                      ? reservationAvailabilityDraft.operatingDays.includes(day.value)
+                                      : false;
+                                    return (
+                                      <Button
+                                        key={day.value}
+                                        type="button"
+                                        size="sm"
+                                        variant={isActive ? 'danger' : 'outline'}
+                                        aria-pressed={isActive}
+                                        onClick={() => toggleReservationOperatingDay(day.value)}
+                                      >
+                                        {day.label}
+                                      </Button>
+                                    );
+                                  })}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Si no seleccionas días, no se podrán recibir reservas.
+                                </p>
                               </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs">Feriados propios</Label>
+                                <div className="grid gap-2 sm:grid-cols-3">
+                                  <div className="space-y-1 sm:col-span-2">
+                                    <Input
+                                      type="date"
+                                      value={reservationHolidayDraft}
+                                      onChange={(e) => setReservationHolidayDraft(e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="flex items-end">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      className="w-full sm:w-auto"
+                                      onClick={handleAddReservationHoliday}
+                                    >
+                                      Agregar feriado
+                                    </Button>
+                                  </div>
+                                </div>
+                                {Array.isArray(reservationAvailabilityDraft.holidayDates) &&
+                                reservationAvailabilityDraft.holidayDates.length ? (
+                                  <div className="space-y-2">
+                                    {reservationAvailabilityDraft.holidayDates.map((date) => (
+                                      <div
+                                        key={date}
+                                        className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs"
+                                      >
+                                        <span>{date}</span>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="icon"
+                                          aria-label="Eliminar feriado"
+                                          onClick={() => handleRemoveReservationHoliday(date)}
+                                        >
+                                          <XCircle className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">No hay feriados propios cargados.</p>
+                                )}
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs">Vacaciones</Label>
+                                <div className="grid gap-2 sm:grid-cols-3">
+                                  <div className="space-y-1">
+                                    <Label className="text-[11px] text-muted-foreground">Desde</Label>
+                                    <Input
+                                      type="date"
+                                      value={reservationVacationDraft.start}
+                                      onChange={(e) =>
+                                        setReservationVacationDraft((prev) => ({ ...prev, start: e.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-[11px] text-muted-foreground">Hasta</Label>
+                                    <Input
+                                      type="date"
+                                      value={reservationVacationDraft.end}
+                                      onChange={(e) =>
+                                        setReservationVacationDraft((prev) => ({ ...prev, end: e.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-[11px] text-muted-foreground">Motivo (opcional)</Label>
+                                    <Input
+                                      placeholder="Ej: mantenimiento"
+                                      value={reservationVacationDraft.label}
+                                      onChange={(e) =>
+                                        setReservationVacationDraft((prev) => ({ ...prev, label: e.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full sm:w-auto"
+                                  onClick={handleAddReservationVacation}
+                                >
+                                  Agregar semanas de vacaciones
+                                </Button>
+                                {Array.isArray(reservationAvailabilityDraft.vacationRanges) &&
+                                reservationAvailabilityDraft.vacationRanges.length ? (
+                                  <div className="space-y-2">
+                                    {reservationAvailabilityDraft.vacationRanges.map((range, index) => (
+                                      <div
+                                        key={`${range?.start || 'start'}-${range?.end || 'end'}-${index}`}
+                                        className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs"
+                                      >
+                                        <div>
+                                          <p className="text-xs font-semibold">
+                                            {range?.start || '--'} → {range?.end || '--'}
+                                          </p>
+                                          {range?.label ? (
+                                            <p className="text-[11px] text-muted-foreground">{range.label}</p>
+                                          ) : null}
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="icon"
+                                          aria-label="Eliminar vacaciones"
+                                          onClick={() => handleRemoveReservationVacation(index)}
+                                        >
+                                          <XCircle className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">No hay semanas de vacaciones definidas.</p>
+                                )}
+                              </div>
+
+                              <div className="rounded-xl border border-border/70 bg-muted/40 p-3 space-y-3">
+                                <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                  <div>
+                                    <p className="text-sm font-semibold">Cierre temporal</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Activa un cierre temporal y agrega un mensaje para los clientes.
+                                    </p>
+                                  </div>
+                                  <label className="flex items-center gap-2 text-xs font-semibold">
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4"
+                                      checked={reservationAvailabilityDraft.temporaryClosureActive}
+                                      onChange={(e) =>
+                                        setReservationAvailabilityDraft((prev) => ({
+                                          ...prev,
+                                          temporaryClosureActive: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    {reservationAvailabilityDraft.temporaryClosureActive ? 'Activo' : 'Inactivo'}
+                                  </label>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Desde</Label>
+                                    <Input
+                                      type="date"
+                                      value={reservationAvailabilityDraft.temporaryClosureStart}
+                                      disabled={!reservationAvailabilityDraft.temporaryClosureActive}
+                                      onChange={(e) =>
+                                        setReservationAvailabilityDraft((prev) => ({
+                                          ...prev,
+                                          temporaryClosureStart: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Hasta</Label>
+                                    <Input
+                                      type="date"
+                                      value={reservationAvailabilityDraft.temporaryClosureEnd}
+                                      disabled={!reservationAvailabilityDraft.temporaryClosureActive}
+                                      onChange={(e) =>
+                                        setReservationAvailabilityDraft((prev) => ({
+                                          ...prev,
+                                          temporaryClosureEnd: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Mensaje para clientes</Label>
+                                  <textarea
+                                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-soft"
+                                    rows={2}
+                                    value={reservationAvailabilityDraft.temporaryClosureMessage}
+                                    disabled={!reservationAvailabilityDraft.temporaryClosureActive}
+                                    onChange={(e) =>
+                                      setReservationAvailabilityDraft((prev) => ({
+                                        ...prev,
+                                        temporaryClosureMessage: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Ej: Cerrado por remodelación."
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="w-full sm:w-auto"
+                                  disabled={reservationAvailabilitySaving}
+                                  onClick={handleSaveReservationAvailability}
+                                >
+                                  {reservationAvailabilitySaving ? 'Guardando...' : 'Guardar disponibilidad'}
+                                </Button>
+                                <p className="text-xs text-muted-foreground">
+                                  Esta configuración aplica a nuevas reservas.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card p-4">
+                          <button
+                            type="button"
+                            className="flex w-full items-start justify-between gap-3 text-left"
+                            aria-expanded={isReservationSectionOpen('reservations')}
+                            onClick={() => toggleReservationSection('reservations')}
+                          >
+                            <div>
+                              <h6 className="font-semibold">Reservas realizadas</h6>
                               <p className="text-xs text-muted-foreground">
-                                Si no seleccionas días, no se podrán recibir reservas.
+                                Revisa quién reservó y abre el detalle completo con el ícono del ojo.
                               </p>
                             </div>
-
-                            <div className="space-y-2">
-                              <Label className="text-xs">Feriados propios</Label>
-                              <div className="grid gap-2 sm:grid-cols-3">
-                                <div className="space-y-1 sm:col-span-2">
-                                  <Input
-                                    type="date"
-                                    value={reservationHolidayDraft}
-                                    onChange={(e) => setReservationHolidayDraft(e.target.value)}
-                                  />
-                                </div>
-                                <div className="flex items-end">
-                                  <Button type="button" variant="outline" onClick={handleAddReservationHoliday}>
-                                    Agregar feriado
-                                  </Button>
-                                </div>
+                            <span className="text-xs text-muted-foreground">
+                              {isReservationSectionOpen('reservations') ? 'Ocultar' : 'Mostrar'}
+                            </span>
+                          </button>
+                          {isReservationSectionOpen('reservations') && (
+                            <div className="mt-4 space-y-3">
+                              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => loadReservationAdminReservations(reservationAdminBusinessId)}
+                                >
+                                  Actualizar
+                                </Button>
                               </div>
-                              {Array.isArray(reservationAvailabilityDraft.holidayDates) &&
-                              reservationAvailabilityDraft.holidayDates.length ? (
+                              {reservationAdminReservationsLoading ? (
+                                <p className="text-sm text-muted-foreground">Cargando reservas...</p>
+                              ) : reservationAdminReservations.length ? (
                                 <div className="space-y-2">
-                                  {reservationAvailabilityDraft.holidayDates.map((date) => (
+                                  {reservationAdminReservations.map((reservation) => (
                                     <div
-                                      key={date}
-                                      className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs"
-                                    >
-                                      <span>{date}</span>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="icon"
-                                        aria-label="Eliminar feriado"
-                                        onClick={() => handleRemoveReservationHoliday(date)}
-                                      >
-                                        <XCircle className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">No hay feriados propios cargados.</p>
-                              )}
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label className="text-xs">Vacaciones</Label>
-                              <div className="grid gap-2 sm:grid-cols-3">
-                                <div className="space-y-1">
-                                  <Label className="text-[11px] text-muted-foreground">Desde</Label>
-                                  <Input
-                                    type="date"
-                                    value={reservationVacationDraft.start}
-                                    onChange={(e) =>
-                                      setReservationVacationDraft((prev) => ({ ...prev, start: e.target.value }))
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-[11px] text-muted-foreground">Hasta</Label>
-                                  <Input
-                                    type="date"
-                                    value={reservationVacationDraft.end}
-                                    onChange={(e) =>
-                                      setReservationVacationDraft((prev) => ({ ...prev, end: e.target.value }))
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-[11px] text-muted-foreground">Motivo (opcional)</Label>
-                                  <Input
-                                    placeholder="Ej: mantenimiento"
-                                    value={reservationVacationDraft.label}
-                                    onChange={(e) =>
-                                      setReservationVacationDraft((prev) => ({ ...prev, label: e.target.value }))
-                                    }
-                                  />
-                                </div>
-                              </div>
-                              <Button type="button" variant="outline" size="sm" onClick={handleAddReservationVacation}>
-                                Agregar semanas de vacaciones
-                              </Button>
-                              {Array.isArray(reservationAvailabilityDraft.vacationRanges) &&
-                              reservationAvailabilityDraft.vacationRanges.length ? (
-                                <div className="space-y-2">
-                                  {reservationAvailabilityDraft.vacationRanges.map((range, index) => (
-                                    <div
-                                      key={`${range?.start || 'start'}-${range?.end || 'end'}-${index}`}
-                                      className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs"
+                                      key={reservation.id}
+                                      className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
                                     >
                                       <div>
-                                        <p className="text-xs font-semibold">
-                                          {range?.start || '--'} → {range?.end || '--'}
+                                        <p className="text-sm font-semibold">
+                                          {reservation.holderName ||
+                                            reservation.guestName ||
+                                            reservation.userName ||
+                                            'Cliente'}
                                         </p>
-                                        {range?.label ? (
-                                          <p className="text-[11px] text-muted-foreground">{range.label}</p>
-                                        ) : null}
+                                        <p className="text-xs text-muted-foreground">
+                                          Código: {reservation.code || '--'}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {reservation.date} · {reservation.time}
+                                        </p>
                                       </div>
                                       <Button
                                         type="button"
                                         variant="outline"
                                         size="icon"
-                                        aria-label="Eliminar vacaciones"
-                                        onClick={() => handleRemoveReservationVacation(index)}
+                                        aria-label="Ver detalles de la reserva"
+                                        className="self-start sm:self-auto"
+                                        onClick={() => {
+                                          setReservationAdminDetail(reservation);
+                                          setReservationAdminDetailOpen(true);
+                                        }}
                                       >
-                                        <XCircle className="h-4 w-4" />
+                                        <Eye className="h-4 w-4" />
                                       </Button>
                                     </div>
                                   ))}
                                 </div>
                               ) : (
-                                <p className="text-xs text-muted-foreground">No hay semanas de vacaciones definidas.</p>
+                                <p className="text-sm text-muted-foreground">Aún no hay reservas para este negocio.</p>
                               )}
                             </div>
-
-                            <div className="rounded-xl border border-border/70 bg-muted/40 p-3 space-y-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold">Cierre temporal</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Activa un cierre temporal y agrega un mensaje para los clientes.
-                                  </p>
-                                </div>
-                                <label className="flex items-center gap-2 text-xs font-semibold">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4"
-                                    checked={reservationAvailabilityDraft.temporaryClosureActive}
-                                    onChange={(e) =>
-                                      setReservationAvailabilityDraft((prev) => ({
-                                        ...prev,
-                                        temporaryClosureActive: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  {reservationAvailabilityDraft.temporaryClosureActive ? 'Activo' : 'Inactivo'}
-                                </label>
-                              </div>
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                <div className="space-y-1">
-                                  <Label className="text-xs">Desde</Label>
-                                  <Input
-                                    type="date"
-                                    value={reservationAvailabilityDraft.temporaryClosureStart}
-                                    disabled={!reservationAvailabilityDraft.temporaryClosureActive}
-                                    onChange={(e) =>
-                                      setReservationAvailabilityDraft((prev) => ({
-                                        ...prev,
-                                        temporaryClosureStart: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-xs">Hasta</Label>
-                                  <Input
-                                    type="date"
-                                    value={reservationAvailabilityDraft.temporaryClosureEnd}
-                                    disabled={!reservationAvailabilityDraft.temporaryClosureActive}
-                                    onChange={(e) =>
-                                      setReservationAvailabilityDraft((prev) => ({
-                                        ...prev,
-                                        temporaryClosureEnd: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Mensaje para clientes</Label>
-                                <textarea
-                                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-soft"
-                                  rows={2}
-                                  value={reservationAvailabilityDraft.temporaryClosureMessage}
-                                  disabled={!reservationAvailabilityDraft.temporaryClosureActive}
-                                  onChange={(e) =>
-                                    setReservationAvailabilityDraft((prev) => ({
-                                      ...prev,
-                                      temporaryClosureMessage: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Ej: Cerrado por remodelación."
-                                />
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                disabled={reservationAvailabilitySaving}
-                                onClick={handleSaveReservationAvailability}
-                              >
-                                {reservationAvailabilitySaving ? 'Guardando...' : 'Guardar disponibilidad'}
-                              </Button>
-                              <p className="text-xs text-muted-foreground">
-                                Esta configuración aplica a nuevas reservas.
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="border-t border-border/70 pt-4 space-y-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div>
-                                <h6 className="font-semibold">Reservas realizadas</h6>
-                                <p className="text-xs text-muted-foreground">
-                                  Revisa quién reservó y abre el detalle completo con el ícono del ojo.
-                                </p>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => loadReservationAdminReservations(reservationAdminBusinessId)}
-                              >
-                                Actualizar
-                              </Button>
-                            </div>
-                            {reservationAdminReservationsLoading ? (
-                              <p className="text-sm text-muted-foreground">Cargando reservas...</p>
-                            ) : reservationAdminReservations.length ? (
-                              <div className="space-y-2">
-                                {reservationAdminReservations.map((reservation) => (
-                                  <div
-                                    key={reservation.id}
-                                    className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/30 p-3"
-                                  >
-                                    <div>
-                                      <p className="text-sm font-semibold">
-                                        {reservation.holderName ||
-                                          reservation.guestName ||
-                                          reservation.userName ||
-                                          'Cliente'}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground">Código: {reservation.code || '--'}</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {reservation.date} · {reservation.time}
-                                      </p>
-                                    </div>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="icon"
-                                      aria-label="Ver detalles de la reserva"
-                                      onClick={() => {
-                                        setReservationAdminDetail(reservation);
-                                        setReservationAdminDetailOpen(true);
-                                      }}
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted-foreground">Aún no hay reservas para este negocio.</p>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-                        <div>
-                          <h5 className="font-semibold">Mesas configuradas</h5>
-                          <p className="text-xs text-muted-foreground">
-                            Cambia el estado para marcar disponibles, ocupadas o en mantenimiento.
-                          </p>
-                        </div>
-                        {reservationTablesLoading && !reservationAdminTables.length ? (
-                          <p className="text-sm text-muted-foreground">Cargando mesas...</p>
-                        ) : reservationAdminTables.length ? (
-                          <div className="space-y-2">
-                            {reservationAdminTables.map((table) => {
-                              const statusMeta = getTableStatusMeta(table.status);
-                              return (
-                                <div
-                                  key={table.id}
-                                  className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/30 p-3 md:flex-row md:items-center"
-                                >
-                                  <Input
-                                    className="md:max-w-[200px]"
-                                    value={table.label}
-                                    placeholder="Nombre de mesa"
-                                    aria-label="Nombre de la mesa"
-                                    onChange={(e) =>
-                                      handleReservationAdminUpdateTable(table.id, { label: e.target.value })
-                                    }
-                                  />
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    className="md:w-24"
-                                    value={table.seats}
-                                    aria-label="Cantidad de sillas"
-                                    onChange={(e) =>
-                                      handleReservationAdminUpdateTable(table.id, {
-                                        seats: Math.max(1, Number(e.target.value) || 1),
-                                      })
-                                    }
-                                  />
-                                  <select
-                                    className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
-                                    value={table.status}
-                                    onChange={(e) =>
-                                      handleReservationAdminUpdateTable(table.id, { status: e.target.value })
-                                    }
-                                  >
-                                    {TABLE_STATUS_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <span
-                                    className={cn(
-                                      'rounded-full border px-2 py-1 text-xs font-semibold',
-                                      statusMeta?.badgeClass
-                                    )}
-                                  >
-                                    {statusMeta?.label}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleReservationAdminRemoveTable(table.id)}
-                                  >
-                                    Eliminar
-                                  </Button>
-                                </div>
-                              );
-                            })}
+                      <div className="rounded-xl border border-border bg-card p-4">
+                        <button
+                          type="button"
+                          className="flex w-full items-start justify-between gap-3 text-left"
+                          aria-expanded={isReservationSectionOpen('configured')}
+                          onClick={() => toggleReservationSection('configured')}
+                        >
+                          <div>
+                            <h5 className="font-semibold">Mesas configuradas</h5>
+                            <p className="text-xs text-muted-foreground">
+                              Cambia el estado para marcar disponibles, ocupadas o en mantenimiento.
+                            </p>
                           </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">Aún no hay mesas configuradas.</p>
+                          <span className="text-xs text-muted-foreground">
+                            {isReservationSectionOpen('configured') ? 'Ocultar' : 'Mostrar'}
+                          </span>
+                        </button>
+                        {isReservationSectionOpen('configured') && (
+                          <div className="mt-4 space-y-3">
+                            {reservationTablesLoading && !reservationAdminTables.length ? (
+                              <p className="text-sm text-muted-foreground">Cargando mesas...</p>
+                            ) : reservationAdminTables.length ? (
+                              <div className="space-y-2">
+                                {reservationAdminTables.map((table) => {
+                                  const statusMeta = getTableStatusMeta(table.status);
+                                  return (
+                                    <div
+                                      key={table.id}
+                                      className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/30 p-3 md:flex-row md:items-center"
+                                    >
+                                      <Input
+                                        className="md:max-w-[200px]"
+                                        value={table.label}
+                                        placeholder="Nombre de mesa"
+                                        aria-label="Nombre de la mesa"
+                                        onChange={(e) =>
+                                          handleReservationAdminUpdateTable(table.id, { label: e.target.value })
+                                        }
+                                      />
+                                      <Input
+                                        type="number"
+                                        min="1"
+                                        className="md:w-24"
+                                        value={table.seats}
+                                        aria-label="Cantidad de sillas"
+                                        onChange={(e) =>
+                                          handleReservationAdminUpdateTable(table.id, {
+                                            seats: Math.max(1, Number(e.target.value) || 1),
+                                          })
+                                        }
+                                      />
+                                      <select
+                                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft md:w-auto"
+                                        value={table.status}
+                                        onChange={(e) =>
+                                          handleReservationAdminUpdateTable(table.id, { status: e.target.value })
+                                        }
+                                      >
+                                        {TABLE_STATUS_OPTIONS.map((option) => (
+                                          <option key={option.value} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <span
+                                        className={cn(
+                                          'rounded-full border px-2 py-1 text-xs font-semibold',
+                                          statusMeta?.badgeClass
+                                        )}
+                                      >
+                                        {statusMeta?.label}
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full md:w-auto"
+                                        onClick={() => handleReservationAdminRemoveTable(table.id)}
+                                      >
+                                        Eliminar
+                                      </Button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Aún no hay mesas configuradas.</p>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -7415,11 +7576,6 @@ function App() {
                   <div className="md:col-span-2">
                     <Label>Portada (imagen)</Label>
                     <div className="mt-1 space-y-2 rounded-lg border border-dashed border-input p-3">
-                      <Input
-                        placeholder="https://... o pega un data URL"
-                        value={publicationForm.mediaUrl}
-                        onChange={(e) => handleMediaUrlChange(e.target.value)}
-                      />
                       <div className="flex flex-wrap items-center gap-3">
                         <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-input bg-muted/60 px-3 py-2 text-sm font-medium hover:bg-muted">
                           <input
@@ -7430,6 +7586,11 @@ function App() {
                           />
                           Subir archivo
                         </label>
+                        {publicationForm.mediaUrl && (
+                          <Button type="button" variant="outline" size="sm" onClick={() => handleMediaUrlChange('')}>
+                            Quitar imagen
+                          </Button>
+                        )}
                         <p className="text-xs text-muted-foreground">
                           Acepta solo imágenes. La imagen se comprimira antes de enviarse al backend.
                         </p>
@@ -7485,16 +7646,9 @@ function App() {
                                 </Button>
                               </div>
                             </div>
-                            <div className="mt-3 grid gap-2 md:grid-cols-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Imagen (opcional)</Label>
-                                <Input
-                                  placeholder="https://... o pega un data URL"
-                                  value={extra?.imagenUrl || ''}
-                                  onChange={(e) => updatePublicationExtra(index, { imagenUrl: e.target.value })}
-                                />
-                              </div>
-                              <div className="flex items-end">
+                            <div className="mt-3 space-y-2">
+                              <Label className="text-xs">Imagen (opcional)</Label>
+                              <div className="flex flex-wrap items-center gap-3">
                                 <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-input bg-muted/60 px-3 py-2 text-sm font-medium hover:bg-muted">
                                   <input
                                     type="file"
@@ -7504,6 +7658,16 @@ function App() {
                                   />
                                   Subir imagen
                                 </label>
+                                {extra?.imagenUrl && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => updatePublicationExtra(index, { imagenUrl: '' })}
+                                  >
+                                    Quitar imagen
+                                  </Button>
+                                )}
                               </div>
                             </div>
                             {extra?.imagenUrl && (
@@ -7533,7 +7697,7 @@ function App() {
                         Selecciona primero un negocio para ver sus categorías disponibles.
                       </p>
                     )}
-                    {selectedBusinessForPublication && allowedCategoryTypesForBusiness.length > 0 && (
+                    {selectedBusinessForPublication && uniqueCategoryTypesForBusiness.length > 0 && (
                       <select
                         className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                         value={selectedCategoryType}
@@ -7547,18 +7711,14 @@ function App() {
                         required
                       >
                         <option value="">Elige una categoría</option>
-                        {allowedCategoryTypesForBusiness.map((type) => {
-                          const typeValue = typeof type === 'object' ? type.type || type.name || type.id : type;
-                          const optionValue = String(typeValue);
-                          return (
-                            <option key={optionValue} value={optionValue}>
-                              {formatCategoryLabel({ type: optionValue, name: humanizeCategoryType(optionValue) })}
-                            </option>
-                          );
-                        })}
+                        {uniqueCategoryTypesForBusiness.map((optionValue) => (
+                          <option key={optionValue} value={optionValue}>
+                            {humanizeCategoryType(optionValue)}
+                          </option>
+                        ))}
                       </select>
                     )}
-                    {selectedBusinessForPublication && !allowedCategoryTypesForBusiness.length && (
+                    {selectedBusinessForPublication && !uniqueCategoryTypesForBusiness.length && (
                       <p className="mt-2 text-sm text-muted-foreground">
                         Este negocio aún no tiene categorías configuradas.
                       </p>

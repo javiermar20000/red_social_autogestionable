@@ -1,0 +1,44 @@
+-- Agrega nuevos tipos de categoria sin romper datos existentes.
+-- Ejecuta este script en bases ya creadas (no necesarias en instalaciones nuevas con init.sql actualizado).
+
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'TE';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'CHOCOLATE_CALIENTE';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'FRAPPE';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'SMOOTHIES';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'JUGOS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'PANADERIA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'PASTELERIA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'DESAYUNOS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'GALLETAS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'TORTAS';
+
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'COMIDA_PERUANA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'COMIDA_THAI';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'COMIDA_JAPONESA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'COMIDA_COREANA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'COMIDA_MEDITERRANEA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'COMIDA_ARABE';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'MARISCOS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'PARRILLAS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'SOPAS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'VEGANA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'VEGETARIANA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'ENTRADAS';
+
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'WHISKY';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'RON';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'GIN';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'VODKA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'TEQUILA';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'MOCKTAILS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'SHOTS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'APERITIVOS';
+
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'COMPLETOS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'CHORIPAN';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'QUESADILLAS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'NACHOS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'CHURROS';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'CREPES';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'WAFFLES';
+ALTER TYPE categoria_tipo_enum ADD VALUE IF NOT EXISTS 'KEBABS';

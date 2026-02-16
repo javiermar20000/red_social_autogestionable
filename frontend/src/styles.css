@@ -165,8 +165,38 @@
   will-change: transform;
 }
 
+.marquee {
+  overflow: hidden;
+  min-width: 0;
+}
+
+.marquee__inner {
+  display: inline-flex;
+  gap: 2rem;
+  white-space: nowrap;
+  animation: marquee var(--marquee-duration, 18s) linear infinite;
+  will-change: transform;
+}
+
+.marquee__text {
+  flex: none;
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .notification-attention {
     animation: none;
+  }
+  .marquee__inner {
+    animation: none;
+    transform: translateX(0);
   }
 }

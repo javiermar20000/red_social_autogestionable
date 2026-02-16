@@ -17,12 +17,19 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/Dialog.jsx';
 import { Button } from './ui/Button.jsx';
 import { Avatar, AvatarFallback } from './ui/Avatar.jsx';
+import { MarqueeText } from './ui/MarqueeText.jsx';
 import placeholderImg from '../assets/pin1.jpg';
 
+const humanizeCategoryType = (value = '') =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
 const formatCategoryLabel = (cat) => {
-  const type = cat?.type;
-  const name = cat?.name || type || cat;
-  return type && name && type !== name ? `${type} · ${name}` : name;
+  if (!cat) return '';
+  const type = cat?.type || cat?.name || cat?.id || cat;
+  return humanizeCategoryType(type);
 };
 
 const detectMediaTypeFromUrl = (value = '') => {
@@ -209,6 +216,8 @@ const PinDetailDialog = ({
   const contentText = typeof contenido === 'string' ? contenido.trim() : '';
   const contentWords = contentText ? contentText.split(/\s+/).filter(Boolean) : [];
   const isContentTruncated = contentWords.length > CONTENT_WORD_LIMIT;
+  const businessNameWords = businessName ? businessName.split(/\s+/).filter(Boolean) : [];
+  const isBusinessNameLong = businessNameWords.length > 13;
   const displayContent =
     !isContentTruncated || showFullContent ? contentText : `${contentWords.slice(0, CONTENT_WORD_LIMIT).join(' ')}…`;
   const extras = Array.isArray(publication.extras) ? publication.extras : [];
@@ -415,7 +424,19 @@ const PinDetailDialog = ({
             <DialogHeader className="items-start text-left">
               <DialogTitle className="text-2xl font-bold">{titulo}</DialogTitle>
               <DialogDescription className="text-sm">
-                {business ? `${business.name} · ${business.type}` : 'Publicación destacada'}
+                {business ? (
+                  <div className={`flex min-w-0 items-center gap-2 ${isBusinessNameLong ? '' : 'justify-center'}`}>
+                    {isBusinessNameLong ? (
+                      <MarqueeText text={businessName} wordLimit={13} className="min-w-0 flex-1" />
+                    ) : (
+                      <span className="truncate">{businessName}</span>
+                    )}
+                    <span className="shrink-0 text-muted-foreground">·</span>
+                    <span className="shrink-0">{business.type}</span>
+                  </div>
+                ) : (
+                  'Publicación destacada'
+                )}
               </DialogDescription>
             </DialogHeader>
 
@@ -479,10 +500,10 @@ const PinDetailDialog = ({
               </div>
             )}
 
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+            <div className="mt-6 flex items-center justify-between gap-3">
               <button
                 type="button"
-                className={`flex items-center gap-3 text-left ${canOpenBusiness ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
+                className={`flex min-w-0 flex-1 items-center gap-3 text-left ${canOpenBusiness ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
                 onClick={handleOpenBusinessProfile}
                 disabled={!canOpenBusiness}
                 aria-label={`Ver perfil de ${businessName}`}
@@ -492,12 +513,12 @@ const PinDetailDialog = ({
                     {businessName[0]}
                   </AvatarFallback>
                 </Avatar>
-                <div>
-                  <p className="font-semibold">{businessName}</p>
+                <div className="min-w-0">
+                  <MarqueeText text={businessName} wordLimit={13} className="font-semibold min-w-0" />
                   <p className="text-sm text-muted-foreground">{visitas} visitas</p>
                 </div>
               </button>
-              <div className="flex flex-col items-end gap-1">
+              <div className="flex shrink-0 flex-col items-end gap-1">
                 <Button
                   size="sm"
                   variant="outline"

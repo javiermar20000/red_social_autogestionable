@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Heart, Share2, Facebook, Instagram, Twitter, MessageCircle, Pencil, Trash2, Star } from 'lucide-react';
 import { Button } from './ui/Button.jsx';
+import { MarqueeText } from './ui/MarqueeText.jsx';
 import { cn } from '../lib/cn.js';
 import placeholderImg from '../assets/pin2.jpg';
 
@@ -210,12 +211,12 @@ const PinCard = ({
             isHovered ? 'opacity-100' : 'opacity-90'
           }`}
         >
-          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-            <div className="text-white">
+          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-3">
+            <div className="min-w-0 text-white">
               <h3 className={visitsClassName}>{formattedVisits} visitas</h3>
-              <p className={businessNameClassName}>{publication.business?.name || publication.authorName || 'GastroHub'}</p>
+              <MarqueeText text={businessName} wordLimit={13} className={cn(businessNameClassName, 'min-w-0')} />
             </div>
-            <div className="flex gap-2">
+            <div className="flex shrink-0 gap-2">
               <div className="flex items-center gap-1">
                 <Button
                   size="icon"
@@ -344,8 +345,8 @@ const PinCard = ({
             >
               <Pencil className="h-4 w-4" />
             </button>
-            <div className="flex flex-col items-center justify-center text-center">
-              <p className={footerTitleClassName}>{publication.titulo}</p>
+            <div className="flex min-w-0 flex-col items-center justify-center text-center">
+              <p className={cn(footerTitleClassName, 'w-full truncate')}>{publication.titulo}</p>
               <p className={footerPriceClassName}>{displayPrice}</p>
             </div>
             <button

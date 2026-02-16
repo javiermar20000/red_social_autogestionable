@@ -6357,8 +6357,7 @@ function App() {
           <div className="flex flex-col items-center gap-3">
             <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Sobre la app</p>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Match Coffee es la red social autogestionable para negocios gastronómicos: comparte novedades, gestiona tus
-              locales y deja que la comunidad descubra tus productos en un feed curado.
+              Match Coffee conecta a personas con cafeterías y restaurantes de todo Chile en un solo espacio digital, facilitando el descubrimiento y la experiencia gastronómica según gustos, ubicación y necesidades. A través de comentarios, calificaciones y recomendaciones, la plataforma crea comunidad, impulsa la visibilidad de los locales y fortalece el ecosistema gastronómico nacional.
             </p>
           </div>
           <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">

@@ -187,6 +187,18 @@ const PinDetailDialog = ({
       : `$${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(precio))}`;
   const displayPrice = formattedPrice || 'Sin precio';
   const businessName = business?.name || authorName || 'GastroHub';
+  const normalizeBusinessType = (value) => String(value || '').trim().toUpperCase();
+  const businessTypeLabel = (() => {
+    const directTag = normalizeBusinessType(publication?.businessTypeTag || publication?.businessType);
+    if (directTag) return directTag;
+    const tags = Array.isArray(business?.typeTags) ? business.typeTags : [];
+    const normalizedTags = tags.map(normalizeBusinessType).filter(Boolean);
+    const primary = normalizeBusinessType(business?.type);
+    if (primary && !normalizedTags.includes(primary)) {
+      normalizedTags.unshift(primary);
+    }
+    return normalizedTags[0] || '';
+  })();
   const locationParts = [business?.address, business?.city, business?.region].filter(Boolean);
   const locationLabel = locationParts.length ? locationParts.join(', ') : '';
   const shareTitle = titulo || 'Oferta para comer';
@@ -432,7 +444,7 @@ const PinDetailDialog = ({
                       <span className="truncate">{businessName}</span>
                     )}
                     <span className="shrink-0 text-muted-foreground">·</span>
-                    <span className="shrink-0">{business.type}</span>
+                    {businessTypeLabel && <span className="shrink-0">{businessTypeLabel}</span>}
                   </div>
                 ) : (
                   'Publicación destacada'

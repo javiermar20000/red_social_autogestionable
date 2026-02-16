@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { NegocioTipo } from './Business.js';
 
 export enum PublicacionTipo {
   PROMOCION = 'PROMOCION',
@@ -21,6 +22,15 @@ export class Publication {
 
   @Column({ name: 'negocio_id', type: 'bigint' })
   businessId!: string;
+
+  @Column({
+    name: 'negocio_tipo_tag',
+    type: 'enum',
+    enum: NegocioTipo,
+    enumName: 'negocio_tipo_enum',
+    nullable: true,
+  })
+  businessTypeTag!: NegocioTipo | null;
 
   @Column({ name: 'autor_id', type: 'bigint' })
   authorId!: string;

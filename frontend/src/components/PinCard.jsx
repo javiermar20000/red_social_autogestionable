@@ -110,6 +110,18 @@ const PinCard = ({
   );
   const likeButtonLabel = liked ? 'Me gusta marcado' : 'Dar me gusta';
   const businessName = publication.business?.name || publication.authorName || 'GastroHub';
+  const normalizeBusinessType = (value) => String(value || '').trim().toUpperCase();
+  const businessTypeLabel = (() => {
+    const directTag = normalizeBusinessType(publication.businessTypeTag || publication.businessType);
+    if (directTag) return directTag;
+    const tags = Array.isArray(publication.business?.typeTags) ? publication.business.typeTags : [];
+    const normalizedTags = tags.map(normalizeBusinessType).filter(Boolean);
+    const primary = normalizeBusinessType(publication.business?.type);
+    if (primary && !normalizedTags.includes(primary)) {
+      normalizedTags.unshift(primary);
+    }
+    return normalizedTags[0] || '';
+  })();
   const locationParts = [publication.business?.address, publication.business?.city, publication.business?.region].filter(Boolean);
   const locationLabel = locationParts.length ? locationParts.join(', ') : '';
   const shareTitle = publication.titulo || 'Oferta para comer';
@@ -317,9 +329,9 @@ const PinCard = ({
           )}
         </div>
 
-        {publication.business?.type && (
+        {businessTypeLabel && (
           <div className="pointer-events-none absolute right-3 top-3 z-20">
-            <span className={businessTypeBadgeClassName}>{publication.business.type}</span>
+            <span className={businessTypeBadgeClassName}>{businessTypeLabel}</span>
           </div>
         )}
       </div>

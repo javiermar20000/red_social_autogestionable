@@ -76,7 +76,10 @@ CREATE TYPE negocio_tipo_enum AS ENUM (
   'RESTAURANTE',
   'CAFETERIA',
   'BAR',
-  'FOODTRUCK'
+  'FOODTRUCK',
+  'PASTELERIA',
+  'HELADERIA',
+  'PANADERIA'
 );
 
 CREATE TYPE negocio_estado_enum AS ENUM (
@@ -180,7 +183,28 @@ CREATE TYPE categoria_tipo_enum AS ENUM (
   'CHURROS',
   'CREPES',
   'WAFFLES',
-  'KEBABS'
+  'KEBABS',
+  -- Tipos de pasteleria/heladeria/panaderia
+  'PASTELES',
+  'CUPCAKES',
+  'BROWNIES',
+  'CHEESECAKES',
+  'TARTAS',
+  'TRUFAS',
+  'MACARONS',
+  'PALETAS',
+  'SUNDAES',
+  'MILKSHAKES',
+  'SORBETES',
+  'CONOS',
+  'TOPPINGS',
+  'YOGURT_HELADO',
+  'PANES',
+  'PAN_INTEGRAL',
+  'PAN_ARTESANAL',
+  'BOLLERIA',
+  'FOCACCIA',
+  'QUEQUES'
 );
 
 CREATE TYPE comentario_estado_enum AS ENUM (
@@ -291,6 +315,7 @@ CREATE TABLE negocio (
   owner_id       BIGINT NOT NULL,
   nombre         VARCHAR(255) NOT NULL,
   tipo           negocio_tipo_enum NOT NULL,
+  tipo_etiquetas negocio_tipo_enum[],
   descripcion    TEXT,
   telefono       VARCHAR(30),
   imagen_url     TEXT,
@@ -403,6 +428,7 @@ CREATE TABLE suscripcion_publicidad (
 CREATE TABLE publicacion (
   id                   BIGSERIAL PRIMARY KEY,
   negocio_id           BIGINT NOT NULL,
+  negocio_tipo_tag     negocio_tipo_enum,
   autor_id             BIGINT NOT NULL,
   titulo               VARCHAR(255) NOT NULL,
   contenido            TEXT NOT NULL,

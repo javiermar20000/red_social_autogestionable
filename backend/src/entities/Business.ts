@@ -5,6 +5,9 @@ export enum NegocioTipo {
   CAFETERIA = 'CAFETERIA',
   BAR = 'BAR',
   FOODTRUCK = 'FOODTRUCK',
+  PASTELERIA = 'PASTELERIA',
+  HELADERIA = 'HELADERIA',
+  PANADERIA = 'PANADERIA',
 }
 
 export enum NegocioEstado {
@@ -28,6 +31,16 @@ export class Business {
 
   @Column({ name: 'tipo', type: 'enum', enum: NegocioTipo, enumName: 'negocio_tipo_enum' })
   type!: NegocioTipo;
+
+  @Column({
+    name: 'tipo_etiquetas',
+    type: 'enum',
+    enum: NegocioTipo,
+    enumName: 'negocio_tipo_enum',
+    array: true,
+    nullable: true,
+  })
+  typeTags!: NegocioTipo[] | null;
 
   @Column({ name: 'descripcion', type: 'text', nullable: true })
   description!: string | null;

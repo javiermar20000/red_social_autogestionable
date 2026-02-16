@@ -594,6 +594,51 @@ const normalizeAmenities = (raw: unknown) => {
   return Array.from(new Set(normalized));
 };
 
+const BUSINESS_TYPE_VALUES = new Set(Object.values(NegocioTipo));
+
+const normalizeBusinessType = (value: unknown): NegocioTipo | null => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return null;
+  return BUSINESS_TYPE_VALUES.has(raw as NegocioTipo) ? (raw as NegocioTipo) : null;
+};
+
+const normalizeBusinessTypeTags = (raw: unknown): NegocioTipo[] => {
+  const values = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : [];
+  const normalized = values
+    .map((value) => normalizeBusinessType(value))
+    .filter(Boolean) as NegocioTipo[];
+  return Array.from(new Set(normalized));
+};
+
+const resolveBusinessTypeSelection = (rawType: unknown, rawTags: unknown) => {
+  const normalizedType = normalizeBusinessType(rawType);
+  const normalizedTags = normalizeBusinessTypeTags(rawTags);
+  const primaryType = normalizedType || normalizedTags[0] || NegocioTipo.RESTAURANTE;
+  const baseTags = normalizedTags.length ? normalizedTags : primaryType ? [primaryType] : [];
+  const uniqueTags = Array.from(new Set(baseTags));
+  if (primaryType && !uniqueTags.includes(primaryType)) {
+    uniqueTags.unshift(primaryType);
+  }
+  return { primaryType, tags: uniqueTags };
+};
+
+const resolvePublicationBusinessTag = (business: Business, rawTag: unknown) => {
+  const tag = normalizeBusinessType(rawTag);
+  const currentTags = normalizeBusinessTypeTags(business.typeTags || []);
+  const fallbackType = normalizeBusinessType(business.type) || currentTags[0] || NegocioTipo.RESTAURANTE;
+  const tags = currentTags.length ? currentTags : fallbackType ? [fallbackType] : [];
+  if (fallbackType && !tags.includes(fallbackType)) {
+    tags.unshift(fallbackType);
+  }
+  if (tag) {
+    if (!tags.includes(tag)) {
+      throw new Error('La etiqueta de negocio seleccionada no pertenece al negocio');
+    }
+    return tag;
+  }
+  return tags[0] || fallbackType;
+};
+
 const categoriaTiposCafe: CategoriaTipo[] = [
   CategoriaTipo.ESPRESSO,
   CategoriaTipo.AMERICANO,
@@ -681,11 +726,50 @@ const categoriaTiposFoodtruck: CategoriaTipo[] = [
   CategoriaTipo.SANDWICHES,
 ];
 
+const categoriaTiposPasteleria: CategoriaTipo[] = [
+  CategoriaTipo.PASTELERIA,
+  CategoriaTipo.TORTAS,
+  CategoriaTipo.PASTELES,
+  CategoriaTipo.CUPCAKES,
+  CategoriaTipo.BROWNIES,
+  CategoriaTipo.CHEESECAKES,
+  CategoriaTipo.TARTAS,
+  CategoriaTipo.TRUFAS,
+  CategoriaTipo.MACARONS,
+  CategoriaTipo.GALLETAS,
+  CategoriaTipo.POSTRES,
+];
+
+const categoriaTiposHeladeria: CategoriaTipo[] = [
+  CategoriaTipo.HELADOS,
+  CategoriaTipo.PALETAS,
+  CategoriaTipo.SUNDAES,
+  CategoriaTipo.MILKSHAKES,
+  CategoriaTipo.SORBETES,
+  CategoriaTipo.CONOS,
+  CategoriaTipo.TOPPINGS,
+  CategoriaTipo.YOGURT_HELADO,
+];
+
+const categoriaTiposPanaderia: CategoriaTipo[] = [
+  CategoriaTipo.PANADERIA,
+  CategoriaTipo.PANES,
+  CategoriaTipo.PAN_INTEGRAL,
+  CategoriaTipo.PAN_ARTESANAL,
+  CategoriaTipo.BOLLERIA,
+  CategoriaTipo.FOCACCIA,
+  CategoriaTipo.QUEQUES,
+  CategoriaTipo.DESAYUNOS,
+];
+
 const categoriasPermitidasPorNegocio: Partial<Record<NegocioTipo, CategoriaTipo[]>> = {
   [NegocioTipo.CAFETERIA]: categoriaTiposCafe,
   [NegocioTipo.RESTAURANTE]: categoriaTiposComida,
   [NegocioTipo.BAR]: categoriaTiposBar,
   [NegocioTipo.FOODTRUCK]: categoriaTiposFoodtruck,
+  [NegocioTipo.PASTELERIA]: categoriaTiposPasteleria,
+  [NegocioTipo.HELADERIA]: categoriaTiposHeladeria,
+  [NegocioTipo.PANADERIA]: categoriaTiposPanaderia,
 };
 
 // ========================
@@ -995,6 +1079,7 @@ router.post(
     const {
       name,
       type,
+      typeTags,
       description,
       address,
       city,
@@ -1043,12 +1128,15 @@ router.post(
     const tenantId = tenant?.id;
     if (!tenantId) throw new Error('No se pudo crear o asociar un tenant');
 
+    const { primaryType, tags } = resolveBusinessTypeSelection(type, typeTags);
+
     const business = await runWithContext({ tenantId }, (manager) =>
       manager.getRepository(Business).save({
         tenantId,
         ownerId: user.id,
         name,
-        type: (type as NegocioTipo) || NegocioTipo.RESTAURANTE,
+        type: primaryType,
+        typeTags: tags,
         description: description || null,
         phone: phone ? String(phone).slice(0, 30) : null,
         imageUrl: compressedImageUrl || null,
@@ -1134,6 +1222,8 @@ router.put(
 
     const {
       name,
+      type,
+      typeTags,
       description,
       address,
       city,
@@ -1157,6 +1247,13 @@ router.put(
     } = req.body;
     const updates: Partial<Business> = {};
     if (name !== undefined) updates.name = String(name).slice(0, 255);
+    if (type !== undefined || typeTags !== undefined) {
+      const baseType = type !== undefined ? type : business.type;
+      const baseTags = typeTags !== undefined ? typeTags : business.typeTags || [];
+      const { primaryType, tags } = resolveBusinessTypeSelection(baseType, baseTags);
+      updates.type = primaryType;
+      updates.typeTags = tags;
+    }
     if (description !== undefined) updates.description = description || null;
     if (imageUrl !== undefined) updates.imageUrl = await compressImageIfNeeded(imageUrl);
     if (phone !== undefined) updates.phone = phone ? String(phone).slice(0, 30) : null;
@@ -1192,6 +1289,31 @@ router.put(
       manager.getRepository(Business).findOne({ where: { id: businessId } })
     );
     res.json(updated);
+  })
+);
+
+router.delete(
+  '/businesses/:id',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE, 'admin']),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const businessId = req.params.id;
+    const requester = req.auth!;
+    const isAdmin = Boolean(requester.admin);
+
+    const business = await runWithContext({ isAdmin: true }, (manager) =>
+      manager.getRepository(Business).findOne({ where: { id: businessId } })
+    );
+    if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
+    if (!isAdmin && business.ownerId !== requester.user!.id) {
+      return res.status(403).json({ message: 'No tienes permiso para eliminar este negocio' });
+    }
+
+    await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
+      manager.getRepository(Business).delete({ id: businessId })
+    );
+
+    res.json({ message: 'Negocio eliminado' });
   })
 );
 
@@ -1605,8 +1727,7 @@ router.post(
       return res.status(400).json({ message: 'Nombre, apellido y RUT son obligatorios' });
     }
 
-    const amountRaw = parseNumeric(req.body?.amount);
-    const amountValue = amountRaw !== null && amountRaw >= 0 ? amountRaw : 5000;
+    const amountValue = 0;
 
     const response = await runWithContext({ tenantId: business.tenantId, isAdmin }, async (manager) => {
       const tableRepo = manager.getRepository(ReservationTable);
@@ -1933,7 +2054,7 @@ router.post(
     ensureUserReady(user);
     const tenantId = user.tenantId!;
     const { id } = req.params;
-    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio, extras } = req.body;
+    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio, extras, businessTypeTag } = req.body;
     if (!titulo || !contenido) return res.status(400).json({ message: 'Título y contenido son obligatorios' });
     const precioNormalizado =
       precio === undefined || precio === null || precio === '' ? null : Number.parseFloat(precio as string);
@@ -1962,6 +2083,7 @@ router.post(
         .findOne({ where: { id, tenantId, ownerId: user.id, status: NegocioEstado.ACTIVO } });
       if (!business) throw new Error('Negocio no encontrado o inactivo');
 
+      const resolvedBusinessTypeTag = resolvePublicationBusinessTag(business, businessTypeTag);
       const validCategoryIds: string[] = [];
       if (categoryIds.length) {
         const categories = await manager
@@ -1970,7 +2092,7 @@ router.post(
         if (categories.length !== categoryIds.length) {
           throw new Error('Alguna categoría no existe en este tenant');
         }
-        const allowedTypes = categoriasPermitidasPorNegocio[business.type];
+        const allowedTypes = categoriasPermitidasPorNegocio[resolvedBusinessTypeTag];
         if (allowedTypes) {
           const allowedSet = new Set(allowedTypes);
           const invalidCategories = categories.filter((c) => !allowedSet.has(c.type));
@@ -1991,6 +2113,7 @@ router.post(
         estado: PublicacionEstado.PENDIENTE_VALIDACION,
         fechaFinVigencia: fechaFinVigencia ? new Date(fechaFinVigencia) : null,
         precio: precioNormalizado,
+        businessTypeTag: resolvedBusinessTypeTag,
         extras: extrasNormalized.length ? extrasNormalized : null,
       });
       const saved = await publicationRepo.save(record);
@@ -2446,7 +2569,7 @@ router.put(
     if (!tenantId && !isAdmin) return res.status(400).json({ message: 'tenantId es requerido' });
     if (!isAdmin && user) ensureUserReady(user);
 
-    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio, extras } = req.body;
+    const { titulo, contenido, tipo, fechaFinVigencia, categoryIds = [], precio, extras, businessTypeTag } = req.body;
     if (!titulo || !contenido) return res.status(400).json({ message: 'Título y contenido son obligatorios' });
     const precioNormalizado =
       precio === undefined || precio === null || precio === '' ? null : Number.parseFloat(precio as string);
@@ -2480,6 +2603,10 @@ router.put(
         throw new Error('No puedes editar esta publicación');
       }
 
+      const resolvedBusinessTypeTag = resolvePublicationBusinessTag(
+        business,
+        businessTypeTag !== undefined ? businessTypeTag : publication.businessTypeTag
+      );
       const validCategoryIds: string[] = [];
       if (categoryIds.length) {
         const categories = await manager
@@ -2488,7 +2615,7 @@ router.put(
         if (categories.length !== categoryIds.length) {
           throw new Error('Alguna categoría no existe en este tenant');
         }
-        const allowedTypes = categoriasPermitidasPorNegocio[business.type];
+        const allowedTypes = categoriasPermitidasPorNegocio[resolvedBusinessTypeTag];
         if (allowedTypes) {
           const allowedSet = new Set(allowedTypes);
           const invalidCategories = categories.filter((c) => !allowedSet.has(c.type));
@@ -2508,6 +2635,7 @@ router.put(
           fechaFinVigencia: fechaFinVigencia ? new Date(fechaFinVigencia) : null,
           precio: precioNormalizado,
           extras: extrasNormalized.length ? extrasNormalized : null,
+          businessTypeTag: resolvedBusinessTypeTag,
           estado: PublicacionEstado.PENDIENTE_VALIDACION,
           fechaPublicacion: null,
         }

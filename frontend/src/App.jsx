@@ -61,11 +61,6 @@ const normalizePathFromEnv = (value, fallback) => {
 };
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
-const MERCADO_PAGO_CHECKOUT_URL = import.meta.env.VITE_MERCADO_PAGO_CHECKOUT_URL || '';
-const MERCADO_PAGO_SUCCESS_PATH = normalizePathFromEnv(
-  import.meta.env.VITE_MERCADO_PAGO_SUCCESS_PATH,
-  '/reservaExitosa'
-);
 const MP_PLAN_INICIO_CHECKOUT_URL = import.meta.env.VITE_MP_PLAN_INICIO_CHECKOUT_URL || '';
 const MP_PLAN_IMPULSO_CHECKOUT_URL = import.meta.env.VITE_MP_PLAN_IMPULSO_CHECKOUT_URL || '';
 const MP_PLAN_DOMINIO_CHECKOUT_URL = import.meta.env.VITE_MP_PLAN_DOMINIO_CHECKOUT_URL || '';
@@ -85,7 +80,6 @@ const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 const SESSION_LIKES_STORAGE_KEY = 'publicationLikesSession';
 const MAX_BUSINESS_LOGO_BYTES = 1024 * 1024;
 const FEED_CACHE_STORAGE_KEY = 'gastrohub-feed-cache-v1';
-const PENDING_RESERVATION_STORAGE_KEY = 'gastrohub-pending-reservation-v1';
 const ADS_CACHE_STORAGE_KEY = 'gastrohub-ads-cache-v1';
 const CACHE_MAX_ENTRIES = 6;
 const CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
@@ -96,9 +90,10 @@ const PUBLICATION_IMAGE_MAX_DIMENSION = 1600;
 const PUBLICATION_IMAGE_QUALITY = 0.82;
 const numberFormatter = new Intl.NumberFormat('es-CL');
 const formatNumber = (value) => numberFormatter.format(value);
-const RESERVATION_PRICE = 5000;
+const RESERVATION_PRICE = 0;
 const CLIENT_COMMENTS_STORAGE_KEY = 'gastrohub-client-comments-v1';
 const CLIENT_SAVED_PUBLICATIONS_STORAGE_KEY = 'gastrohub-client-saved-publications-v1';
+const INSTALL_PROMPT_DISMISSED_KEY = 'gastrohub-install-dismissed-v1';
 const FEED_PAGE_INITIAL = 20;
 const FEED_PAGE_STEP = 5;
 const BUSINESS_PROFILE_PAGE_INITIAL = 20;
@@ -478,15 +473,6 @@ const removeStorageKey = (storageKey) => {
   }
 };
 
-const isMercadoPagoApproved = (params) => {
-  if (!params) return false;
-  const keys = ['status', 'collection_status', 'payment_status'];
-  return keys.some((key) => {
-    const value = params.get(key);
-    return value ? value.toLowerCase() === 'approved' : false;
-  });
-};
-
 const extractPreapprovalId = (params) => {
   if (!params) return '';
   return (
@@ -693,14 +679,53 @@ const foodtruckCategoryTypes = [
   'SANDWICHES',
 ];
 
+const pasteleriaCategoryTypes = [
+  'PASTELERIA',
+  'TORTAS',
+  'PASTELES',
+  'CUPCAKES',
+  'BROWNIES',
+  'CHEESECAKES',
+  'TARTAS',
+  'TRUFAS',
+  'MACARONS',
+  'GALLETAS',
+  'POSTRES',
+];
+
+const heladeriaCategoryTypes = [
+  'HELADOS',
+  'PALETAS',
+  'SUNDAES',
+  'MILKSHAKES',
+  'SORBETES',
+  'CONOS',
+  'TOPPINGS',
+  'YOGURT_HELADO',
+];
+
+const panaderiaCategoryTypes = [
+  'PANADERIA',
+  'PANES',
+  'PAN_INTEGRAL',
+  'PAN_ARTESANAL',
+  'BOLLERIA',
+  'FOCACCIA',
+  'QUEQUES',
+  'DESAYUNOS',
+];
+
 const categoriesByBusinessType = {
   CAFETERIA: cafeCategoryTypes,
   RESTAURANTE: foodCategoryTypes,
   BAR: barCategoryTypes,
   FOODTRUCK: foodtruckCategoryTypes,
+  PASTELERIA: pasteleriaCategoryTypes,
+  HELADERIA: heladeriaCategoryTypes,
+  PANADERIA: panaderiaCategoryTypes,
 };
 
-const defaultBusinessTypes = ['RESTAURANTE', 'CAFETERIA', 'FOODTRUCK', 'BAR'];
+const defaultBusinessTypes = ['RESTAURANTE', 'CAFETERIA', 'FOODTRUCK', 'BAR', 'PASTELERIA', 'HELADERIA', 'PANADERIA'];
 const oferenteAdPlans = [
   {
     id: 'inicio',
@@ -1213,6 +1238,71 @@ const humanizeCategoryType = (type = '') =>
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+const normalizeBusinessType = (value = '') => String(value || '').trim().toUpperCase();
+
+const normalizeBusinessTypeList = (values = []) => {
+  const list = Array.isArray(values) ? values : typeof values === 'string' ? values.split(',') : [values];
+  const normalized = list.map((value) => normalizeBusinessType(value)).filter(Boolean);
+  return Array.from(new Set(normalized));
+};
+
+const resolveBusinessTypeSelection = (tags, primaryType) => {
+  const normalizedTags = normalizeBusinessTypeList(tags);
+  let primary = normalizeBusinessType(primaryType);
+  if (!primary || !normalizedTags.includes(primary)) {
+    primary = normalizedTags[0] || defaultBusinessTypes[0];
+  }
+  const finalTags = normalizedTags.length ? normalizedTags : primary ? [primary] : [];
+  if (primary && !finalTags.includes(primary)) {
+    finalTags.unshift(primary);
+  }
+  return { primaryType: primary, tags: finalTags };
+};
+
+const toggleBusinessTypeTag = (tags, tag, primaryType) => {
+  const normalizedTags = normalizeBusinessTypeList(tags);
+  const normalizedTag = normalizeBusinessType(tag);
+  if (!normalizedTag) return resolveBusinessTypeSelection(normalizedTags, primaryType);
+  const next = new Set(normalizedTags);
+  if (next.has(normalizedTag)) {
+    next.delete(normalizedTag);
+  } else {
+    next.add(normalizedTag);
+  }
+  return resolveBusinessTypeSelection(Array.from(next), primaryType || normalizedTag);
+};
+
+const getBusinessTypeTags = (business) => {
+  if (!business) return [];
+  const rawTags = Array.isArray(business.typeTags) ? business.typeTags : [];
+  const normalized = normalizeBusinessTypeList(rawTags);
+  const primary = normalizeBusinessType(business.type);
+  if (primary && !normalized.includes(primary)) {
+    normalized.unshift(primary);
+  }
+  return Array.from(new Set(normalized));
+};
+
+const formatBusinessTypeTags = (businessOrTags) => {
+  const tags = Array.isArray(businessOrTags)
+    ? normalizeBusinessTypeList(businessOrTags)
+    : getBusinessTypeTags(businessOrTags);
+  return tags.map((tag) => humanizeCategoryType(tag)).join(' · ');
+};
+
+const resolvePublicationBusinessTypeTag = (publication) => {
+  const tag = normalizeBusinessType(publication?.businessTypeTag || publication?.businessType || '');
+  if (tag) return tag;
+  const tags = getBusinessTypeTags(publication?.business);
+  return tags[0] || '';
+};
+
+const formatReservationAmount = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 'Gratis';
+  return `$${formatNumber(amount)}`;
+};
+
 const normalizeSearchValue = (value = '') =>
   String(value || '')
     .normalize('NFD')
@@ -1392,7 +1482,7 @@ const buildReservationPdfBlob = async (reservation) => {
   if (reservation.guestRut) {
     addLine('RUT', reservation.guestRut);
   }
-  addLine('Monto', `$${formatNumber(reservation.totalPrice ?? RESERVATION_PRICE)}`);
+  addLine('Monto', formatReservationAmount(reservation.totalPrice ?? RESERVATION_PRICE));
   if (reservation.notes) {
     addLine('Notas', reservation.notes);
   }
@@ -1455,6 +1545,8 @@ function App() {
   });
 
   const [alerts, setAlerts] = useState([]);
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  const [installPromptOpen, setInstallPromptOpen] = useState(false);
   const [reservationOpen, setReservationOpen] = useState(false);
   const [reservationStep, setReservationStep] = useState('mode');
   const [reservationMode, setReservationMode] = useState('');
@@ -1466,12 +1558,6 @@ function App() {
   const [reservationDate, setReservationDate] = useState('');
   const [reservationTime, setReservationTime] = useState('');
   const [reservationNotes, setReservationNotes] = useState('');
-  const [reservationPayment, setReservationPayment] = useState({
-    name: '',
-    number: '',
-    expiry: '',
-    cvv: '',
-  });
   const [reservationSuccess, setReservationSuccess] = useState(null);
   const [reservationPendingAuth, setReservationPendingAuth] = useState(false);
   const [reservationTablesByBusiness, setReservationTablesByBusiness] = useState({});
@@ -1535,7 +1621,8 @@ function App() {
   const [categoryForm, setCategoryForm] = useState({ name: '', type: '', tenantId: '' });
   const [businessForm, setBusinessForm] = useState({
     name: '',
-    type: 'RESTAURANTE',
+    type: defaultBusinessTypes[0],
+    typeTags: [defaultBusinessTypes[0]],
     description: '',
     address: '',
     city: '',
@@ -1553,6 +1640,7 @@ function App() {
     categoryIds: [],
     categoryTypes: [],
     businessId: '',
+    businessTypeTag: '',
     mediaUrl: '',
     mediaType: 'IMAGEN',
     precio: '',
@@ -1574,6 +1662,8 @@ function App() {
   const [profileBusinessId, setProfileBusinessId] = useState('');
   const [businessProfileForm, setBusinessProfileForm] = useState({
     name: '',
+    type: defaultBusinessTypes[0],
+    typeTags: [defaultBusinessTypes[0]],
     description: '',
     address: '',
     city: '',
@@ -1636,6 +1726,7 @@ function App() {
       categoryIds: [],
       categoryTypes: [],
       businessId: '',
+      businessTypeTag: '',
       mediaUrl: '',
       mediaType: 'IMAGEN',
       precio: '',
@@ -1662,14 +1753,6 @@ function App() {
   const isOferente = currentUser?.rol === 'OFERENTE';
   const shouldShowPublicFeed = !isAdmin && !isOferente;
   const isAdPanelExpanded = adPanelOpen && !isAdPanelNarrow;
-  const hasMercadoPagoCheckout = Boolean(MERCADO_PAGO_CHECKOUT_URL);
-  const mpReturnInfo = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    const path = window.location.pathname;
-    if (path !== MERCADO_PAGO_SUCCESS_PATH) return null;
-    const params = new URLSearchParams(window.location.search);
-    return { params };
-  }, []);
   const mpPlanReturnInfo = useMemo(() => {
     if (typeof window === 'undefined') return null;
     const path = window.location.pathname;
@@ -1692,6 +1775,28 @@ function App() {
     setTimeout(() => setAlerts((prev) => prev.slice(1)), 4000);
   };
 
+  const dismissInstallPrompt = () => {
+    setInstallPromptOpen(false);
+    try {
+      sessionStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, '1');
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleInstallPrompt = async () => {
+    if (!installPromptEvent) return;
+    try {
+      await installPromptEvent.prompt?.();
+      await installPromptEvent.userChoice;
+    } catch {
+      // ignore
+    } finally {
+      setInstallPromptEvent(null);
+      dismissInstallPrompt();
+    }
+  };
+
   const resetReservationFlow = () => {
     setReservationStep('mode');
     setReservationMode('');
@@ -1703,7 +1808,6 @@ function App() {
     setReservationDate('');
     setReservationTime('');
     setReservationNotes('');
-    setReservationPayment({ name: '', number: '', expiry: '', cvv: '' });
     setReservationSuccess(null);
     setReservationPendingAuth(false);
   };
@@ -1807,43 +1911,10 @@ function App() {
     });
   };
 
-  const handleReservationToPayment = () => {
-    if (!reservationBusinessId) {
-      notify('warning', 'Selecciona un local para continuar.');
-      return;
-    }
-    if (!reservationTableSelection.length) {
-      notify('warning', 'Selecciona al menos una mesa disponible.');
-      return;
-    }
-    if (!reservationDate || !reservationTime) {
-      notify('warning', 'Completa la fecha y hora de la reserva.');
-      return;
-    }
-    const selectedTables = getReservationTablesForBusiness(reservationBusinessId).filter((table) =>
-      reservationTableSelection.includes(String(table.id))
-    );
-    const hasUnavailableTables = selectedTables.some((table) => {
-      const availabilityStatus = table.availabilityStatus || table.status || 'DISPONIBLE';
-      return availabilityStatus !== 'DISPONIBLE';
-    });
-    if (hasUnavailableTables) {
-      notify('warning', 'Algunas mesas ya no están disponibles para ese horario.');
-      return;
-    }
-    const business = reservationBusiness || businesses.find((b) => String(b.id) === String(reservationBusinessId));
-    if (business) {
-      const closure = getBusinessClosureInfo(business, reservationDate);
-      if (closure) {
-        notify('warning', closure.message);
-        return;
-      }
-    }
-    if (business && !isTimeAllowedForBusiness(business, reservationTime)) {
-      notify('warning', 'La hora seleccionada no está dentro del horario de funcionamiento.');
-      return;
-    }
-    setReservationStep('payment');
+  const handleConfirmReservation = async () => {
+    const prepared = prepareReservationSubmission();
+    if (!prepared) return;
+    await submitReservation(prepared.payload, prepared.business);
   };
 
   const prepareReservationSubmission = () => {
@@ -1893,7 +1964,6 @@ function App() {
       time: reservationTime,
       schedule,
       notes: reservationNotes.trim(),
-      amount: RESERVATION_PRICE,
       guest:
         reservationMode === 'guest'
           ? {
@@ -1907,7 +1977,7 @@ function App() {
     return { business, payload };
   };
 
-  const submitReservation = async (payload, business, { clearPending = true, modeOverride } = {}) => {
+  const submitReservation = async (payload, business, { modeOverride } = {}) => {
     try {
       const data = await fetchJson('/reservations', {
         method: 'POST',
@@ -1922,59 +1992,11 @@ function App() {
       if (payload?.businessId) {
         loadReservationTables(payload.businessId, { force: true });
       }
-      if (clearPending) {
-        removeStorageKey(PENDING_RESERVATION_STORAGE_KEY);
-      }
       return data;
     } catch (err) {
       notify('danger', err.message);
       return null;
     }
-  };
-
-  const storePendingReservation = (payload, business) => {
-    if (!payload) return;
-    writeStorageJson(PENDING_RESERVATION_STORAGE_KEY, {
-      payload,
-      businessId: payload.businessId,
-      business: business
-        ? {
-            id: business.id,
-            name: business.name,
-            imageUrl: business.imageUrl || '',
-          }
-        : null,
-      mode: reservationMode || 'guest',
-      createdAt: new Date().toISOString(),
-      processing: false,
-    });
-  };
-
-  const handleMercadoPagoCheckout = () => {
-    if (!MERCADO_PAGO_CHECKOUT_URL) {
-      notify('warning', 'No se encontró el link de Mercado Pago.');
-      return;
-    }
-    const prepared = prepareReservationSubmission();
-    if (!prepared) return;
-    storePendingReservation(prepared.payload, prepared.business);
-    window.location.href = MERCADO_PAGO_CHECKOUT_URL;
-  };
-
-  const handleConfirmReservation = async () => {
-    const prepared = prepareReservationSubmission();
-    if (!prepared) return;
-    const payment = {
-      name: reservationPayment.name.trim(),
-      number: reservationPayment.number.replace(/\s+/g, ''),
-      expiry: reservationPayment.expiry.trim(),
-      cvv: reservationPayment.cvv.trim(),
-    };
-    if (!payment.name || !payment.number || !payment.expiry || !payment.cvv) {
-      notify('warning', 'Completa los datos de la tarjeta para continuar.');
-      return;
-    }
-    await submitReservation(prepared.payload, prepared.business);
   };
 
   const handleAdPlanCheckout = (plan) => {
@@ -2713,40 +2735,6 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    if (!mpReturnInfo) return undefined;
-    let cancelled = false;
-    const processReturn = async () => {
-      const pending = readStorageJson(PENDING_RESERVATION_STORAGE_KEY, null);
-      if (!pending?.payload) {
-        notify('warning', 'No encontramos una reserva pendiente para confirmar.');
-        return;
-      }
-      if (pending.processing) {
-        return;
-      }
-      if (!isMercadoPagoApproved(mpReturnInfo.params)) {
-        notify('warning', 'El pago no aparece como aprobado. Si ya pagaste, contáctanos.');
-        return;
-      }
-      writeStorageJson(PENDING_RESERVATION_STORAGE_KEY, { ...pending, processing: true });
-      setReservationMode(pending.mode || 'guest');
-      setReservationBusinessId(pending.businessId || '');
-      setReservationOpen(true);
-      const result = await submitReservation(pending.payload, pending.business || null, {
-        clearPending: true,
-        modeOverride: pending.mode,
-      });
-      if (!result && !cancelled) {
-        writeStorageJson(PENDING_RESERVATION_STORAGE_KEY, { ...pending, processing: false });
-      }
-    };
-    processReturn();
-    return () => {
-      cancelled = true;
-    };
-  }, [mpReturnInfo]);
-
   const loadActiveAdPlan = async () => {
     if (!currentUser?.id || currentUser?.rol !== 'OFERENTE') {
       setActiveAdPlan(null);
@@ -3102,8 +3090,9 @@ function App() {
   }, [businesses, reservationBusinessId]);
   const reservationBusinessOptions = useMemo(() => {
     const searchValue = normalizeSearchValue(reservationSearch);
+    const targetType = normalizeBusinessType(reservationType);
     return (Array.isArray(businesses) ? businesses : [])
-      .filter((business) => (!reservationType ? true : business.type === reservationType))
+      .filter((business) => (!targetType ? true : getBusinessTypeTags(business).includes(targetType)))
       .filter((business) => {
         if (!searchValue) return true;
         return normalizeSearchValue(business.name || '').includes(searchValue);
@@ -3207,13 +3196,19 @@ function App() {
     return businessListForForms.find((b) => String(b.id) === String(activePublicationBusinessId)) || null;
   }, [businessListForForms, activePublicationBusinessId]);
 
+  const selectedBusinessTypeTags = useMemo(
+    () => getBusinessTypeTags(selectedBusinessForPublication),
+    [selectedBusinessForPublication]
+  );
+  const selectedBusinessTypeTag = publicationForm.businessTypeTag || selectedBusinessTypeTags[0] || '';
+
   const allowedCategoryTypesForBusiness = useMemo(() => {
-    const businessType = selectedBusinessForPublication?.type;
+    const businessType = normalizeBusinessType(selectedBusinessTypeTag);
     if (businessType && categoriesByBusinessType[businessType]) {
       return categoriesByBusinessType[businessType];
     }
     return categoryTypes;
-  }, [selectedBusinessForPublication, categoryTypes]);
+  }, [selectedBusinessTypeTag, categoryTypes]);
 
   const uniqueCategoryTypesForBusiness = useMemo(() => {
     const seen = new Set();
@@ -3235,6 +3230,16 @@ function App() {
       setPublicationForm((prev) => ({ ...prev, businessId: businessListForForms[0].id }));
     }
   }, [businessListForForms, publicationForm.businessId]);
+
+  useEffect(() => {
+    if (!selectedBusinessForPublication) return;
+    const tags = selectedBusinessTypeTags;
+    const nextTag = tags.includes(publicationForm.businessTypeTag) ? publicationForm.businessTypeTag : tags[0] || '';
+    setPublicationForm((prev) => {
+      if (prev.businessTypeTag === nextTag) return prev;
+      return { ...prev, businessTypeTag: nextTag, categoryTypes: [], categoryIds: [] };
+    });
+  }, [selectedBusinessForPublication, selectedBusinessTypeTags, publicationForm.businessTypeTag]);
 
   useEffect(() => {
     const allowed = new Set((uniqueCategoryTypesForBusiness || []).map((t) => String(t)));
@@ -3263,6 +3268,53 @@ function App() {
   useEffect(() => {
     writeStorageJson(CLIENT_SAVED_PUBLICATIONS_STORAGE_KEY, savedPublicationsByUser);
   }, [savedPublicationsByUser]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isStandalone =
+      window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator?.standalone;
+    if (isStandalone) return;
+    try {
+      if (sessionStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY)) return;
+    } catch {
+      // ignore
+    }
+
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event);
+      setInstallPromptOpen(true);
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPromptOpen(false);
+      setInstallPromptEvent(null);
+      try {
+        sessionStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, '1');
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (!installPromptOpen) return undefined;
+    const isMobile = window.matchMedia?.('(max-width: 639px)')?.matches;
+    const timeoutMs = isMobile ? 4000 : 5000;
+    const timeoutId = window.setTimeout(() => {
+      setInstallPromptOpen(false);
+    }, timeoutMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [installPromptOpen]);
 
   useEffect(() => {
     if (!reservationPendingAuth) return;
@@ -3295,9 +3347,12 @@ function App() {
   useEffect(() => {
     const selected = businessListForForms.find((b) => String(b.id) === String(profileBusinessId));
     if (!selected) return;
+    const { primaryType, tags } = resolveBusinessTypeSelection(getBusinessTypeTags(selected), selected.type);
     setBusinessProfileForm((prev) => ({
       ...prev,
       name: selected.name || '',
+      type: primaryType,
+      typeTags: tags,
       description: selected.description || '',
       address: selected.address || '',
       city: selected.city || '',
@@ -3489,7 +3544,8 @@ function App() {
       notify('success', 'Negocio creado');
       setBusinessForm({
         name: '',
-        type: 'RESTAURANTE',
+        type: defaultBusinessTypes[0],
+        typeTags: [defaultBusinessTypes[0]],
         description: '',
         address: '',
         city: '',
@@ -3516,6 +3572,7 @@ function App() {
       (publication.categories || []).map((c) => c?.id || c).find(Boolean) ||
       '';
     const firstCategoryType = (publication.categories || []).map((c) => c?.type).find(Boolean) || '';
+    const publicationBusinessTypeTag = resolvePublicationBusinessTypeTag(publication);
     setPublicationForm({
       titulo: publication.titulo || '',
       contenido: publication.contenido || '',
@@ -3524,6 +3581,7 @@ function App() {
       categoryIds: firstCategoryId ? [String(firstCategoryId)] : [],
       categoryTypes: firstCategoryType ? [firstCategoryType] : [],
       businessId: publication.businessId || publication.business?.id || '',
+      businessTypeTag: publicationBusinessTypeTag,
       mediaUrl: publication.coverUrl || '',
       mediaType: publication.coverType || detectMediaTypeFromUrl(publication.coverUrl || ''),
       precio: publication.precio === null || publication.precio === undefined ? '' : publication.precio,
@@ -3641,6 +3699,7 @@ function App() {
           contenido: publicationForm.contenido,
           tipo: publicationForm.tipo,
           businessId,
+          businessTypeTag: publicationForm.businessTypeTag || undefined,
           categoryIds: categoryIdsToSend,
           fechaFinVigencia: publicationForm.fechaFinVigencia || undefined,
           mediaUrl: publicationForm.mediaUrl || undefined,
@@ -3669,6 +3728,8 @@ function App() {
         headers: authHeaders,
         body: JSON.stringify({
           name: businessProfileForm.name,
+          type: businessProfileForm.type,
+          typeTags: businessProfileForm.typeTags,
           description: businessProfileForm.description,
           imageUrl: businessProfileForm.imageUrl || null,
           phone: businessProfileForm.phone || null,
@@ -3683,6 +3744,23 @@ function App() {
       notify('success', 'Perfil de negocio actualizado');
       loadBusinesses();
       loadFeed();
+    } catch (err) {
+      notify('danger', err.message);
+    }
+  };
+
+  const handleDeleteBusiness = async () => {
+    if (!profileBusinessId) return notify('danger', 'Selecciona un negocio para eliminar');
+    const confirmed = window.confirm(
+      '¿Eliminar este negocio? Se eliminarán publicaciones, reservas y mesas asociadas.'
+    );
+    if (!confirmed) return;
+    try {
+      await fetchJson(`/businesses/${profileBusinessId}`, { method: 'DELETE', headers: authHeaders });
+      notify('success', 'Negocio eliminado');
+      loadBusinesses();
+      loadFeed();
+      setProfileBusinessId('');
     } catch (err) {
       notify('danger', err.message);
     }
@@ -4340,10 +4418,12 @@ function App() {
   const businessTypeOptions = useMemo(() => {
     const types = new Set(defaultBusinessTypes);
     feedWithDecorations.forEach((pub) => {
-      if (pub.business?.type) types.add(String(pub.business.type).toUpperCase());
+      const tag = normalizeBusinessType(pub.businessTypeTag || pub.businessType);
+      if (tag) types.add(tag);
+      getBusinessTypeTags(pub.business).forEach((value) => types.add(value));
     });
     businesses.forEach((b) => {
-      if (b.type) types.add(String(b.type).toUpperCase());
+      getBusinessTypeTags(b).forEach((value) => types.add(value));
     });
     return Array.from(types);
   }, [feedWithDecorations, businesses]);
@@ -4414,8 +4494,13 @@ function App() {
       });
     }
     if (filters.businessType) {
-      const target = String(filters.businessType).toUpperCase();
-      list = list.filter((pub) => String(pub.business?.type || '').toUpperCase() === target);
+      const target = normalizeBusinessType(filters.businessType);
+      list = list.filter((pub) => {
+        const tag = normalizeBusinessType(pub.businessTypeTag || pub.businessType);
+        if (tag) return tag === target;
+        const tags = getBusinessTypeTags(pub.business);
+        return tags.includes(target);
+      });
     }
     if (filters.publicationType) {
       const target = String(filters.publicationType).toUpperCase();
@@ -4612,9 +4697,9 @@ function App() {
                     <h4 className="text-xl font-semibold">{businessProfile?.name || 'Negocio'}</h4>
                   </div>
                 </div>
-                {businessProfile?.type && (
+                {getBusinessTypeTags(businessProfile).length > 0 && (
                   <span className="rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground">
-                    {businessProfile.type}
+                    {formatBusinessTypeTags(businessProfile)}
                   </span>
                 )}
               </div>
@@ -5028,13 +5113,74 @@ function App() {
                       >
                         {businessListForForms.map((b) => (
                           <option key={b.id} value={b.id}>
-                            {b.name} · {b.type}
+                            {b.name} · {formatBusinessTypeTags(b)}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div>
-                      <Label>Nombre del restaurante</Label>
+                      <Label>Tipo principal</Label>
+                      <select
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        value={businessProfileForm.type}
+                        onChange={(e) =>
+                          setBusinessProfileForm((prev) => {
+                            const resolved = resolveBusinessTypeSelection(prev.typeTags, e.target.value);
+                            return { ...prev, type: resolved.primaryType, typeTags: resolved.tags };
+                          })
+                        }
+                      >
+                        {defaultBusinessTypes.map((type) => (
+                          <option key={`profile-type-${type}`} value={type}>
+                            {humanizeCategoryType(type)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Etiquetas de negocio</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Estas etiquetas ayudan a clasificar tus publicaciones y categorías.
+                      </p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {defaultBusinessTypes.map((type) => {
+                          const isChecked = (businessProfileForm.typeTags || []).includes(type);
+                          return (
+                            <label
+                              key={`profile-tag-${type}`}
+                              className="flex items-center gap-3 rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-soft transition hover:border-destructive/60"
+                            >
+                              <input
+                                type="checkbox"
+                                className="peer sr-only"
+                                checked={isChecked}
+                                onChange={() =>
+                                  setBusinessProfileForm((prev) => {
+                                    const resolved = toggleBusinessTypeTag(prev.typeTags, type, prev.type);
+                                    return { ...prev, type: resolved.primaryType, typeTags: resolved.tags };
+                                  })
+                                }
+                              />
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-input bg-background text-transparent transition peer-focus:ring-2 peer-focus:ring-ring peer-focus:ring-offset-2 peer-focus:ring-offset-background peer-checked:border-destructive peer-checked:bg-destructive peer-checked:text-white">
+                                <svg viewBox="0 0 12 9" className="h-3 w-3" aria-hidden="true">
+                                  <path
+                                    d="M1 4.5L4.25 7.5L11 1.25"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </span>
+                              <span className="text-sm font-medium">{humanizeCategoryType(type)}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Nombre del negocio</Label>
                       <Input
                         className="h-12"
                         value={businessProfileForm.name}
@@ -5219,6 +5365,9 @@ function App() {
                     <br></br>
                     <div className="md:col-span-2 flex flex-wrap gap-2 justify-center items-center">
                       <Button variant="danger" type="submit">Guardar perfil</Button>
+                      <Button variant="outline" type="button" onClick={handleDeleteBusiness}>
+                        Eliminar negocio
+                      </Button>
                     </div>
                   </form>
                 )}
@@ -5725,7 +5874,7 @@ function App() {
                       >
                         {businessListForForms.map((business) => (
                           <option key={business.id} value={business.id}>
-                            {business.name} · {business.type}
+                            {business.name} · {formatBusinessTypeTags(business)}
                           </option>
                         ))}
                       </select>
@@ -6495,6 +6644,52 @@ function App() {
         }}
       />
 
+      {installPromptOpen && (
+        <div
+          className={cn(
+            'fixed z-[70] left-3 bottom-3 w-[calc(100%-1.5rem)] max-w-[240px]',
+            'sm:left-4 sm:bottom-4 sm:w-[calc(100%-2rem)] sm:max-w-sm'
+          )}
+        >
+          <div className="relative flex items-center gap-2 rounded-2xl border border-border bg-white/95 p-2 shadow-lg backdrop-blur sm:gap-3 sm:p-4 sm:pr-10">
+            <div className="hidden flex-1 items-center gap-3 sm:flex">
+              <img
+                src={matchCoffeeLogo}
+                alt="Match Coffee"
+                className="h-10 w-10 rounded-xl object-contain"
+              />
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-foreground">Instala la app</span>
+                <span className="text-[11px] text-muted-foreground">
+                  Puedes instalar Match Coffee en tu dispositivo para acceder más rápido desde el escritorio o pantalla
+                  de inicio.
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-1 items-center gap-2 sm:hidden">
+              <img
+                src={matchCoffeeLogo}
+                alt="Match Coffee"
+                className="h-7 w-7 rounded-lg object-contain"
+              />
+              <span className="text-[10px] font-medium text-muted-foreground">Instala Match Coffee</span>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="danger"
+                size="sm"
+                type="button"
+                onClick={handleInstallPrompt}
+                disabled={!installPromptEvent}
+                className="h-8 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
+              >
+                Instalar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Dialog
         open={reservationOpen}
         onOpenChange={(open) => {
@@ -6631,7 +6826,7 @@ function App() {
                         </Avatar>
                         <div className="flex-1">
                           <p className="font-semibold">{business.name}</p>
-                          <p className="text-xs text-muted-foreground">{humanizeCategoryType(business.type)}</p>
+                          <p className="text-xs text-muted-foreground">{formatBusinessTypeTags(business)}</p>
                         </div>
                         <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
                           {business.city || business.region || 'Chile'}
@@ -6786,110 +6981,9 @@ function App() {
                   <Button type="button" variant="outline" onClick={() => setReservationStep('business')}>
                     Volver
                   </Button>
-                  <Button type="button" variant="danger" disabled={reservationDateClosed} onClick={handleReservationToPayment}>
-                    Continuar al pago
+                  <Button type="button" variant="danger" disabled={reservationDateClosed} onClick={handleConfirmReservation}>
+                    Confirmar reserva gratis
                   </Button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {reservationStep === 'payment' && (
-            <>
-              <DialogHeader className="text-left">
-                <DialogTitle>Pasarela de pago</DialogTitle>
-                <DialogDescription>
-                  Se cobrará un monto fijo de $ {formatNumber(RESERVATION_PRICE)} por la reserva.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="mt-5 space-y-4">
-                <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
-                  <p className="font-semibold">Resumen de la reserva</p>
-                  <div className="mt-2 space-y-1 text-muted-foreground">
-                    <p>
-                      <span className="font-semibold text-foreground">Local:</span>{' '}
-                      {reservationBusiness?.name || 'Sin seleccionar'}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-foreground">Mesas:</span>{' '}
-                      {reservationSelectedTables.map((table) => table.label).join(', ')}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-foreground">Fecha:</span> {reservationDate} · {reservationTime}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-foreground">Total sillas:</span>{' '}
-                      {reservationTotalSelectedSeats}
-                    </p>
-                  </div>
-                </div>
-
-                {hasMercadoPagoCheckout ? (
-                  <div className="rounded-xl border border-border bg-card p-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                      <p className="font-semibold">Pagar con Mercado Pago</p>
-                    </div>
-                    <p className="mt-2 text-muted-foreground">
-                      Serás redirigido a Mercado Pago para completar el pago de forma segura.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-border bg-card p-4">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                      <p className="font-semibold">Pago con tarjeta (demo)</p>
-                    </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div className="md:col-span-2 space-y-2">
-                        <Label>Nombre en la tarjeta</Label>
-                        <Input
-                          value={reservationPayment.name}
-                          onChange={(e) => setReservationPayment((prev) => ({ ...prev, name: e.target.value }))}
-                          placeholder="Nombre completo"
-                        />
-                      </div>
-                      <div className="md:col-span-2 space-y-2">
-                        <Label>Número de tarjeta</Label>
-                        <Input
-                          value={reservationPayment.number}
-                          onChange={(e) => setReservationPayment((prev) => ({ ...prev, number: e.target.value }))}
-                          placeholder="0000 0000 0000 0000"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Vencimiento</Label>
-                        <Input
-                          value={reservationPayment.expiry}
-                          onChange={(e) => setReservationPayment((prev) => ({ ...prev, expiry: e.target.value }))}
-                          placeholder="MM/AA"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>CVV</Label>
-                        <Input
-                          value={reservationPayment.cvv}
-                          onChange={(e) => setReservationPayment((prev) => ({ ...prev, cvv: e.target.value }))}
-                          placeholder="123"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between gap-2">
-                  <Button type="button" variant="outline" onClick={() => setReservationStep('tables')}>
-                    Volver
-                  </Button>
-                  {hasMercadoPagoCheckout ? (
-                    <Button type="button" variant="danger" onClick={handleMercadoPagoCheckout}>
-                      Ir a Mercado Pago
-                    </Button>
-                  ) : (
-                    <Button type="button" variant="danger" onClick={handleConfirmReservation}>
-                      Confirmar y pagar $ {formatNumber(RESERVATION_PRICE)}
-                    </Button>
-                  )}
                 </div>
               </div>
             </>
@@ -7055,7 +7149,7 @@ function App() {
                   </p>
                   <p>
                     <span className="font-semibold text-foreground">Monto:</span> $
-                    {formatNumber(reservationAdminDetail.totalPrice ?? RESERVATION_PRICE)}
+                    {formatReservationAmount(reservationAdminDetail.totalPrice ?? RESERVATION_PRICE)}
                   </p>
                   {reservationAdminDetail.notes && (
                     <p>
@@ -7457,7 +7551,13 @@ function App() {
                       {formatCategoryLabel((item.categories || [])[0]) || 'Sin categoría'}
                     </p>
                     <p className="text-xs text-muted-foreground line-clamp-2">
-                      {item.business?.name ? `${item.business.name} · ${item.business.type}` : 'Descubre más detalles'}
+                      {item.business?.name
+                        ? `${item.business.name} · ${
+                            resolvePublicationBusinessTypeTag(item)
+                              ? humanizeCategoryType(resolvePublicationBusinessTypeTag(item))
+                              : formatBusinessTypeTags(item.business)
+                          }`
+                        : 'Descubre más detalles'}
                     </p>
                   </div>
                 </button>
@@ -7543,6 +7643,30 @@ function App() {
                       ))}
                     </select>
                   </div>
+                  {selectedBusinessForPublication && selectedBusinessTypeTags.length > 1 && (
+                    <div>
+                      <Label>Etiqueta del negocio</Label>
+                      <select
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                        value={publicationForm.businessTypeTag}
+                        onChange={(e) =>
+                          setPublicationForm((prev) => ({
+                            ...prev,
+                            businessTypeTag: e.target.value,
+                            categoryTypes: [],
+                            categoryIds: [],
+                          }))
+                        }
+                        required
+                      >
+                        {selectedBusinessTypeTags.map((type) => (
+                          <option key={`pub-tag-${type}`} value={type}>
+                            {humanizeCategoryType(type)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="md:col-span-2">
                     <Label>Contenido</Label>
                     <textarea
@@ -7689,7 +7813,7 @@ function App() {
                   <div className="md:col-span-2">
                     <Label>Categoría</Label>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Selecciona una única categoría permitida para este negocio.
+                      Selecciona una única categoría permitida para esta etiqueta.
                     </p>
                     {!selectedBusinessForPublication && (
                       <p className="mt-2 text-sm text-muted-foreground">
@@ -7750,17 +7874,65 @@ function App() {
                     />
                   </div>
                   <div>
-                    <Label>Tipo</Label>
+                    <Label>Tipo principal</Label>
                     <select
                       className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                       value={businessForm.type}
-                      onChange={(e) => setBusinessForm((prev) => ({ ...prev, type: e.target.value }))}
+                      onChange={(e) =>
+                        setBusinessForm((prev) => {
+                          const resolved = resolveBusinessTypeSelection(prev.typeTags, e.target.value);
+                          return { ...prev, type: resolved.primaryType, typeTags: resolved.tags };
+                        })
+                      }
                     >
-                      <option value="RESTAURANTE">Restaurante</option>
-                      <option value="CAFETERIA">Cafetería</option>
-                      <option value="BAR">Bar</option>
-                      <option value="FOODTRUCK">Foodtruck</option>
+                      {defaultBusinessTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {humanizeCategoryType(type)}
+                        </option>
+                      ))}
                     </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Etiquetas de negocio</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Puedes seleccionar una o varias etiquetas para describir tu local.
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {defaultBusinessTypes.map((type) => {
+                        const isChecked = (businessForm.typeTags || []).includes(type);
+                        return (
+                          <label
+                            key={`tag-${type}`}
+                            className="flex items-center gap-3 rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-soft transition hover:border-destructive/60"
+                          >
+                            <input
+                              type="checkbox"
+                              className="peer sr-only"
+                              checked={isChecked}
+                              onChange={() =>
+                                setBusinessForm((prev) => {
+                                  const resolved = toggleBusinessTypeTag(prev.typeTags, type, prev.type);
+                                  return { ...prev, type: resolved.primaryType, typeTags: resolved.tags };
+                                })
+                              }
+                            />
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-input bg-background text-transparent transition peer-focus:ring-2 peer-focus:ring-ring peer-focus:ring-offset-2 peer-focus:ring-offset-background peer-checked:border-destructive peer-checked:bg-destructive peer-checked:text-white">
+                              <svg viewBox="0 0 12 9" className="h-3 w-3" aria-hidden="true">
+                                <path
+                                  d="M1 4.5L4.25 7.5L11 1.25"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
+                            <span className="text-sm font-medium">{humanizeCategoryType(type)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div className="md:col-span-2">
                     <Label>Descripción</Label>

@@ -117,8 +117,6 @@ const AuthDialog = ({ open, onOpenChange, onLogin, onRegister, loading = false }
                 >
                   <option value="OFERENTE">Oferente</option>
                   <option value="CLIENTE">Cliente</option>
-                  <option value="VISITANTE">Visitante</option>
-                  <option value="admin">Admin global</option>
                 </select>
               </div>
               <Button type="submit" className="w-full" variant="danger" disabled={loading}>

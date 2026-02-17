@@ -434,8 +434,8 @@ const PinDetailDialog = ({
             
 
             <DialogHeader className="items-start text-left">
-              <DialogTitle className="text-2xl font-bold">{titulo}</DialogTitle>
-              <DialogDescription className="text-sm">
+              <DialogTitle className="text-2xl font-bold break-words">{titulo}</DialogTitle>
+              <DialogDescription className="text-sm break-words">
                 {business ? (
                   <div className={`flex min-w-0 items-center gap-2 ${isBusinessNameLong ? '' : 'justify-center'}`}>
                     {isBusinessNameLong ? (
@@ -453,7 +453,7 @@ const PinDetailDialog = ({
             </DialogHeader>
 
             {formattedPrice && <p className="mt-2 text-center text-xl font-bold text-emerald-700">{formattedPrice}</p>}
-            <p className="mt-4 text-muted-foreground leading-relaxed whitespace-pre-line">{displayContent}</p>
+            <p className="mt-4 text-muted-foreground leading-relaxed whitespace-pre-line break-words">{displayContent}</p>
             {isContentTruncated && !showFullContent && (
               <Button
                 type="button"
@@ -504,7 +504,10 @@ const PinDetailDialog = ({
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo de alimento</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {categories.map((cat) => (
-                    <span key={cat.id || cat} className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
+                    <span
+                      key={cat.id || cat}
+                      className="max-w-full break-words rounded-full border px-3 py-1 text-xs text-muted-foreground"
+                    >
                       {formatCategoryLabel(cat)}
                     </span>
                   ))}
@@ -512,7 +515,7 @@ const PinDetailDialog = ({
               </div>
             )}
 
-            <div className="mt-6 flex items-center justify-between gap-3">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <button
                 type="button"
                 className={`flex min-w-0 flex-1 items-center gap-3 text-left ${canOpenBusiness ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
@@ -530,10 +533,11 @@ const PinDetailDialog = ({
                   <p className="text-sm text-muted-foreground">{visitas} visitas</p>
                 </div>
               </button>
-              <div className="flex shrink-0 flex-col items-end gap-1">
+              <div className="flex w-full flex-col items-start gap-1 sm:w-auto sm:items-end">
                 <Button
                   size="sm"
                   variant="outline"
+                  className="w-full sm:w-auto"
                   onClick={handleOpenRating}
                   disabled={!canRatePublication || hasUserRating}
                   title={
@@ -732,9 +736,11 @@ const PinDetailDialog = ({
                         isRatingComment ? 'border-amber-200 bg-amber-50/80' : 'border-border/60 bg-background/80'
                       } ${isReplyingHere ? 'ring-1 ring-primary/30' : ''}`}
                     >
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-foreground">{comment.userName || 'Usuario'}</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span className="font-semibold text-foreground break-words">
+                            {comment.userName || 'Usuario'}
+                          </span>
                           {isRatingComment && ratingDisplay !== null && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700">
                               <Star className="h-3 w-3 text-amber-500" fill="currentColor" />
@@ -744,7 +750,7 @@ const PinDetailDialog = ({
                         </div>
                         <span>{formatCommentDate(comment.fechaCreacion)}</span>
                       </div>
-                      <p className="mt-2 text-sm text-foreground/90">{comment.contenido}</p>
+                      <p className="mt-2 text-sm text-foreground/90 break-words">{comment.contenido}</p>
                       <button
                         type="button"
                         className="mt-2 text-xs font-semibold text-primary hover:underline"
@@ -783,11 +789,13 @@ const PinDetailDialog = ({
                         <div className="mt-3 space-y-2 border-l border-primary/20 pl-3">
                           {commentsByParent[String(comment.id)].map((reply) => (
                             <div key={reply.id} className="rounded-md bg-muted/40 px-3 py-2">
-                              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span className="font-semibold text-foreground">{reply.userName || 'Usuario'}</span>
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                                <span className="font-semibold text-foreground break-words">
+                                  {reply.userName || 'Usuario'}
+                                </span>
                                 <span>{formatCommentDate(reply.fechaCreacion)}</span>
                               </div>
-                              <p className="mt-1 text-sm text-foreground/90">{reply.contenido}</p>
+                              <p className="mt-1 text-sm text-foreground/90 break-words">{reply.contenido}</p>
                             </div>
                           ))}
                         </div>

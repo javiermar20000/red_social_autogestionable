@@ -215,16 +215,17 @@ const ExploreDialog = ({
             </select>
           </div>
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
             <Button
               variant="danger"
               onClick={() => {
                 onClear?.();
               }}
+              className="hidden sm:inline-flex"
             >
               Limpiar filtros
             </Button>
-            <div className="flex gap-2">
+            <div className="flex justify-center gap-2 sm:justify-end">
               <Button variant="danger" onClick={() => onOpenChange(false)}>
                 Cerrar
               </Button>

@@ -1,1 +1,28 @@
-set -a; . ./.env; set +a; ADMIN_EMAIL="admin@tu-dominio.com"; ADMIN_NAME="Admin Global"; ADMIN_PASS="TuClaveSegura"; HASH=$(docker compose exec -T backend node -e "const bcrypt=require('bcryptjs'); bcrypt.hash(process.argv[1],10).then(h=>console.log(h));" "$ADMIN_PASS"); docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO admin_global (email, password_hash, nombre, activo) VALUES ('${ADMIN_EMAIL}', '${HASH}', '${ADMIN_NAME}', true);"
+set -a; . ./.env; set +a; ADMIN_EMAIL="admin@admin.com"; ADMIN_NAME="Javier Martinez"; ADMIN_PASS="admin123"; HASH=$(docker compose exec -T backend node -e "const bcrypt=require('bcryptjs'); bcrypt.hash(process.argv[1],10).then(h=>console.log(h));" "$ADMIN_PASS"); docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO admin_global (email, password_hash, nombre, activo) VALUES ('${ADMIN_EMAIL}', '${HASH}', '${ADMIN_NAME}', true);"
+
+
+set -a; . ./.env; set +a; OFER_EMAIL="oferente@oferente.com"; OFER_NAME="Oferente"; OFER_PASS="admin123"; HASH=$(docker compose exec -T backend node -e "const bcrypt=require('bcryptjs'); bcrypt.hash(process.argv[1],10).then(h=>console.log(h));" "$OFER_PASS"); docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "
+BEGIN;
+SET app.is_admin_global = 'true';
+DO \$\$
+DECLARE v_user_id BIGINT;
+DECLARE v_tenant_id BIGINT;
+BEGIN
+  INSERT INTO usuario (email, password_hash, nombre, rol_usuario, estado_registro, fecha_registro, activo)
+  VALUES ('${OFER_EMAIL}', '${HASH}', '${OFER_NAME}', 'OFERENTE', 'ACTIVO', NOW(), true)
+  RETURNING id INTO v_user_id;
+
+  INSERT INTO tenant (nombre, dominio, estado, creador_oferente_id, validador_admin_id, fecha_creacion)
+  VALUES ('Tenant de ${OFER_NAME}', NULL, 'ACTIVO', v_user_id, NULL, NOW())
+  RETURNING id INTO v_tenant_id;
+
+  UPDATE usuario SET tenant_id = v_tenant_id WHERE id = v_user_id;
+
+  INSERT INTO suscripcion_publicidad (tenant_id, usuario_id, plan_codigo, estado, fecha_inicio, fecha_fin)
+  VALUES (v_tenant_id, v_user_id, 'INICIO', 'ACTIVA', NOW(), NOW() + INTERVAL '30 days');
+
+  INSERT INTO suscripcion_reservas (tenant_id, usuario_id, plan_codigo, estado, fecha_inicio, fecha_fin)
+  VALUES (v_tenant_id, v_user_id, 'RESERVAS', 'ACTIVA', NOW(), NOW() + INTERVAL '30 days');
+END \$\$;
+COMMIT;
+"

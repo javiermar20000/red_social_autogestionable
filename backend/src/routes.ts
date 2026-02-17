@@ -14,6 +14,11 @@ import { ReservationTable, MesaEstado } from './entities/ReservationTable.js';
 import { Reservation, ReservaEstado, ReservaHorario } from './entities/Reservation.js';
 import { ReservationTableLink } from './entities/ReservationTableLink.js';
 import { AdPlanSubscription, AdPlanCode, AdPlanStatus } from './entities/AdPlanSubscription.js';
+import {
+  ReservationPlanSubscription,
+  ReservationPlanCode,
+  ReservationPlanStatus,
+} from './entities/ReservationPlanSubscription.js';
 import { AdPublicationRequest, SolicitudPublicidadEstado } from './entities/AdPublicationRequest.js';
 import { EntityManager, In, LessThan } from 'typeorm';
 import { runWithContext } from './utils/rls.js';
@@ -127,6 +132,7 @@ const {
   MP_PLAN_INICIO_ID = '',
   MP_PLAN_IMPULSO_ID = '',
   MP_PLAN_DOMINIO_ID = '',
+  MP_PLAN_RESERVAS_ID = '',
 } = process.env;
 
 const MP_PLAN_ID_BY_CODE: Record<AdPlanCode, string> = {
@@ -169,6 +175,23 @@ const resolveAdPlanStatus = (mpStatus: string | null | undefined) => {
   return AdPlanStatus.PENDIENTE;
 };
 
+const reservationPlanCodeToClientId = (code: ReservationPlanCode) => code.toLowerCase();
+
+const resolveReservationPlanStatus = (mpStatus: string | null | undefined) => {
+  if (!mpStatus) return ReservationPlanStatus.PENDIENTE;
+  const normalized = String(mpStatus).toLowerCase();
+  if (['authorized', 'active', 'approved'].includes(normalized)) return ReservationPlanStatus.ACTIVA;
+  if (['cancelled', 'canceled', 'paused', 'suspended'].includes(normalized)) return ReservationPlanStatus.CANCELADA;
+  if (['expired'].includes(normalized)) return ReservationPlanStatus.EXPIRADA;
+  return ReservationPlanStatus.PENDIENTE;
+};
+
+const resolveReservationPlanCodeFromMpPlanId = (mpPlanId: string | null | undefined) => {
+  if (!mpPlanId) return null;
+  const normalized = String(mpPlanId);
+  return normalized && normalized === String(MP_PLAN_RESERVAS_ID) ? ReservationPlanCode.RESERVAS : null;
+};
+
 const fetchActiveAdSubscription = async (manager: EntityManager, userId: string) => {
   const repo = manager.getRepository(AdPlanSubscription);
   const now = new Date();
@@ -181,6 +204,28 @@ const fetchActiveAdSubscription = async (manager: EntityManager, userId: string)
     subscription = null;
   }
   return subscription;
+};
+
+const fetchActiveReservationSubscription = async (manager: EntityManager, userId: string) => {
+  const repo = manager.getRepository(ReservationPlanSubscription);
+  const now = new Date();
+  let subscription = await repo.findOne({
+    where: { userId, status: ReservationPlanStatus.ACTIVA },
+    order: { startDate: 'DESC', createdAt: 'DESC' },
+  });
+  if (subscription?.endDate && subscription.endDate <= now) {
+    await repo.update({ id: subscription.id }, { status: ReservationPlanStatus.EXPIRADA });
+    subscription = null;
+  }
+  return subscription;
+};
+
+const ensureReservationPlanActive = async (manager: EntityManager, userId: string) => {
+  const active = await fetchActiveReservationSubscription(manager, userId);
+  if (!active) {
+    throw new HttpError(403, 'Debes tener una suscripción activa para usar el sistema de reservas');
+  }
+  return active;
 };
 
 const parseOptionalDate = (value: unknown) => {
@@ -751,6 +796,16 @@ const categoriaTiposPasteleria: CategoriaTipo[] = [
   CategoriaTipo.TARTAS,
   CategoriaTipo.TRUFAS,
   CategoriaTipo.MACARONS,
+  CategoriaTipo.ALFAJORES,
+  CategoriaTipo.DONAS,
+  CategoriaTipo.ECLAIRS,
+  CategoriaTipo.MIL_HOJAS,
+  CategoriaTipo.PROFITEROLES,
+  CategoriaTipo.MERENGUES,
+  CategoriaTipo.TIRAMISU,
+  CategoriaTipo.MOUSSE,
+  CategoriaTipo.PIE,
+  CategoriaTipo.BIZCOCHOS,
   CategoriaTipo.GALLETAS,
   CategoriaTipo.POSTRES,
 ];
@@ -764,6 +819,16 @@ const categoriaTiposHeladeria: CategoriaTipo[] = [
   CategoriaTipo.CONOS,
   CategoriaTipo.TOPPINGS,
   CategoriaTipo.YOGURT_HELADO,
+  CategoriaTipo.GELATO,
+  CategoriaTipo.HELADO_SOFT,
+  CategoriaTipo.HELADO_VEGANO,
+  CategoriaTipo.HELADO_SIN_AZUCAR,
+  CategoriaTipo.HELADO_SIN_LACTOSA,
+  CategoriaTipo.COPAS_HELADAS,
+  CategoriaTipo.GRANIZADOS,
+  CategoriaTipo.BARQUILLOS,
+  CategoriaTipo.BOMBONES_HELADOS,
+  CategoriaTipo.SANDWICH_HELADO,
 ];
 
 const categoriaTiposPanaderia: CategoriaTipo[] = [
@@ -774,6 +839,16 @@ const categoriaTiposPanaderia: CategoriaTipo[] = [
   CategoriaTipo.BOLLERIA,
   CategoriaTipo.FOCACCIA,
   CategoriaTipo.QUEQUES,
+  CategoriaTipo.CROISSANTS,
+  CategoriaTipo.BAGUETTES,
+  CategoriaTipo.PAN_DE_MOLDE,
+  CategoriaTipo.PAN_DE_PITA,
+  CategoriaTipo.PAN_DE_CENTENO,
+  CategoriaTipo.PAN_DE_AVENA,
+  CategoriaTipo.PAN_DE_MAIZ,
+  CategoriaTipo.BRIOCHE,
+  CategoriaTipo.PRETZELS,
+  CategoriaTipo.MASA_MADRE,
   CategoriaTipo.DESAYUNOS,
 ];
 
@@ -790,6 +865,16 @@ const categoriaTiposEmbutidos: CategoriaTipo[] = [
   CategoriaTipo.CECINAS,
   CategoriaTipo.PATES,
   CategoriaTipo.FIAMBRES,
+  CategoriaTipo.CHISTORRA,
+  CategoriaTipo.MORCILLA,
+  CategoriaTipo.SALCHICHON,
+  CategoriaTipo.FUET,
+  CategoriaTipo.LOMO_EMBUCHADO,
+  CategoriaTipo.COPPA,
+  CategoriaTipo.PANCETA,
+  CategoriaTipo.TOCINO,
+  CategoriaTipo.JAMON_AHUMADO,
+  CategoriaTipo.SALAME_PICANTE,
 ];
 
 const categoriasPermitidasPorNegocio: Partial<Record<NegocioTipo, CategoriaTipo[]>> = {
@@ -801,6 +886,30 @@ const categoriasPermitidasPorNegocio: Partial<Record<NegocioTipo, CategoriaTipo[
   [NegocioTipo.HELADERIA]: categoriaTiposHeladeria,
   [NegocioTipo.PANADERIA]: categoriaTiposPanaderia,
   [NegocioTipo.EMBUTIDOS]: categoriaTiposEmbutidos,
+};
+
+const resolvePublicationBusinessTagFromCategories = (business: Business, categories: Category[]) => {
+  const normalizedTags = normalizeBusinessTypeTags(business.typeTags || []);
+  const primary = normalizeBusinessType(business.type);
+  if (primary && !normalizedTags.includes(primary)) {
+    normalizedTags.unshift(primary);
+  }
+  const candidateTags = normalizedTags.length ? normalizedTags : primary ? [primary] : [];
+  if (!candidateTags.length) {
+    throw new Error('No se pudo determinar el tipo de negocio para la publicación');
+  }
+  const categoryTypes = categories.map((category) => category.type).filter(Boolean);
+  const matchingTags = candidateTags.filter((tag) => {
+    const allowed = categoriasPermitidasPorNegocio[tag];
+    if (!allowed || !allowed.length) return false;
+    const allowedSet = new Set(allowed);
+    return categoryTypes.every((type) => allowedSet.has(type));
+  });
+  if (!matchingTags.length) {
+    throw new Error('Alguna categoría no es válida para el tipo de negocio');
+  }
+  if (primary && matchingTags.includes(primary)) return primary;
+  return matchingTags[0];
 };
 
 // ========================
@@ -1105,7 +1214,9 @@ router.post(
   authMiddleware,
   requireRole([RolUsuario.OFERENTE]),
   asyncHandler(async (req: AuthRequest, res) => {
-    const user = req.auth!.user!;
+    const requester = req.auth!;
+    const user = requester.user!;
+    const isAdmin = !!requester.isAdminGlobal;
     ensureUserReady(user, { requireTenant: false });
     const {
       name,
@@ -1158,6 +1269,25 @@ router.post(
 
     const tenantId = tenant?.id;
     if (!tenantId) throw new Error('No se pudo crear o asociar un tenant');
+
+    if (
+      !isAdmin &&
+      [
+        morningStart,
+        morningEnd,
+        afternoonStart,
+        afternoonEnd,
+        operatingDays,
+        holidayDates,
+        vacationRanges,
+        temporaryClosureActive,
+        temporaryClosureStart,
+        temporaryClosureEnd,
+        temporaryClosureMessage,
+      ].some((value) => value !== undefined)
+    ) {
+      await runWithContext({ tenantId }, (manager) => ensureReservationPlanActive(manager, user.id));
+    }
 
     const { primaryType, tags } = resolveBusinessTypeSelection(type, typeTags);
 
@@ -1460,6 +1590,11 @@ router.post(
     if (!isAdmin && business.ownerId !== user!.id) {
       return res.status(403).json({ message: 'No tienes permiso para este negocio' });
     }
+    if (!isAdmin) {
+      await runWithContext({ tenantId: business.tenantId }, (manager) =>
+        ensureReservationPlanActive(manager, user!.id)
+      );
+    }
 
     const label = String(req.body?.label || '').trim() || `Mesa ${Date.now()}`;
     const seats = parsePositiveInt(req.body?.seats, 1);
@@ -1499,6 +1634,11 @@ router.post(
     if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
     if (!isAdmin && business.ownerId !== user!.id) {
       return res.status(403).json({ message: 'No tienes permiso para este negocio' });
+    }
+    if (!isAdmin) {
+      await runWithContext({ tenantId: business.tenantId }, (manager) =>
+        ensureReservationPlanActive(manager, user!.id)
+      );
     }
 
     const count = parsePositiveInt(req.body?.count, 1);
@@ -1549,6 +1689,11 @@ router.put(
     if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
     if (!isAdmin && business.ownerId !== user!.id) {
       return res.status(403).json({ message: 'No tienes permiso para editar esta mesa' });
+    }
+    if (!isAdmin) {
+      await runWithContext({ tenantId: business.tenantId }, (manager) =>
+        ensureReservationPlanActive(manager, user!.id)
+      );
     }
 
     const updates: Partial<ReservationTable> = {};
@@ -1602,6 +1747,11 @@ router.delete(
     if (!isAdmin && business.ownerId !== user!.id) {
       return res.status(403).json({ message: 'No tienes permiso para eliminar esta mesa' });
     }
+    if (!isAdmin) {
+      await runWithContext({ tenantId: business.tenantId }, (manager) =>
+        ensureReservationPlanActive(manager, user!.id)
+      );
+    }
 
     try {
       await runWithContext({ tenantId: business.tenantId, isAdmin }, (manager) =>
@@ -1629,6 +1779,11 @@ router.get(
     if (!business) return res.status(404).json({ message: 'Negocio no encontrado' });
     if (!isAdmin && business.ownerId !== requester.user!.id) {
       return res.status(403).json({ message: 'No tienes permiso para ver estas reservas' });
+    }
+    if (!isAdmin) {
+      await runWithContext({ tenantId: business.tenantId }, (manager) =>
+        ensureReservationPlanActive(manager, requester.user!.id)
+      );
     }
 
     const list = await runWithContext({ tenantId: business.tenantId, isAdmin }, async (manager) => {
@@ -1915,6 +2070,11 @@ router.get(
     if (!isAdmin && business.ownerId !== requester.user!.id) {
       return res.status(403).json({ message: 'No tienes permiso para ver esta reserva' });
     }
+    if (!isAdmin) {
+      await runWithContext({ tenantId: business.tenantId }, (manager) =>
+        ensureReservationPlanActive(manager, requester.user!.id)
+      );
+    }
 
     let scanValid = false;
     let reservationStatus = reservation.status;
@@ -2114,15 +2274,22 @@ router.post(
         .findOne({ where: { id, tenantId, ownerId: user.id, status: NegocioEstado.ACTIVO } });
       if (!business) throw new Error('Negocio no encontrado o inactivo');
 
-      const resolvedBusinessTypeTag = resolvePublicationBusinessTag(business, businessTypeTag);
       const validCategoryIds: string[] = [];
-      if (categoryIds.length) {
-        const categories = await manager
-          .getRepository(Category)
-          .find({ where: { id: In(categoryIds as string[]), tenantId: business.tenantId } });
-        if (categories.length !== categoryIds.length) {
-          throw new Error('Alguna categoría no existe en este tenant');
-        }
+      const categories = categoryIds.length
+        ? await manager
+            .getRepository(Category)
+            .find({ where: { id: In(categoryIds as string[]), tenantId: business.tenantId } })
+        : [];
+      if (categoryIds.length && categories.length !== categoryIds.length) {
+        throw new Error('Alguna categoría no existe en este tenant');
+      }
+      const resolvedBusinessTypeTag =
+        businessTypeTag !== undefined && String(businessTypeTag || '').trim()
+          ? resolvePublicationBusinessTag(business, businessTypeTag)
+          : categories.length
+          ? resolvePublicationBusinessTagFromCategories(business, categories)
+          : resolvePublicationBusinessTag(business, business.type);
+      if (categories.length) {
         const allowedTypes = categoriasPermitidasPorNegocio[resolvedBusinessTypeTag];
         if (allowedTypes) {
           const allowedSet = new Set(allowedTypes);
@@ -2634,18 +2801,22 @@ router.put(
         throw new Error('No puedes editar esta publicación');
       }
 
-      const resolvedBusinessTypeTag = resolvePublicationBusinessTag(
-        business,
-        businessTypeTag !== undefined ? businessTypeTag : publication.businessTypeTag
-      );
       const validCategoryIds: string[] = [];
-      if (categoryIds.length) {
-        const categories = await manager
-          .getRepository(Category)
-          .find({ where: { id: In(categoryIds as string[]), tenantId: business.tenantId } });
-        if (categories.length !== categoryIds.length) {
-          throw new Error('Alguna categoría no existe en este tenant');
-        }
+      const categories = categoryIds.length
+        ? await manager
+            .getRepository(Category)
+            .find({ where: { id: In(categoryIds as string[]), tenantId: business.tenantId } })
+        : [];
+      if (categoryIds.length && categories.length !== categoryIds.length) {
+        throw new Error('Alguna categoría no existe en este tenant');
+      }
+      const resolvedBusinessTypeTag =
+        businessTypeTag !== undefined && String(businessTypeTag || '').trim()
+          ? resolvePublicationBusinessTag(business, businessTypeTag)
+          : categories.length
+          ? resolvePublicationBusinessTagFromCategories(business, categories)
+          : resolvePublicationBusinessTag(business, publication.businessTypeTag || business.type);
+      if (categories.length) {
         const allowedTypes = categoriasPermitidasPorNegocio[resolvedBusinessTypeTag];
         if (allowedTypes) {
           const allowedSet = new Set(allowedTypes);
@@ -3596,6 +3767,184 @@ router.post(
 
     await runWithContext({ isAdmin: true }, async (manager) => {
       const repo = manager.getRepository(AdPlanSubscription);
+      const existing = await repo.findOne({ where: { mpPreapprovalId: preapprovalId } });
+      if (!existing) return;
+      await repo.update(
+        { id: existing.id },
+        {
+          planCode,
+          status,
+          mpPlanId,
+          mpStatus,
+          startDate: startDate ?? existing.startDate,
+          endDate: endDate ?? existing.endDate,
+        }
+      );
+    });
+
+    res.json({ received: true });
+  })
+);
+
+router.get(
+  '/reservations/plan',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const user = req.auth?.user;
+    if (!user) return res.status(401).json({ message: 'No autenticado' });
+    ensureUserReady(user);
+    const tenantId = user.tenantId!;
+
+    const active = await runWithContext({ tenantId }, (manager) =>
+      fetchActiveReservationSubscription(manager, user.id)
+    );
+
+    if (!active) {
+      return res.json({ plan: null });
+    }
+
+    return res.json({
+      plan: {
+        id: active.id,
+        planId: reservationPlanCodeToClientId(active.planCode),
+        status: active.status,
+        startDate: active.startDate,
+        endDate: active.endDate,
+        mpStatus: active.mpStatus,
+      },
+    });
+  })
+);
+
+router.post(
+  '/reservations/plan/confirm',
+  authMiddleware,
+  requireRole([RolUsuario.OFERENTE]),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const user = req.auth?.user;
+    if (!user) return res.status(401).json({ message: 'No autenticado' });
+    ensureUserReady(user);
+    const tenantId = user.tenantId!;
+
+    const preapprovalId =
+      String(req.body?.preapprovalId || req.body?.preapproval_id || req.query?.preapproval_id || '').trim();
+    if (!preapprovalId) return res.status(400).json({ message: 'preapprovalId es obligatorio' });
+
+    const expectedMpPlanId = String(MP_PLAN_RESERVAS_ID || '');
+    if (!expectedMpPlanId) {
+      return res.status(500).json({ message: 'Plan de Mercado Pago no configurado' });
+    }
+
+    const mpData = await fetchMercadoPagoPreapproval(preapprovalId);
+    const mpPlanId = String(mpData.preapproval_plan_id || '');
+    if (!mpPlanId || mpPlanId !== expectedMpPlanId) {
+      return res.status(400).json({ message: 'El plan de Mercado Pago no coincide con la compra' });
+    }
+
+    const mpStatus = mpData.status ? String(mpData.status) : null;
+    const status = resolveReservationPlanStatus(mpStatus);
+    if (status !== ReservationPlanStatus.ACTIVA) {
+      return res.status(400).json({ message: 'La suscripción aún no aparece como activa' });
+    }
+
+    const startDate = parseOptionalDate(mpData.auto_recurring?.start_date) || parseOptionalDate(mpData.date_created);
+    const endDate = parseOptionalDate(mpData.auto_recurring?.end_date);
+
+    const saved = await runWithContext({ tenantId }, async (manager) => {
+      const repo = manager.getRepository(ReservationPlanSubscription);
+      const existingByPreapproval = await repo.findOne({ where: { mpPreapprovalId: preapprovalId } });
+      let currentId: string | null = null;
+
+      if (existingByPreapproval) {
+        await repo.update(
+          { id: existingByPreapproval.id },
+          {
+            planCode: ReservationPlanCode.RESERVAS,
+            status,
+            mpPlanId,
+            mpStatus,
+            startDate: startDate ?? existingByPreapproval.startDate,
+            endDate: endDate ?? existingByPreapproval.endDate,
+          }
+        );
+        currentId = existingByPreapproval.id;
+      } else {
+        const created = await repo.save(
+          repo.create({
+            tenantId,
+            userId: user.id,
+            planCode: ReservationPlanCode.RESERVAS,
+            status,
+            mpPreapprovalId: preapprovalId,
+            mpPlanId,
+            mpStatus,
+            startDate,
+            endDate,
+          })
+        );
+        currentId = created.id;
+      }
+
+      if (currentId) {
+        await repo
+          .createQueryBuilder()
+          .update()
+          .set({ status: ReservationPlanStatus.CANCELADA })
+          .where('usuario_id = :userId', { userId: user.id })
+          .andWhere('estado = :status', { status: ReservationPlanStatus.ACTIVA })
+          .andWhere('id <> :currentId', { currentId })
+          .execute();
+      }
+
+      const current = await repo.findOne({
+        where: { mpPreapprovalId: preapprovalId },
+      });
+      if (!current) throw new Error('No se pudo guardar la suscripción');
+      return current;
+    });
+
+    res.json({
+      plan: {
+        id: saved.id,
+        planId: reservationPlanCodeToClientId(saved.planCode),
+        status: saved.status,
+        startDate: saved.startDate,
+        endDate: saved.endDate,
+        mpStatus: saved.mpStatus,
+      },
+    });
+  })
+);
+
+router.post(
+  '/reservations/plan/webhook/mercadopago',
+  asyncHandler(async (req: AuthRequest, res) => {
+    const preapprovalId = String(req.body?.data?.id || req.body?.id || '').trim();
+    if (!preapprovalId) {
+      return res.json({ received: true });
+    }
+
+    let mpData: Record<string, any>;
+    try {
+      mpData = await fetchMercadoPagoPreapproval(preapprovalId);
+    } catch (err) {
+      return res.status(400).json({ message: (err as Error).message });
+    }
+
+    const mpPlanId = mpData.preapproval_plan_id ? String(mpData.preapproval_plan_id) : null;
+    const planCode = resolveReservationPlanCodeFromMpPlanId(mpPlanId);
+    if (!planCode) {
+      return res.json({ received: true });
+    }
+
+    const mpStatus = mpData.status ? String(mpData.status) : null;
+    const status = resolveReservationPlanStatus(mpStatus);
+    const startDate = parseOptionalDate(mpData.auto_recurring?.start_date) || parseOptionalDate(mpData.date_created);
+    const endDate = parseOptionalDate(mpData.auto_recurring?.end_date);
+
+    await runWithContext({ isAdmin: true }, async (manager) => {
+      const repo = manager.getRepository(ReservationPlanSubscription);
       const existing = await repo.findOne({ where: { mpPreapprovalId: preapprovalId } });
       if (!existing) return;
       await repo.update(

@@ -76,6 +76,11 @@ const MP_PLAN_DOMINIO_SUCCESS_PATH = normalizePathFromEnv(
   import.meta.env.VITE_MP_PLAN_DOMINIO_SUCCESS_PATH,
   '/PagoPlanDominio_exitoso'
 );
+const MP_RESERVAS_CHECKOUT_URL = import.meta.env.VITE_MP_RESERVAS_CHECKOUT_URL || '';
+const MP_RESERVAS_SUCCESS_PATH = normalizePathFromEnv(
+  import.meta.env.VITE_MP_RESERVAS_SUCCESS_PATH,
+  '/Pago_Sistema_De_Reservas_exito'
+);
 const placeholderImages = [pin1, pin2, pin3, pin4, pin5, pin6, pin7, pin8];
 const SESSION_LIKES_STORAGE_KEY = 'publicationLikesSession';
 const MAX_BUSINESS_LOGO_BYTES = 1024 * 1024;
@@ -705,6 +710,16 @@ const pasteleriaCategoryTypes = [
   'TARTAS',
   'TRUFAS',
   'MACARONS',
+  'ALFAJORES',
+  'DONAS',
+  'ECLAIRS',
+  'MIL_HOJAS',
+  'PROFITEROLES',
+  'MERENGUES',
+  'TIRAMISU',
+  'MOUSSE',
+  'PIE',
+  'BIZCOCHOS',
   'GALLETAS',
   'POSTRES',
 ];
@@ -718,6 +733,16 @@ const heladeriaCategoryTypes = [
   'CONOS',
   'TOPPINGS',
   'YOGURT_HELADO',
+  'GELATO',
+  'HELADO_SOFT',
+  'HELADO_VEGANO',
+  'HELADO_SIN_AZUCAR',
+  'HELADO_SIN_LACTOSA',
+  'COPAS_HELADAS',
+  'GRANIZADOS',
+  'BARQUILLOS',
+  'BOMBONES_HELADOS',
+  'SANDWICH_HELADO',
 ];
 
 const panaderiaCategoryTypes = [
@@ -728,6 +753,16 @@ const panaderiaCategoryTypes = [
   'BOLLERIA',
   'FOCACCIA',
   'QUEQUES',
+  'CROISSANTS',
+  'BAGUETTES',
+  'PAN_DE_MOLDE',
+  'PAN_DE_PITA',
+  'PAN_DE_CENTENO',
+  'PAN_DE_AVENA',
+  'PAN_DE_MAIZ',
+  'BRIOCHE',
+  'PRETZELS',
+  'MASA_MADRE',
   'DESAYUNOS',
 ];
 
@@ -744,6 +779,16 @@ const embutidosCategoryTypes = [
   'CECINAS',
   'PATES',
   'FIAMBRES',
+  'CHISTORRA',
+  'MORCILLA',
+  'SALCHICHON',
+  'FUET',
+  'LOMO_EMBUCHADO',
+  'COPPA',
+  'PANCETA',
+  'TOCINO',
+  'JAMON_AHUMADO',
+  'SALAME_PICANTE',
 ];
 
 const categoriesByBusinessType = {
@@ -1289,28 +1334,46 @@ const normalizeBusinessTypeList = (values = []) => {
 
 const resolveBusinessTypeSelection = (tags, primaryType) => {
   const normalizedTags = normalizeBusinessTypeList(tags);
-  let primary = normalizeBusinessType(primaryType);
-  if (!primary || !normalizedTags.includes(primary)) {
-    primary = normalizedTags[0] || defaultBusinessTypes[0];
+  const normalizedPrimary = normalizeBusinessType(primaryType);
+
+  if (normalizedPrimary) {
+    const finalTags = Array.from(new Set([normalizedPrimary, ...normalizedTags]));
+    return { primaryType: normalizedPrimary, tags: finalTags };
   }
-  const finalTags = normalizedTags.length ? normalizedTags : primary ? [primary] : [];
-  if (primary && !finalTags.includes(primary)) {
-    finalTags.unshift(primary);
+
+  if (normalizedTags.length) {
+    const primary = normalizedTags[0];
+    const finalTags = Array.from(new Set([primary, ...normalizedTags]));
+    return { primaryType: primary, tags: finalTags };
   }
-  return { primaryType: primary, tags: finalTags };
+
+  return { primaryType: '', tags: [] };
 };
 
 const toggleBusinessTypeTag = (tags, tag, primaryType) => {
   const normalizedTags = normalizeBusinessTypeList(tags);
   const normalizedTag = normalizeBusinessType(tag);
   if (!normalizedTag) return resolveBusinessTypeSelection(normalizedTags, primaryType);
+
   const next = new Set(normalizedTags);
-  if (next.has(normalizedTag)) {
+  const wasSelected = next.has(normalizedTag);
+  if (wasSelected) {
     next.delete(normalizedTag);
   } else {
     next.add(normalizedTag);
   }
-  return resolveBusinessTypeSelection(Array.from(next), primaryType || normalizedTag);
+
+  const nextTags = Array.from(next);
+  const normalizedPrimary = normalizeBusinessType(primaryType);
+  let nextPrimary = normalizedPrimary;
+
+  if (!normalizedPrimary && !wasSelected) {
+    nextPrimary = normalizedTag;
+  } else if (wasSelected && normalizedPrimary === normalizedTag) {
+    nextPrimary = nextTags[0] || '';
+  }
+
+  return resolveBusinessTypeSelection(nextTags, nextPrimary);
 };
 
 const getBusinessTypeTags = (business) => {
@@ -1607,6 +1670,10 @@ function App() {
   const [activeAdPlan, setActiveAdPlan] = useState(null);
   const [adPlanSuccessOpen, setAdPlanSuccessOpen] = useState(false);
   const [adPlanSuccessInfo, setAdPlanSuccessInfo] = useState(null);
+  const [activeReservationPlan, setActiveReservationPlan] = useState(null);
+  const [reservationPlanLoading, setReservationPlanLoading] = useState(false);
+  const [reservationPlanSuccessOpen, setReservationPlanSuccessOpen] = useState(false);
+  const [reservationPlanSuccessInfo, setReservationPlanSuccessInfo] = useState(null);
   const [clientCommentsByUser, setClientCommentsByUser] = useState(() =>
     readStorageJson(CLIENT_COMMENTS_STORAGE_KEY, {})
   );
@@ -1662,8 +1729,8 @@ function App() {
   const [categoryForm, setCategoryForm] = useState({ name: '', type: '', tenantId: '' });
   const [businessForm, setBusinessForm] = useState({
     name: '',
-    type: defaultBusinessTypes[0],
-    typeTags: [defaultBusinessTypes[0]],
+    type: '',
+    typeTags: [],
     description: '',
     address: '',
     city: '',
@@ -1681,7 +1748,6 @@ function App() {
     categoryIds: [],
     categoryTypes: [],
     businessId: '',
-    businessTypeTag: '',
     mediaUrl: '',
     mediaType: 'IMAGEN',
     precio: '',
@@ -1784,7 +1850,6 @@ function App() {
       categoryIds: [],
       categoryTypes: [],
       businessId: '',
-      businessTypeTag: '',
       mediaUrl: '',
       mediaType: 'IMAGEN',
       precio: '',
@@ -1809,6 +1874,8 @@ function App() {
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
   const isAdmin = currentUser?.role === 'admin';
   const isOferente = currentUser?.rol === 'OFERENTE';
+  const hasActiveReservationPlan = Boolean(activeReservationPlan);
+  const shouldBlockReservationPanel = isOferente && !isAdmin && !hasActiveReservationPlan && !reservationPlanLoading;
   const shouldShowPublicFeed = !isAdmin && !isOferente;
   const isAdPanelExpanded = adPanelOpen && !isAdPanelNarrow;
   const mpPlanReturnInfo = useMemo(() => {
@@ -1818,6 +1885,14 @@ function App() {
     if (!matchedPlan) return null;
     const params = new URLSearchParams(window.location.search);
     return { plan: matchedPlan, params };
+  }, []);
+  const reservationPlanReturnInfo = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    if (!MP_RESERVAS_SUCCESS_PATH) return null;
+    const path = window.location.pathname;
+    if (path !== MP_RESERVAS_SUCCESS_PATH) return null;
+    const params = new URLSearchParams(window.location.search);
+    return { params };
   }, []);
 
   const toggleAdPanel = () => {
@@ -1829,7 +1904,13 @@ function App() {
   };
 
   const notify = (variant, message) => {
-    setAlerts((prev) => [...prev, { id: crypto.randomUUID(), variant, message }]);
+    const text = typeof message === 'string' ? message.trim() : '';
+    if (!text) return;
+    if (variant === 'danger' && !token) {
+      const lowered = text.toLowerCase();
+      if (lowered.includes('falta token') || lowered.includes('no autenticado')) return;
+    }
+    setAlerts((prev) => [...prev, { id: crypto.randomUUID(), variant, message: text }]);
     setTimeout(() => setAlerts((prev) => prev.slice(1)), 4000);
   };
 
@@ -2067,6 +2148,18 @@ function App() {
       return;
     }
     window.location.href = plan.checkoutUrl;
+  };
+
+  const handleReservationPlanCheckout = () => {
+    if (!currentUser || currentUser.rol !== 'OFERENTE') {
+      notify('warning', 'Debes iniciar sesión como oferente para activar reservas.');
+      return;
+    }
+    if (!MP_RESERVAS_CHECKOUT_URL) {
+      notify('warning', 'No se encontró el link de Mercado Pago para la suscripción.');
+      return;
+    }
+    window.location.href = MP_RESERVAS_CHECKOUT_URL;
   };
 
   const handleReservationAdminAddTable = async () => {
@@ -2985,8 +3078,30 @@ function App() {
     }
   };
 
+  const loadActiveReservationPlan = async () => {
+    if (!currentUser?.id || currentUser?.rol !== 'OFERENTE') {
+      setActiveReservationPlan(null);
+      setReservationPlanLoading(false);
+      return;
+    }
+    setReservationPlanLoading(true);
+    try {
+      const data = await fetchJson('/reservations/plan', { headers: authHeaders });
+      setActiveReservationPlan(data?.plan || null);
+    } catch (err) {
+      setActiveReservationPlan(null);
+      notify('danger', err.message || 'No se pudo cargar la suscripción de reservas.');
+    } finally {
+      setReservationPlanLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadActiveAdPlan();
+  }, [currentUser, token]);
+
+  useEffect(() => {
+    loadActiveReservationPlan();
   }, [currentUser, token]);
 
   useEffect(() => {
@@ -3028,6 +3143,43 @@ function App() {
       cancelled = true;
     };
   }, [mpPlanReturnInfo, currentUser, token]);
+
+  useEffect(() => {
+    if (!reservationPlanReturnInfo) return undefined;
+    if (!currentUser?.id || currentUser?.rol !== 'OFERENTE') {
+      notify('warning', 'Inicia sesión como oferente para confirmar la suscripción.');
+      return undefined;
+    }
+    const preapprovalId = extractPreapprovalId(reservationPlanReturnInfo.params);
+    if (!preapprovalId) {
+      notify('warning', 'No encontramos el identificador de la suscripción.');
+      return undefined;
+    }
+    let cancelled = false;
+    const confirmPlan = async () => {
+      try {
+        const data = await fetchJson('/reservations/plan/confirm', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ preapprovalId }),
+        });
+        if (cancelled) return;
+        setActiveReservationPlan(data?.plan || null);
+        if (data?.plan) {
+          setReservationPlanSuccessInfo(data.plan);
+          setReservationPlanSuccessOpen(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          notify('danger', err.message || 'No se pudo confirmar la suscripción.');
+        }
+      }
+    };
+    confirmPlan();
+    return () => {
+      cancelled = true;
+    };
+  }, [reservationPlanReturnInfo, currentUser, token]);
 
   useEffect(() => {
     loadPublicTenants();
@@ -3129,11 +3281,11 @@ function App() {
   useEffect(() => {
     if (isOferente && !isAdmin && adminPanelTab === 'publicidad' && activeAdPlan) {
       loadAdRequests();
-      if (!loadingMyPublications && !myPublications.length) {
+      if (!myPublications.length) {
         loadMyPublications();
       }
     }
-  }, [isOferente, isAdmin, adminPanelTab, activeAdPlan?.id, loadingMyPublications, myPublications.length]);
+  }, [isOferente, isAdmin, adminPanelTab, activeAdPlan?.id]);
 
   useEffect(() => {
     loadAdminAds();
@@ -3155,11 +3307,14 @@ function App() {
   }, [currentUser, token]);
 
   useEffect(() => {
-    if (reservationAdminBusinessId) {
-      loadReservationTables(reservationAdminBusinessId, { force: true });
-      loadReservationAdminReservations(reservationAdminBusinessId);
+    if (!reservationAdminBusinessId) return;
+    if (isOferente && !isAdmin && !hasActiveReservationPlan) {
+      setReservationAdminReservations([]);
+      return;
     }
-  }, [reservationAdminBusinessId]);
+    loadReservationTables(reservationAdminBusinessId, { force: true });
+    loadReservationAdminReservations(reservationAdminBusinessId);
+  }, [reservationAdminBusinessId, isOferente, isAdmin, hasActiveReservationPlan]);
 
   useEffect(() => {
     if (reservationBusinessId && reservationOpen) {
@@ -3481,15 +3636,18 @@ function App() {
     () => getBusinessTypeTags(selectedBusinessForPublication),
     [selectedBusinessForPublication]
   );
-  const selectedBusinessTypeTag = publicationForm.businessTypeTag || selectedBusinessTypeTags[0] || '';
 
   const allowedCategoryTypesForBusiness = useMemo(() => {
-    const businessType = normalizeBusinessType(selectedBusinessTypeTag);
-    if (businessType && categoriesByBusinessType[businessType]) {
-      return categoriesByBusinessType[businessType];
-    }
-    return categoryTypes;
-  }, [selectedBusinessTypeTag, categoryTypes]);
+    const normalizedTags = (selectedBusinessTypeTags || [])
+      .map((tag) => normalizeBusinessType(tag))
+      .filter(Boolean);
+    const merged = [];
+    normalizedTags.forEach((tag) => {
+      const allowed = categoriesByBusinessType[tag] || [];
+      merged.push(...allowed);
+    });
+    return merged.length ? merged : categoryTypes;
+  }, [selectedBusinessTypeTags, categoryTypes]);
 
   const uniqueCategoryTypesForBusiness = useMemo(() => {
     const seen = new Set();
@@ -3512,15 +3670,15 @@ function App() {
     }
   }, [businessListForForms, publicationForm.businessId]);
 
+  const previousPublicationBusinessIdRef = useRef('');
   useEffect(() => {
-    if (!selectedBusinessForPublication) return;
-    const tags = selectedBusinessTypeTags;
-    const nextTag = tags.includes(publicationForm.businessTypeTag) ? publicationForm.businessTypeTag : tags[0] || '';
-    setPublicationForm((prev) => {
-      if (prev.businessTypeTag === nextTag) return prev;
-      return { ...prev, businessTypeTag: nextTag, categoryTypes: [], categoryIds: [] };
-    });
-  }, [selectedBusinessForPublication, selectedBusinessTypeTags, publicationForm.businessTypeTag]);
+    const currentBusinessId = selectedBusinessForPublication?.id ? String(selectedBusinessForPublication.id) : '';
+    if (!currentBusinessId) return;
+    if (previousPublicationBusinessIdRef.current && previousPublicationBusinessIdRef.current !== currentBusinessId) {
+      setPublicationForm((prev) => ({ ...prev, categoryTypes: [], categoryIds: [] }));
+    }
+    previousPublicationBusinessIdRef.current = currentBusinessId;
+  }, [selectedBusinessForPublication?.id]);
 
   useEffect(() => {
     const allowed = new Set((uniqueCategoryTypesForBusiness || []).map((t) => String(t)));
@@ -3825,8 +3983,8 @@ function App() {
       notify('success', 'Negocio creado');
       setBusinessForm({
         name: '',
-        type: defaultBusinessTypes[0],
-        typeTags: [defaultBusinessTypes[0]],
+        type: '',
+        typeTags: [],
         description: '',
         address: '',
         city: '',
@@ -3853,7 +4011,6 @@ function App() {
       (publication.categories || []).map((c) => c?.id || c).find(Boolean) ||
       '';
     const firstCategoryType = (publication.categories || []).map((c) => c?.type).find(Boolean) || '';
-    const publicationBusinessTypeTag = resolvePublicationBusinessTypeTag(publication);
     setPublicationForm({
       titulo: publication.titulo || '',
       contenido: publication.contenido || '',
@@ -3862,7 +4019,6 @@ function App() {
       categoryIds: firstCategoryId ? [String(firstCategoryId)] : [],
       categoryTypes: firstCategoryType ? [firstCategoryType] : [],
       businessId: publication.businessId || publication.business?.id || '',
-      businessTypeTag: publicationBusinessTypeTag,
       mediaUrl: publication.coverUrl || '',
       mediaType: publication.coverType || detectMediaTypeFromUrl(publication.coverUrl || ''),
       precio: publication.precio === null || publication.precio === undefined ? '' : publication.precio,
@@ -3980,7 +4136,6 @@ function App() {
           contenido: publicationForm.contenido,
           tipo: publicationForm.tipo,
           businessId,
-          businessTypeTag: publicationForm.businessTypeTag || undefined,
           categoryIds: categoryIdsToSend,
           fechaFinVigencia: publicationForm.fechaFinVigencia || undefined,
           mediaUrl: publicationForm.mediaUrl || undefined,
@@ -4893,6 +5048,9 @@ function App() {
     .filter(Boolean)
     .join(', ');
   const businessProfileImage = businessProfile?.imageUrl || businessProfile?.logoUrl || '';
+  const businessProfileTags = getBusinessTypeTags(businessProfile);
+  const businessProfilePrimaryType =
+    normalizeBusinessType(businessProfile?.type) || businessProfileTags[0] || '';
   const businessProfileAmenities = useMemo(() => {
     const raw = Array.isArray(businessProfile?.amenities) ? businessProfile.amenities : [];
     const lookup = new Map(
@@ -4978,10 +5136,24 @@ function App() {
                     <h4 className="text-xl font-semibold">{businessProfile?.name || 'Negocio'}</h4>
                   </div>
                 </div>
-                {getBusinessTypeTags(businessProfile).length > 0 && (
-                  <span className="rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground">
-                    {formatBusinessTypeTags(businessProfile)}
-                  </span>
+                {businessProfileTags.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-start gap-2">
+                    {businessProfileTags.map((tag) => {
+                      const isPrimary = tag === businessProfilePrimaryType;
+                      return (
+                        <span
+                          key={`business-tag-${tag}`}
+                          className={cn(
+                            'rounded-full border px-3 py-1 text-xs font-semibold',
+                            isPrimary ? 'border-rose-400 bg-rose-50 text-rose-700' : 'text-muted-foreground'
+                          )}
+                        >
+                          {humanizeCategoryType(tag)}
+                          {isPrimary && <span className="ml-2 text-[10px] uppercase tracking-wide">Principal</span>}
+                        </span>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
               <div className="mt-6 flex flex-col items-center text-center">
@@ -5400,7 +5572,7 @@ function App() {
                       </select>
                     </div>
                     <div className="md:col-span-2">
-                      <Label>Tipo principal</Label>
+                      <Label>Tipo de negocio principal</Label>
                       <select
                         className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                         value={businessProfileForm.type}
@@ -5410,7 +5582,9 @@ function App() {
                             return { ...prev, type: resolved.primaryType, typeTags: resolved.tags };
                           })
                         }
+                        required
                       >
+                        <option value="">Selecciona el tipo de negocio principal</option>
                         {defaultBusinessTypes.map((type) => (
                           <option key={`profile-type-${type}`} value={type}>
                             {humanizeCategoryType(type)}
@@ -6219,82 +6393,24 @@ function App() {
                           <Megaphone className="h-5 w-5" aria-hidden="true" />
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">Planes de publicidad</p>
-                          <h4 className="text-lg font-semibold">Elige el nivel de visibilidad de tu negocio</h4>
                           <p className="text-sm text-muted-foreground">
-                            Mientras más alto el plan, más presencia tendrás en la webapp.
+                            {activeAdPlan ? 'Plan de publicidad' : 'Planes de publicidad'}
                           </p>
+                          <h4 className="text-lg font-semibold">
+                            {activeAdPlan ? 'Plan activo' : 'Elige el nivel de visibilidad de tu negocio'}
+                          </h4>
+                          {!activeAdPlan && (
+                            <p className="text-sm text-muted-foreground">
+                              Mientras más alto el plan, más presencia tendrás en la webapp.
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-                        Precios en pesos chilenos (CLP)
-                      </div>
-                    </div>
-
-                    <div className="mt-5 grid gap-4 lg:grid-cols-3">
-                      {oferenteAdPlans.map((plan) => {
-                        const isActivePlan = activeAdPlan?.planId === plan.id;
-                        const hasCheckout = Boolean(plan.checkoutUrl);
-                        const buttonLabel = isActivePlan
-                          ? 'Plan activo'
-                          : hasCheckout
-                            ? 'Comprar'
-                            : 'No disponible';
-                        return (
-                          <div
-                            key={plan.id}
-                            className={cn(
-                              'relative flex h-full flex-col rounded-2xl border p-4 shadow-soft',
-                              plan.accentClass
-                            )}
-                          >
-                            {plan.badge || isActivePlan ? (
-                              <span className="absolute right-4 top-4 rounded-full bg-background/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground shadow-soft">
-                                {isActivePlan ? 'Plan activo' : plan.badge}
-                              </span>
-                            ) : null}
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Plan</p>
-                              <h5 className="text-lg font-semibold">{plan.name}</h5>
-                              <p className="text-sm text-muted-foreground">{plan.description}</p>
-                            </div>
-                          </div>
-                          <div className="mt-4">
-                            <p className="text-3xl font-semibold">$ {formatNumber(plan.price)}</p>
-                            <p className="text-xs text-muted-foreground">CLP / mes</p>
-                          </div>
-                          <div className="mt-4">
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>Nivel de presencia</span>
-                              <span>{plan.presenceLabel}</span>
-                            </div>
-                            <div className="mt-2 h-2 rounded-full bg-muted">
-                              <div className={cn('h-full rounded-full', plan.barClass)} style={{ width: `${plan.presence}%` }} />
-                            </div>
-                          </div>
-                          <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                            {plan.benefits.map((benefit) => (
-                              <li key={benefit} className="flex items-start gap-2">
-                                <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                                <span>{benefit}</span>
-                              </li>
-                            ))}
-                          </ul>
-                          <div className="mt-5">
-                            <Button
-                              type="button"
-                              variant={plan.buttonVariant}
-                              className="w-full"
-                              disabled={isActivePlan || !hasCheckout}
-                              onClick={() => handleAdPlanCheckout(plan)}
-                            >
-                              {buttonLabel}
-                            </Button>
-                          </div>
+                      {!activeAdPlan && (
+                        <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+                          Precios en pesos chilenos (CLP)
                         </div>
-                        );
-                      })}
+                      )}
                     </div>
 
                     {activeAdPlan ? (
@@ -6310,9 +6426,72 @@ function App() {
                         )}
                       </div>
                     ) : (
-                      <p className="mt-4 text-xs text-muted-foreground">
-                        Aún no tienes un plan activo. Selecciona uno para aumentar tu visibilidad.
-                      </p>
+                      <>
+                        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                          {oferenteAdPlans.map((plan) => {
+                            const isActivePlan = activeAdPlan?.planId === plan.id;
+                            const hasCheckout = Boolean(plan.checkoutUrl);
+                            const buttonLabel = hasCheckout ? 'Comprar' : 'No disponible';
+                            return (
+                              <div
+                                key={plan.id}
+                                className={cn(
+                                  'relative flex h-full flex-col rounded-2xl border p-4 shadow-soft',
+                                  plan.accentClass
+                                )}
+                              >
+                                {plan.badge ? (
+                                  <span className="absolute right-4 top-4 rounded-full bg-background/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground shadow-soft">
+                                    {plan.badge}
+                                  </span>
+                                ) : null}
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Plan</p>
+                                    <h5 className="text-lg font-semibold">{plan.name}</h5>
+                                    <p className="text-sm text-muted-foreground">{plan.description}</p>
+                                  </div>
+                                </div>
+                                <div className="mt-4">
+                                  <p className="text-3xl font-semibold">$ {formatNumber(plan.price)}</p>
+                                  <p className="text-xs text-muted-foreground">CLP / mes</p>
+                                </div>
+                                <div className="mt-4">
+                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>Nivel de presencia</span>
+                                    <span>{plan.presenceLabel}</span>
+                                  </div>
+                                  <div className="mt-2 h-2 rounded-full bg-muted">
+                                    <div className={cn('h-full rounded-full', plan.barClass)} style={{ width: `${plan.presence}%` }} />
+                                  </div>
+                                </div>
+                                <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+                                  {plan.benefits.map((benefit) => (
+                                    <li key={benefit} className="flex items-start gap-2">
+                                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                                      <span>{benefit}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                <div className="mt-5">
+                                  <Button
+                                    type="button"
+                                    variant={plan.buttonVariant}
+                                    className="w-full"
+                                    disabled={isActivePlan || !hasCheckout}
+                                    onClick={() => handleAdPlanCheckout(plan)}
+                                  >
+                                    {buttonLabel}
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-4 text-xs text-muted-foreground">
+                          Aún no tienes un plan activo. Selecciona uno para aumentar tu visibilidad.
+                        </p>
+                      </>
                     )}
 
                     {activeAdPlan && (
@@ -6500,22 +6679,57 @@ function App() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="reservas" className="mt-0 space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
-                    <CalendarDays className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Gestión de reservas</p>
-                    <h4 className="text-lg font-semibold">Mesas y disponibilidad</h4>
-                  </div>
-                </div>
-                {businessListForForms.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                    Necesitas crear un negocio antes de configurar mesas.
-                  </div>
-                ) : (
-                  <>
+              <TabsContent value="reservas" className="mt-0">
+                <div className={cn('relative space-y-4', shouldBlockReservationPanel && 'min-h-[60vh] sm:min-h-[70vh]')}>
+                  {shouldBlockReservationPanel && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-background/80 p-4 backdrop-blur">
+                      <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-5 shadow-hover">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                            <CreditCard className="h-5 w-5" aria-hidden="true" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Suscripción requerida
+                            </p>
+                            <h5 className="text-lg font-semibold">Activa el sistema de reservas</h5>
+                            <p className="text-sm text-muted-foreground">
+                              Para usar el sistema de Reservas como oferente debes pagar una suscripción mensual.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="danger" onClick={handleReservationPlanCheckout}>
+                            Pagar suscripción
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => setAdminPanelTab('perfil')}>
+                            Volver al panel
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    className={cn(
+                      'space-y-4',
+                      shouldBlockReservationPanel && 'pointer-events-none select-none opacity-40'
+                    )}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground shadow-soft">
+                        <CalendarDays className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Gestión de reservas</p>
+                        <h4 className="text-lg font-semibold">Mesas y disponibilidad</h4>
+                      </div>
+                    </div>
+                    {businessListForForms.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                        Necesitas crear un negocio antes de configurar mesas.
+                      </div>
+                    ) : (
+                      <>
                     <div className="rounded-xl border border-border bg-muted/30 p-4">
                       <Label>Negocio</Label>
                       <select
@@ -7116,6 +7330,8 @@ function App() {
                     </div>
                   </>
                 )}
+                  </div>
+                </div>
               </TabsContent>
 
             </Tabs>
@@ -7129,16 +7345,18 @@ function App() {
 
       {(isOferente || isAdmin) && (
         <>
-          <Button
-            size="lg"
-            className="fixed bottom-20 right-6 z-40 rounded-full px-6 shadow-soft hover:shadow-hover"
-            onClick={() => setReservationScanOpen(true)}
-            aria-label="Escanear reserva"
-            variant="outline"
-          >
-            Escanea reserva
-            <QrCode className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          {(isAdmin || hasActiveReservationPlan) && (
+            <Button
+              size="lg"
+              className="fixed bottom-20 right-6 z-40 rounded-full px-6 shadow-soft hover:shadow-hover"
+              onClick={() => setReservationScanOpen(true)}
+              aria-label="Escanear reserva"
+              variant="outline"
+            >
+              Escanea reserva
+              <QrCode className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
           <Button
             size="lg"
             className="fixed bottom-6 right-6 z-40 rounded-full px-6 shadow-soft hover:shadow-hover"
@@ -7763,6 +7981,44 @@ function App() {
       </Dialog>
 
       <Dialog
+        open={reservationPlanSuccessOpen}
+        onOpenChange={(open) => {
+          setReservationPlanSuccessOpen(open);
+          if (!open) setReservationPlanSuccessInfo(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <CheckCircle2 className="h-7 w-7" aria-hidden="true" />
+            </div>
+            <DialogTitle>¡Reservas activadas!</DialogTitle>
+            <DialogDescription>
+              La suscripción del sistema de reservas ya está activa.
+              {reservationPlanSuccessInfo?.startDate && (
+                <span className="mt-1 block">Activo desde {formatShortDate(reservationPlanSuccessInfo.startDate)}</span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => {
+                setAdminPanelTab('reservas');
+                setReservationPlanSuccessOpen(false);
+              }}
+            >
+              Ir a reservas
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setReservationPlanSuccessOpen(false)}>
+              Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={reservationAdminDetailOpen}
         onOpenChange={(open) => {
           setReservationAdminDetailOpen(open);
@@ -8294,30 +8550,6 @@ function App() {
                       ))}
                     </select>
                   </div>
-                  {selectedBusinessForPublication && selectedBusinessTypeTags.length > 1 && (
-                    <div>
-                      <Label>Etiqueta del negocio</Label>
-                      <select
-                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
-                        value={publicationForm.businessTypeTag}
-                        onChange={(e) =>
-                          setPublicationForm((prev) => ({
-                            ...prev,
-                            businessTypeTag: e.target.value,
-                            categoryTypes: [],
-                            categoryIds: [],
-                          }))
-                        }
-                        required
-                      >
-                        {selectedBusinessTypeTags.map((type) => (
-                          <option key={`pub-tag-${type}`} value={type}>
-                            {humanizeCategoryType(type)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                   <div className="md:col-span-2">
                     <Label>Contenido</Label>
                     <textarea
@@ -8464,7 +8696,7 @@ function App() {
                   <div className="md:col-span-2">
                     <Label>Categoría</Label>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Selecciona una única categoría permitida para esta etiqueta.
+                      Selecciona una única categoría disponible según las etiquetas del negocio.
                     </p>
                     {!selectedBusinessForPublication && (
                       <p className="mt-2 text-sm text-muted-foreground">
@@ -8525,7 +8757,7 @@ function App() {
                     />
                   </div>
                   <div>
-                    <Label>Tipo principal</Label>
+                    <Label>Tipo de negocio principal</Label>
                     <select
                       className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
                       value={businessForm.type}
@@ -8535,7 +8767,9 @@ function App() {
                           return { ...prev, type: resolved.primaryType, typeTags: resolved.tags };
                         })
                       }
+                      required
                     >
+                      <option value="">Selecciona el tipo de negocio principal</option>
                       {defaultBusinessTypes.map((type) => (
                         <option key={type} value={type}>
                           {humanizeCategoryType(type)}

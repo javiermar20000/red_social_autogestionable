@@ -21,6 +21,7 @@ DROP TABLE IF EXISTS reserva_mesa CASCADE;
 DROP TABLE IF EXISTS reserva CASCADE;
 DROP TABLE IF EXISTS solicitud_publicidad CASCADE;
 DROP TABLE IF EXISTS suscripcion_publicidad CASCADE;
+DROP TABLE IF EXISTS suscripcion_reservas CASCADE;
 DROP TABLE IF EXISTS mesa CASCADE;
 DROP TABLE IF EXISTS publicacion_categoria CASCADE;
 DROP TABLE IF EXISTS categoria CASCADE;
@@ -38,6 +39,8 @@ DROP TYPE IF EXISTS reserva_estado_enum CASCADE;
 DROP TYPE IF EXISTS reserva_horario_enum CASCADE;
 DROP TYPE IF EXISTS suscripcion_publicidad_estado_enum CASCADE;
 DROP TYPE IF EXISTS suscripcion_publicidad_plan_enum CASCADE;
+DROP TYPE IF EXISTS suscripcion_reservas_estado_enum CASCADE;
+DROP TYPE IF EXISTS suscripcion_reservas_plan_enum CASCADE;
 DROP TYPE IF EXISTS solicitud_publicidad_estado_enum CASCADE;
 DROP TYPE IF EXISTS mesa_estado_enum CASCADE;
 DROP TYPE IF EXISTS categoria_tipo_enum CASCADE;
@@ -195,6 +198,16 @@ CREATE TYPE categoria_tipo_enum AS ENUM (
   'TARTAS',
   'TRUFAS',
   'MACARONS',
+  'ALFAJORES',
+  'DONAS',
+  'ECLAIRS',
+  'MIL_HOJAS',
+  'PROFITEROLES',
+  'MERENGUES',
+  'TIRAMISU',
+  'MOUSSE',
+  'PIE',
+  'BIZCOCHOS',
   'PALETAS',
   'SUNDAES',
   'MILKSHAKES',
@@ -202,12 +215,32 @@ CREATE TYPE categoria_tipo_enum AS ENUM (
   'CONOS',
   'TOPPINGS',
   'YOGURT_HELADO',
+  'GELATO',
+  'HELADO_SOFT',
+  'HELADO_VEGANO',
+  'HELADO_SIN_AZUCAR',
+  'HELADO_SIN_LACTOSA',
+  'COPAS_HELADAS',
+  'GRANIZADOS',
+  'BARQUILLOS',
+  'BOMBONES_HELADOS',
+  'SANDWICH_HELADO',
   'PANES',
   'PAN_INTEGRAL',
   'PAN_ARTESANAL',
   'BOLLERIA',
   'FOCACCIA',
   'QUEQUES',
+  'CROISSANTS',
+  'BAGUETTES',
+  'PAN_DE_MOLDE',
+  'PAN_DE_PITA',
+  'PAN_DE_CENTENO',
+  'PAN_DE_AVENA',
+  'PAN_DE_MAIZ',
+  'BRIOCHE',
+  'PRETZELS',
+  'MASA_MADRE',
   -- Tipos de embutidos
   'JAMONES',
   'JAMON_SERRANO',
@@ -220,7 +253,17 @@ CREATE TYPE categoria_tipo_enum AS ENUM (
   'BUTIFARRAS',
   'CECINAS',
   'PATES',
-  'FIAMBRES'
+  'FIAMBRES',
+  'CHISTORRA',
+  'MORCILLA',
+  'SALCHICHON',
+  'FUET',
+  'LOMO_EMBUCHADO',
+  'COPPA',
+  'PANCETA',
+  'TOCINO',
+  'JAMON_AHUMADO',
+  'SALAME_PICANTE'
 );
 
 CREATE TYPE comentario_estado_enum AS ENUM (
@@ -255,6 +298,17 @@ CREATE TYPE suscripcion_publicidad_plan_enum AS ENUM (
 );
 
 CREATE TYPE suscripcion_publicidad_estado_enum AS ENUM (
+  'ACTIVA',
+  'PENDIENTE',
+  'CANCELADA',
+  'EXPIRADA'
+);
+
+CREATE TYPE suscripcion_reservas_plan_enum AS ENUM (
+  'RESERVAS'
+);
+
+CREATE TYPE suscripcion_reservas_estado_enum AS ENUM (
   'ACTIVA',
   'PENDIENTE',
   'CANCELADA',
@@ -446,6 +500,28 @@ CREATE TABLE suscripcion_publicidad (
     ON DELETE CASCADE
 );
 
+-- SUSCRIPCION RESERVAS
+CREATE TABLE suscripcion_reservas (
+  id                 BIGSERIAL PRIMARY KEY,
+  tenant_id          BIGINT NOT NULL,
+  usuario_id         BIGINT NOT NULL,
+  plan_codigo        suscripcion_reservas_plan_enum NOT NULL,
+  estado             suscripcion_reservas_estado_enum NOT NULL DEFAULT 'PENDIENTE',
+  mp_preapproval_id  VARCHAR(120),
+  mp_plan_id         VARCHAR(120),
+  mp_status          VARCHAR(50),
+  fecha_inicio       TIMESTAMP WITH TIME ZONE,
+  fecha_fin          TIMESTAMP WITH TIME ZONE,
+  fecha_creacion     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  fecha_actualizacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_suscripcion_reservas_tenant
+    FOREIGN KEY (tenant_id) REFERENCES tenant(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_suscripcion_reservas_usuario
+    FOREIGN KEY (usuario_id) REFERENCES usuario(id)
+    ON DELETE CASCADE
+);
+
 -- PUBLICACION
 CREATE TABLE publicacion (
   id                   BIGSERIAL PRIMARY KEY,
@@ -627,6 +703,11 @@ CREATE INDEX idx_suscripcion_publicidad_usuario_id ON suscripcion_publicidad (us
 CREATE UNIQUE INDEX uq_suscripcion_publicidad_mp_preapproval_id
   ON suscripcion_publicidad (mp_preapproval_id)
   WHERE mp_preapproval_id IS NOT NULL;
+CREATE INDEX idx_suscripcion_reservas_tenant_id ON suscripcion_reservas (tenant_id);
+CREATE INDEX idx_suscripcion_reservas_usuario_id ON suscripcion_reservas (usuario_id);
+CREATE UNIQUE INDEX uq_suscripcion_reservas_mp_preapproval_id
+  ON suscripcion_reservas (mp_preapproval_id)
+  WHERE mp_preapproval_id IS NOT NULL;
 CREATE INDEX idx_solicitud_publicidad_tenant_id ON solicitud_publicidad (tenant_id);
 CREATE INDEX idx_solicitud_publicidad_usuario_id ON solicitud_publicidad (usuario_id);
 CREATE INDEX idx_solicitud_publicidad_suscripcion_id ON solicitud_publicidad (suscripcion_id);
@@ -729,6 +810,7 @@ ALTER TABLE mesa                  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reserva               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reserva_mesa          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE suscripcion_publicidad ENABLE ROW LEVEL SECURITY;
+ALTER TABLE suscripcion_reservas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE solicitud_publicidad ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categoria             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE publicacion           ENABLE ROW LEVEL SECURITY;
@@ -961,7 +1043,34 @@ BEGIN
   END IF;
 END$$;
 
--- 4.4.1) solicitud_publicidad: por tenant
+-- 4.4.1) suscripcion_reservas: por tenant
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'suscripcion_reservas'
+  ) THEN
+    EXECUTE $pol$
+      CREATE POLICY suscripcion_reservas_tenant_isolation ON suscripcion_reservas
+      USING (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR (
+          current_setting('app.tenant_id', true) IS NOT NULL
+          AND tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      )
+      WITH CHECK (
+        COALESCE(current_setting('app.is_admin_global', true), 'false') = 'true'
+        OR (
+          current_setting('app.tenant_id', true) IS NOT NULL
+          AND tenant_id = current_setting('app.tenant_id')::BIGINT
+        )
+      );
+    $pol$;
+  END IF;
+END$$;
+
+-- 4.4.2) solicitud_publicidad: por tenant
 DO $$
 BEGIN
   IF NOT EXISTS (

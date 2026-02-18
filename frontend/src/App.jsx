@@ -2704,11 +2704,9 @@ function App() {
     }
     let cachedData = null;
     try {
-      const params = new URLSearchParams();
-      const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : selectedTenantId;
-      if (tenantParam) params.set('tenantId', tenantParam);
-      const query = params.toString();
-      const cacheKey = buildAdsCacheKey(query, tenantParam);
+      // Ads en el home público deben ser globales para evitar quedar limitados a un tenant guardado.
+      const query = '';
+      const cacheKey = buildAdsCacheKey(query, null);
       const cachedEntry = readCacheEntry(ADS_CACHE_STORAGE_KEY, cacheKey);
       cachedData = Array.isArray(cachedEntry?.data) ? cachedEntry.data : null;
       if (cachedData && cachedData.length) {
@@ -2719,7 +2717,7 @@ function App() {
         setAdPublications([]);
       }
       setLoadingAds(true);
-      const data = await fetchJson(`/feed/ads${query ? `?${query}` : ''}`, { headers: authHeaders });
+      const data = await fetchJson('/feed/ads', { headers: authHeaders, cache: 'no-store' });
       if (cachedData && cachedData.length) {
         await prefetchMediaAssets(data, { limit: ADS_MEDIA_PREFETCH_LIMIT });
       }
@@ -3864,10 +3862,14 @@ function App() {
       });
       setToken(data.token);
       localStorage.setItem('token', data.token);
+      const isAdminLogin = Boolean(data.admin);
       const user = data.admin ? { ...data.admin, role: 'admin' } : data.user;
       setCurrentUser(user);
       localStorage.setItem('user', JSON.stringify(user));
-      if (user?.tenantId) {
+      if (isAdminLogin) {
+        setSelectedTenantId('');
+        localStorage.removeItem('tenantId');
+      } else if (user?.tenantId) {
         setSelectedTenantId(String(user.tenantId));
         localStorage.setItem('tenantId', String(user.tenantId));
       }

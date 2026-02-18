@@ -176,6 +176,27 @@ const formatMinutesToTime = (minutes) => {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 };
 
+const createSeededRng = (seed) => {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+const shuffleWithSeed = (items, seed) => {
+  if (!Array.isArray(items) || items.length < 2) return items;
+  const rng = createSeededRng(seed);
+  const copy = items.slice();
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const normalizeDateValue = (value) => {
@@ -1636,6 +1657,7 @@ function App() {
   const currentYear = new Date().getFullYear();
   const publicFeedRef = useRef(null);
   const feedCacheKeyRef = useRef('');
+  const feedShuffleSeedRef = useRef(Math.floor(Math.random() * 1_000_000_000));
   const adsCacheKeyRef = useRef('');
   const reservationScanVideoRef = useRef(null);
   const reservationScannerRef = useRef(null);
@@ -4547,6 +4569,27 @@ function App() {
     [adPublications, categories, businesses]
   );
 
+  const shouldRandomizePublicFeed = useMemo(() => {
+    if (!shouldShowPublicFeed) return false;
+    const isDefault =
+      filters.search === defaultFilters.search &&
+      filters.categoryId === defaultFilters.categoryId &&
+      filters.businessId === defaultFilters.businessId &&
+      filters.businessType === defaultFilters.businessType &&
+      filters.publicationType === defaultFilters.publicationType &&
+      filters.region === defaultFilters.region &&
+      filters.city === defaultFilters.city &&
+      (!filters.amenities || filters.amenities.length === 0) &&
+      filters.sortBy === defaultFilters.sortBy &&
+      filters.sortDir === defaultFilters.sortDir;
+    return isDefault && !topHeartsMode;
+  }, [shouldShowPublicFeed, filters, topHeartsMode]);
+
+  const randomizedPublicFeed = useMemo(() => {
+    if (!shouldRandomizePublicFeed) return feedWithDecorations;
+    return shuffleWithSeed(feedWithDecorations, feedShuffleSeedRef.current);
+  }, [feedWithDecorations, shouldRandomizePublicFeed]);
+
   const adminAdsWithDecorations = useMemo(() => {
     const decorated = decoratePublicationList(adminAdPublications);
     return decorated.sort((a, b) => Number(Boolean(b.esPublicidad)) - Number(Boolean(a.esPublicidad)));
@@ -4922,7 +4965,7 @@ function App() {
   }, [filters.businessType, categoryTypes, categories]);
 
   const filteredPublicFeed = useMemo(() => {
-    let list = feedWithDecorations;
+    let list = randomizedPublicFeed;
     const categoryIdsToMatch = resolveCategoryIdsForFilter(filters.categoryId);
     if (categoryIdsToMatch.length) {
       const targets = categoryIdsToMatch.map(String);
@@ -4979,7 +5022,7 @@ function App() {
       });
     }
     return topHeartsMode ? sorted.slice(0, 100) : sorted;
-  }, [feedWithDecorations, filters, derivedCategories, categories, topHeartsMode]);
+  }, [randomizedPublicFeed, filters, derivedCategories, categories, topHeartsMode]);
 
   const feedFilterKey = useMemo(
     () =>

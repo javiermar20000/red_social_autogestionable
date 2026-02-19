@@ -740,6 +740,7 @@ const categoriaTiposComida: CategoriaTipo[] = [
   CategoriaTipo.ENSALADAS,
   CategoriaTipo.MARISCOS,
   CategoriaTipo.PARRILLAS,
+  CategoriaTipo.CARNES,
   CategoriaTipo.SOPAS,
   CategoriaTipo.VEGANA,
   CategoriaTipo.VEGETARIANA,

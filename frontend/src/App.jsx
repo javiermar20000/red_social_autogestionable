@@ -675,6 +675,7 @@ const foodCategoryTypes = [
   'ENSALADAS',
   'MARISCOS',
   'PARRILLAS',
+  'CARNES',
   'SOPAS',
   'VEGANA',
   'VEGETARIANA',

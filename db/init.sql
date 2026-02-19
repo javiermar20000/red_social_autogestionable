@@ -152,6 +152,7 @@ CREATE TYPE categoria_tipo_enum AS ENUM (
   'ENSALADAS',
   'MARISCOS',
   'PARRILLAS',
+  'CARNES',
   'SOPAS',
   'VEGANA',
   'VEGETARIANA',

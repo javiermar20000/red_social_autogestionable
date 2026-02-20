@@ -2687,7 +2687,8 @@ function App() {
     if (filters.businessId) params.set('businessId', filters.businessId);
     const canUseMineFeed = currentUser?.rol === 'OFERENTE' && Boolean(selectedTenantId || currentUser?.tenantId);
     if (canUseMineFeed) params.set('mine', 'true');
-    const tenantParam = currentUser ? selectedTenantId || currentUser?.tenantId : '';
+    const shouldScopeFeedByTenant = !shouldShowPublicFeed && Boolean(selectedTenantId || currentUser?.tenantId);
+    const tenantParam = shouldScopeFeedByTenant ? selectedTenantId || currentUser?.tenantId : '';
     if (tenantParam) params.set('tenantId', tenantParam);
     const query = params.toString();
     const cacheKey = buildFeedCacheKey(query);

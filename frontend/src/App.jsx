@@ -104,6 +104,11 @@ const FEED_PAGE_STEP = 5;
 const BUSINESS_PROFILE_PAGE_INITIAL = 20;
 const BUSINESS_PROFILE_PAGE_STEP = 5;
 const PUBLICATION_EXTRAS_LIMIT = 4;
+const SUPPRESSED_ALERT_MESSAGES = [
+  'debes tener un tenant asignado',
+  'tenantid es requerido',
+  'tenantid es obligatorio',
+];
 const TABLE_STATUS_OPTIONS = [
   {
     value: 'DISPONIBLE',
@@ -1929,8 +1934,9 @@ function App() {
   const notify = (variant, message) => {
     const text = typeof message === 'string' ? message.trim() : '';
     if (!text) return;
+    const lowered = text.toLowerCase();
+    if (SUPPRESSED_ALERT_MESSAGES.some((entry) => lowered.includes(entry))) return;
     if (variant === 'danger' && !token) {
-      const lowered = text.toLowerCase();
       if (lowered.includes('falta token') || lowered.includes('no autenticado')) return;
     }
     setAlerts((prev) => [...prev, { id: crypto.randomUUID(), variant, message: text }]);

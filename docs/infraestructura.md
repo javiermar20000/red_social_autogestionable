@@ -2,11 +2,11 @@
 
 ## Docker Compose
 El proyecto incluye `docker-compose.yml` con los siguientes servicios:
-- `db`: PostgreSQL 15 (puerto 5432 en host).
-- `db-init`: crea la base si falta y restaura desde el ultimo backup o `db/init.sql`.
-- `db-backup`: backups periodicos con `pg_dump` en un volumen separado.
-- `redis`: Redis 7.2 (puerto 6379 en host).
-- `backend`: Node/Express (con variables desde `.env`).
+- `db`: PostgreSQL 15.
+- `db-init`: inicializa la base desde `db/init.sql` o desde el ultimo backup.
+- `db-backup`: backups periodicos con `pg_dump`.
+- `redis`: Redis 7.2.
+- `backend`: API Express.
 - `frontend`: Nginx sirviendo el build de Vite y haciendo proxy a `/api`.
 
 ## Puertos
@@ -14,11 +14,25 @@ El proyecto incluye `docker-compose.yml` con los siguientes servicios:
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
 
-## Nginx (frontend)
+## Nginx
 - Configuracion en `frontend/nginx.conf`.
-- Hace proxy interno de `/api` hacia `backend:4000` dentro de la red Docker.
+- Proxy interno `/api` hacia `backend:4000`.
+- Fallback SPA hacia `index.html`.
 
-## Levantar servicios
+## Volumenes
+- `pgdata`: datos de PostgreSQL.
+- `pgbackups`: backups comprimidos.
+
+## Backups
+- `db-backup` ejecuta `pg_dump` cada `BACKUP_INTERVAL_SECONDS`.
+- `BACKUP_RETENTION` controla la cantidad de archivos.
+- `db-init` restaura desde `latest.sql.gz` si existe.
+
+## Variables de entorno infra
+- `PGDATA_VOLUME_NAME`, `PGBACKUP_VOLUME_NAME`.
+- `BACKUP_INTERVAL_SECONDS`, `BACKUP_RETENTION`.
+
+## Comandos principales
 ```bash
 cp .env.example .env
 npm install --prefix backend
@@ -28,9 +42,4 @@ docker compose up --build
 
 ## Notas
 - El backend no expone puerto al host en Docker; se accede via Nginx.
-- Si cambias el host/puerto del frontend, ajusta `FRONTEND_ORIGIN` en `.env`.
-- Persistencia: por defecto el volumen es `red_social_autogestionable_pgdata` (nombre estándar de Compose). Para fijar un nombre estable entre re-deploys, define `PGDATA_VOLUME_NAME=red_social_pgdata` en `.env`.
-- Backups: se guardan en un volumen aparte `red_social_autogestionable_pgbackups` (configurable con `PGBACKUP_VOLUME_NAME`).
-- Retencion/intervalo: configura `BACKUP_RETENTION` y `BACKUP_INTERVAL_SECONDS` en `.env`.
-- No uses `docker compose down -v` ni borres el volumen si quieres conservar datos.
-- En producción, usa un volumen externo o una base de datos gestionada para evitar pérdida de datos por reinicios/redeploy.
+- Evita `docker compose down -v` si necesitas conservar datos.

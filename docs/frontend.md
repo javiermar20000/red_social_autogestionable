@@ -1,30 +1,63 @@
 # Frontend
 
 ## Resumen
-Aplicacion web en React 18 + Vite 5. El UI utiliza componentes propios (PinCards, dialogs y grilla tipo masonry) y consume la API via `VITE_API_URL` (por defecto `/api`). Se usa Tailwind y Bootstrap para estilos.
+Aplicacion web en React 18 con Vite. La UI es una SPA con modales y paneles que consumen la API REST. Se utiliza Tailwind y Bootstrap para estilos, Leaflet para mapas y librerias de QR para reservas.
 
 ## Estructura relevante
 - `frontend/src/main.jsx`: punto de entrada.
-- `frontend/src/App.jsx`: orquestacion de vistas, estado global y llamadas a la API.
-- `frontend/src/components/`: componentes UI (Header, PinCard, PinDetailDialog, AuthDialog, ExploreDialog, AdPanel, MasonryGrid).
-- `frontend/src/styles.css`: estilos base y configuracion Tailwind.
+- `frontend/src/App.jsx`: estado global, fetch de datos y orquestacion de vistas.
+- `frontend/src/components/`: componentes UI y dialogos.
+- `frontend/src/components/ui/`: componentes base.
+- `frontend/public/`: manifest, service worker y assetlinks.
 
-## Variables de entorno (ver `.env.example`)
-- `VITE_API_URL`: base URL de la API (en Docker se usa `/api`).
-- `VITE_API_PROXY_TARGET`: objetivo del proxy en dev local.
-- `VITE_USE_HTTPS`, `VITE_HTTPS_KEY`, `VITE_HTTPS_CERT`: soporte HTTPS local.
+## Componentes clave
+- `Header`: navegación y acciones rapidas.
+- `MasonryGrid`: layout del feed.
+- `PinCard` y `PinDetailDialog`: tarjetas y detalle de publicaciones.
+- `AdPanel`: panel de anuncios patrocinados.
+- `BusinessMap` y `BusinessLocationPicker`: mapas y geocodificacion.
+- `AuthDialog` y `ExploreDialog`: login, registro y exploracion.
 
 ## Estado y almacenamiento local
-- Token JWT y usuario se guardan en `localStorage` (`token`, `user`, `tenantId`).
-- Cache de feed y anuncios en `localStorage` para mejorar tiempos de carga.
+- `localStorage` guarda token y usuario (`token`, `user`, `tenantId`).
+- Cache de feed y ads en `localStorage` para reducir requests.
+- Likes y guardados del usuario se almacenan localmente.
 
 ## Flujos principales
-- Autenticacion (login/registro) y persistencia de sesion.
-- Feed publico y por tenant, con filtros por categoria/negocio.
-- Publicaciones con detalle en `PinDetailDialog`.
-- Paneles de oferente/admin para crear y moderar publicaciones.
+- Autenticacion y persistencia de sesion.
+- Feed publico, feed por tenant y filtros por categoria o negocio.
+- Creacion y edicion de publicaciones por oferentes.
+- Moderacion de publicaciones por admin global.
+- Reservas de mesas con QR y validacion en el panel del negocio.
+- Suscripciones de publicidad y planes de reservas.
 
-## Pendientes funcionales (roadmap)
-- Conversaciones dentro de PinCards.
-- Calificacion de alimentos por usuarios.
-- Reservas con cobros integrados para asistir a un lugar especifico.
+## Mapas y geolocalizacion
+- Leaflet muestra mapas con tiles de OpenStreetMap.
+- Nominatim se usa para geocodificar direcciones.
+- OSRM se usa para calcular rutas y distancias.
+
+## PWA y offline
+- `manifest.webmanifest` define instalacion como PWA.
+- `sw.js` cachea imagenes y el feed publico.
+- `assetlinks.json` habilita TWA en Android.
+
+## Variables de entorno
+- `VITE_API_URL`: base URL de la API.
+- `VITE_API_PROXY_TARGET`: proxy en desarrollo local.
+- `VITE_USE_HTTPS`, `VITE_HTTPS_KEY`, `VITE_HTTPS_CERT`: HTTPS local.
+- `VITE_MP_PLAN_*_CHECKOUT_URL`: URLs de checkout Mercado Pago.
+- `VITE_MP_PLAN_*_SUCCESS_PATH`: rutas de retorno tras pago.
+- `VITE_MP_RESERVAS_CHECKOUT_URL`, `VITE_MP_RESERVAS_SUCCESS_PATH`.
+
+## Diagrama de flujo UI
+```mermaid
+flowchart LR
+  App[App.jsx] --> Feed[Feed + MasonryGrid]
+  App --> Detail[PinDetailDialog]
+  App --> Admin[Panel admin]
+  App --> Oferente[Panel oferente]
+  Feed --> API[API /api]
+  Detail --> API
+  Admin --> API
+  Oferente --> API
+```

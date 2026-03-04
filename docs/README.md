@@ -1,12 +1,18 @@
 # Documentacion tecnica
 
-Este directorio reúne la documentacion del proyecto por apartado tecnico.
+Este directorio reúne la documentacion del proyecto Match Coffee.
 
-Archivos:
-- backend.md: API, autenticacion, multi-tenant (RLS) y endpoints principales.
-- frontend.md: UI React/Vite, PinCards, flujos principales y variables de entorno.
-- base-de-datos.md: modelo, tablas y politicas RLS.
-- infraestructura.md: Docker Compose, servicios y puertos.
-- android-twa.md: guia para generar APK con TWA/Bubblewrap.
-- Informe_Practica.md: estructura del informe de practica (avance/final).
-- Informe_Practica.docx: version en Word del informe.
+Archivos recomendados:
+- `vision.md`: proposito, objetivos y alcance.
+- `arquitectura.md`: vista general y decisiones tecnicas.
+- `diagramas.md`: diagramas UML y de arquitectura en Mermaid.
+- `ejecucion.md`: comandos de ejecucion y operacion.
+- `backend.md`: API, autenticacion, RLS y endpoints principales.
+- `frontend.md`: UI React/Vite, flujos y PWA.
+- `base-de-datos.md`: modelo, tablas, RLS y ER.
+- `infraestructura.md`: Docker Compose, servicios y backups.
+- `android-twa.md`: guia para generar APK con TWA/Bubblewrap.
+
+Otros archivos:
+- `Informe_Practica.md`: estructura del informe de practica.
+- `Informe_Practica.docx`: version en Word del informe.

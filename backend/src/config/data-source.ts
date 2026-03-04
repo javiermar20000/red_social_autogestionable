@@ -1,0 +1,56 @@
+import 'reflect-metadata';
+import { DataSource } from 'typeorm';
+import { User } from '../entities/User.js';
+import { Business } from '../entities/Business.js';
+import { Category } from '../entities/Category.js';
+import { Tenant } from '../entities/Tenant.js';
+import { Publication } from '../entities/Publication.js';
+import { Media } from '../entities/Media.js';
+import { PublicationCategory } from '../entities/PublicationCategory.js';
+import { PublicationReview } from '../entities/PublicationReview.js';
+import { AdminGlobal } from '../entities/AdminGlobal.js';
+import { Comment } from '../entities/Comment.js';
+import { ReservationTable } from '../entities/ReservationTable.js';
+import { Reservation } from '../entities/Reservation.js';
+import { ReservationTableLink } from '../entities/ReservationTableLink.js';
+import { AdPlanSubscription } from '../entities/AdPlanSubscription.js';
+import { AdPublicationRequest } from '../entities/AdPublicationRequest.js';
+import { ReservationPlanSubscription } from '../entities/ReservationPlanSubscription.js';
+
+const {
+  DB_HOST = 'db',
+  DB_PORT = '5432',
+  DB_USER = 'postgres',
+  DB_PASSWORD = 'postgres',
+  DB_NAME = 'red_social',
+} = process.env;
+
+export const AppDataSource = new DataSource({
+  type: 'postgres',
+  host: DB_HOST,
+  port: parseInt(DB_PORT, 10),
+  username: DB_USER,
+  password: DB_PASSWORD,
+  database: DB_NAME,
+  schema: 'public',
+  entities: [
+    AdminGlobal,
+    User,
+    Tenant,
+    Business,
+    Category,
+    Publication,
+    Media,
+    PublicationCategory,
+    PublicationReview,
+    Comment,
+    ReservationTable,
+    Reservation,
+    ReservationTableLink,
+    AdPlanSubscription,
+    AdPublicationRequest,
+    ReservationPlanSubscription,
+  ],
+  synchronize: false,
+  logging: false,
+});

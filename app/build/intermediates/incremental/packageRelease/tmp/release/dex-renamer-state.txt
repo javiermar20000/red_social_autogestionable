@@ -1,0 +1,4 @@
+#Tue Jan 27 12:08:53 CLST 2026
+base.0=/home/javiermar2000/Documentos/Practica_1/red_social_autogestionable/app/build/intermediates/dex/release/minifyReleaseWithR8/classes.dex
+renamed.0=classes.dex
+path.0=classes.dex

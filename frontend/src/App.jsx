@@ -1304,6 +1304,24 @@ const businessAmenityOptions = [
   { value: 'CYBER', label: 'Cyber' },
   { value: 'ENCHUFES', label: 'Enchufes para cargar dispositivos' },
 ];
+const businessTypeSearchAliases = {
+  RESTAURANTE: ['restaurante', 'restaurant', 'resto'],
+  CAFETERIA: ['cafeteria', 'cafe', 'coffee'],
+  FOODTRUCK: ['foodtruck', 'food truck', 'carro de comida', 'camion de comida'],
+  BAR: ['bar', 'pub', 'cerveceria'],
+  PASTELERIA: ['pasteleria', 'pasteles', 'tortas'],
+  HELADERIA: ['heladeria', 'helados', 'gelato'],
+  PANADERIA: ['panaderia', 'pan'],
+  EMBUTIDOS: ['embutidos', 'cecinas', 'fiambres'],
+};
+const amenitySearchAliases = {
+  PET_FRIENDLY: ['pet friendly', 'petfriendly', 'mascotas', 'mascota', 'dog friendly'],
+  TERRAZA: ['terraza', 'al aire libre', 'patio', 'exterior'],
+  AREA_FUMADORES: ['fumadores', 'fumar', 'smoking'],
+  SALA_REUNIONES: ['sala de reuniones', 'sala reuniones', 'reuniones', 'cowork'],
+  CYBER: ['cyber', 'internet', 'computador', 'computadores'],
+  ENCHUFES: ['enchufe', 'enchufes', 'tomacorriente', 'cargar'],
+};
 
 const sanitizeSessionLikes = (raw) => {
   if (!raw || typeof raw !== 'object') return {};
@@ -1443,6 +1461,260 @@ const normalizeSearchValue = (value = '') =>
 
 const normalizeLocationValue = (value = '') => String(value || '').trim().toLowerCase();
 const normalizeAmenityValue = (value = '') => String(value || '').trim().toUpperCase();
+const normalizeAmenityList = (values = []) => {
+  const list = Array.isArray(values) ? values : typeof values === 'string' ? values.split(',') : [values];
+  return Array.from(new Set(list.map((value) => normalizeAmenityValue(value)).filter(Boolean)));
+};
+const escapeRegExp = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const stripTermFromSearch = (source = '', term = '') => {
+  const normalizedTerm = normalizeSearchValue(term);
+  if (!normalizedTerm) return { matched: false, value: source };
+  const escaped = escapeRegExp(normalizedTerm).replace(/\s+/g, '\\s+');
+  const regex = new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, 'ig');
+  if (!regex.test(source)) return { matched: false, value: source };
+  regex.lastIndex = 0;
+  const value = source.replace(regex, ' ').replace(/\s+/g, ' ').trim();
+  return { matched: true, value };
+};
+const parseSearchPriceNumber = (value = '') => {
+  const cleaned = String(value || '').replace(/[^0-9.,-]/g, '').trim();
+  if (!cleaned) return null;
+  const normalized = cleaned.replace(/\./g, '').replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const parsePublicationSearchQuery = (value = '') => {
+  const normalized = normalizeSearchValue(value);
+  if (!normalized) {
+    return {
+      raw: '',
+      textTerms: [],
+      businessTypes: [],
+      amenities: [],
+      minPrice: null,
+      maxPrice: null,
+      exactPrice: null,
+      hasPriceFilter: false,
+      backendSearch: '',
+      hasFilters: false,
+    };
+  }
+
+  let remainder = normalized;
+  const businessTypes = new Set();
+  const amenities = new Set();
+
+  const consumeAliasDictionary = (dictionary, collector) => {
+    Object.entries(dictionary).forEach(([key, aliases]) => {
+      const terms = Array.from(
+        new Set([key, humanizeCategoryType(key), ...(Array.isArray(aliases) ? aliases : [])].filter(Boolean))
+      );
+      terms.forEach((term) => {
+        const result = stripTermFromSearch(remainder, term);
+        if (!result.matched) return;
+        collector.add(key);
+        remainder = result.value;
+      });
+    });
+  };
+
+  consumeAliasDictionary(businessTypeSearchAliases, businessTypes);
+  consumeAliasDictionary(amenitySearchAliases, amenities);
+
+  let minPrice = null;
+  let maxPrice = null;
+  let exactPrice = null;
+
+  const consumePattern = (pattern, onMatch) => {
+    const match = remainder.match(pattern);
+    if (!match) return false;
+    onMatch(match);
+    remainder = remainder.replace(pattern, ' ');
+    return true;
+  };
+
+  consumePattern(/(?:precio\s+)?entre\s+\$?\s*([\d.,]+)\s*(?:y|-)\s*\$?\s*([\d.,]+)/i, (match) => {
+    const first = parseSearchPriceNumber(match[1]);
+    const second = parseSearchPriceNumber(match[2]);
+    if (first === null || second === null) return;
+    minPrice = Math.min(first, second);
+    maxPrice = Math.max(first, second);
+  });
+
+  const comparisonPattern = /precio\s*(<=|=<|<|>=|=>|>)\s*\$?\s*([\d.,]+)/gi;
+  let comparisonMatched = false;
+  let comparisonMatch = comparisonPattern.exec(remainder);
+  while (comparisonMatch) {
+    const operator = comparisonMatch[1];
+    const parsedValue = parseSearchPriceNumber(comparisonMatch[2]);
+    if (parsedValue !== null) {
+      if (operator === '<' || operator === '<=' || operator === '=<') {
+        maxPrice = maxPrice === null ? parsedValue : Math.min(maxPrice, parsedValue);
+      } else {
+        minPrice = minPrice === null ? parsedValue : Math.max(minPrice, parsedValue);
+      }
+      comparisonMatched = true;
+    }
+    comparisonMatch = comparisonPattern.exec(remainder);
+  }
+  if (comparisonMatched) {
+    remainder = remainder.replace(comparisonPattern, ' ');
+  }
+
+  consumePattern(/(?:precio\s*(?:max(?:imo)?|hasta)|max(?:imo)?|hasta)\s*\$?\s*([\d.,]+)/i, (match) => {
+    const parsedValue = parseSearchPriceNumber(match[1]);
+    if (parsedValue === null) return;
+    maxPrice = maxPrice === null ? parsedValue : Math.min(maxPrice, parsedValue);
+  });
+
+  consumePattern(/(?:precio\s*(?:min(?:imo)?|desde)|min(?:imo)?|desde)\s*\$?\s*([\d.,]+)/i, (match) => {
+    const parsedValue = parseSearchPriceNumber(match[1]);
+    if (parsedValue === null) return;
+    minPrice = minPrice === null ? parsedValue : Math.max(minPrice, parsedValue);
+  });
+
+  consumePattern(/precio\s*(?:=|:)?\s*\$?\s*([\d.,]+)/i, (match) => {
+    const parsedValue = parseSearchPriceNumber(match[1]);
+    if (parsedValue === null) return;
+    exactPrice = parsedValue;
+  });
+
+  if (exactPrice !== null) {
+    minPrice = exactPrice;
+    maxPrice = exactPrice;
+  }
+
+  if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) {
+    const min = Math.min(minPrice, maxPrice);
+    const max = Math.max(minPrice, maxPrice);
+    minPrice = min;
+    maxPrice = max;
+  }
+
+  const normalizedTerms = remainder
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  const remainingTextTerms = [];
+  normalizedTerms.forEach((term) => {
+    if (term.length >= 3) {
+      const matchedTypeEntry = Object.entries(businessTypeSearchAliases).find(([key, aliases]) => {
+        const candidates = Array.from(
+          new Set([key, humanizeCategoryType(key), ...(Array.isArray(aliases) ? aliases : [])].filter(Boolean))
+        )
+          .map((candidate) => normalizeSearchValue(candidate))
+          .filter(Boolean);
+        return candidates.some((candidate) => candidate.startsWith(term));
+      });
+      if (matchedTypeEntry) {
+        businessTypes.add(matchedTypeEntry[0]);
+        return;
+      }
+    }
+    remainingTextTerms.push(term);
+  });
+  const textTerms = Array.from(new Set(remainingTextTerms));
+  const hasPriceFilter = minPrice !== null || maxPrice !== null;
+  const backendSearch = textTerms.join(' ');
+
+  return {
+    raw: normalized,
+    textTerms,
+    businessTypes: Array.from(businessTypes),
+    amenities: Array.from(amenities),
+    minPrice,
+    maxPrice,
+    exactPrice,
+    hasPriceFilter,
+    backendSearch,
+    hasFilters: Boolean(textTerms.length || businessTypes.size || amenities.size || hasPriceFilter),
+  };
+};
+const resolvePublicationSearchBusinessTypes = (publication) => {
+  const primary = resolvePublicationBusinessTypeTag(publication);
+  return primary ? [primary] : [];
+};
+const buildPublicationSearchText = (publication) => {
+  if (!publication) return '';
+  const categoryValues = (Array.isArray(publication.categories) ? publication.categories : []).flatMap((cat) => [
+    cat?.name,
+    cat?.type,
+    cat?.slug,
+    cat?.id,
+  ]);
+  const businessTypes = resolvePublicationSearchBusinessTypes(publication);
+  const businessTypeLabels = businessTypes.map((type) => humanizeCategoryType(type));
+  const amenities = normalizeAmenityList(publication?.business?.amenities);
+  const amenityLabels = amenities.map((amenity) => humanizeCategoryType(amenity));
+  const numericPrice = Number(publication.precio);
+  const priceValues = [];
+  if (Number.isFinite(numericPrice)) {
+    const roundedPrice = Math.round(numericPrice);
+    const formattedPrice = formatNumber(roundedPrice);
+    priceValues.push(
+      String(numericPrice),
+      String(roundedPrice),
+      formattedPrice,
+      formattedPrice.replace(/\./g, ''),
+      `$${formattedPrice}`,
+      `precio ${roundedPrice}`
+    );
+  }
+  return normalizeSearchValue(
+    [
+      publication.titulo,
+      publication.contenido,
+      publication.authorName,
+      publication.business?.name,
+      publication.business?.description,
+      publication.business?.address,
+      publication.business?.city,
+      publication.business?.region,
+      businessTypes[0] || '',
+      businessTypeLabels[0] || '',
+      ...categoryValues,
+      ...amenities,
+      ...amenityLabels,
+      ...priceValues,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  )
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+const publicationMatchesSearchQuery = (publication, parsedQuery) => {
+  if (!parsedQuery?.hasFilters) return true;
+
+  if (parsedQuery.businessTypes?.length) {
+    const publicationTypes = resolvePublicationSearchBusinessTypes(publication);
+    const matchesType = parsedQuery.businessTypes.some((target) => publicationTypes.includes(target));
+    if (!matchesType) return false;
+  }
+
+  if (parsedQuery.amenities?.length) {
+    const publicationAmenities = normalizeAmenityList(publication?.business?.amenities);
+    const hasAmenities = parsedQuery.amenities.every((amenity) => publicationAmenities.includes(amenity));
+    if (!hasAmenities) return false;
+  }
+
+  if (parsedQuery.hasPriceFilter) {
+    const price = Number(publication?.precio);
+    if (!Number.isFinite(price)) return false;
+    if (parsedQuery.minPrice !== null && price < parsedQuery.minPrice) return false;
+    if (parsedQuery.maxPrice !== null && price > parsedQuery.maxPrice) return false;
+  }
+
+  if (parsedQuery.textTerms?.length) {
+    const searchableText = buildPublicationSearchText(publication);
+    const matchesTerms = parsedQuery.textTerms.every((term) => searchableText.includes(term));
+    if (!matchesTerms) return false;
+  }
+
+  return true;
+};
 
 const getCitiesForRegion = (region = '') => (region ? chileCitiesByRegion[region] || [] : []);
 
@@ -1683,7 +1955,7 @@ function App() {
   const [reservationStep, setReservationStep] = useState('mode');
   const [reservationMode, setReservationMode] = useState('');
   const [reservationGuest, setReservationGuest] = useState({ nombre: '', apellido: '', rut: '' });
-  const [reservationType, setReservationType] = useState(defaultBusinessTypes[0]);
+  const [reservationType, setReservationType] = useState('');
   const [reservationSearch, setReservationSearch] = useState('');
   const [reservationBusinessId, setReservationBusinessId] = useState('');
   const [reservationTableSelection, setReservationTableSelection] = useState([]);
@@ -1694,6 +1966,7 @@ function App() {
   const [reservationPendingAuth, setReservationPendingAuth] = useState(false);
   const [reservationTablesByBusiness, setReservationTablesByBusiness] = useState({});
   const [reservationTablesLoading, setReservationTablesLoading] = useState(false);
+  const [reservationAvailabilityLoadingByBusiness, setReservationAvailabilityLoadingByBusiness] = useState({});
   const [reservations, setReservations] = useState([]);
   const [activeAdPlan, setActiveAdPlan] = useState(null);
   const [adPlanSuccessOpen, setAdPlanSuccessOpen] = useState(false);
@@ -1969,7 +2242,7 @@ function App() {
     setReservationStep('mode');
     setReservationMode('');
     setReservationGuest({ nombre: '', apellido: '', rut: '' });
-    setReservationType(defaultBusinessTypes[0]);
+    setReservationType('');
     setReservationSearch('');
     setReservationBusinessId('');
     setReservationTableSelection([]);
@@ -1978,6 +2251,7 @@ function App() {
     setReservationNotes('');
     setReservationSuccess(null);
     setReservationPendingAuth(false);
+    setReservationAvailabilityLoadingByBusiness({});
   };
 
   const openReservationDialog = () => {
@@ -1995,6 +2269,29 @@ function App() {
     if (!businessId) return;
     const key = String(businessId);
     setReservationTablesByBusiness((prev) => ({ ...prev, [key]: Array.isArray(tables) ? tables : [] }));
+  };
+
+  const loadReservationAvailabilityForBusiness = async (businessId, { force = false } = {}) => {
+    if (!businessId) return [];
+    const key = String(businessId);
+    const cached = reservationTablesByBusiness?.[key];
+    if (!force && Array.isArray(cached)) return cached;
+    setReservationAvailabilityLoadingByBusiness((prev) =>
+      prev[key] ? prev : { ...prev, [key]: true }
+    );
+    try {
+      const data = await fetchJson(`/businesses/${key}/tables`, {
+        headers: authHeaders,
+      });
+      const tables = Array.isArray(data) ? data : [];
+      setReservationTablesForBusiness(key, tables);
+      return tables;
+    } catch {
+      setReservationTablesForBusiness(key, []);
+      return [];
+    } finally {
+      setReservationAvailabilityLoadingByBusiness((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
   const loadReservationTables = async (businessId, { force = false, date, time } = {}) => {
@@ -2109,7 +2406,7 @@ function App() {
       return null;
     }
 
-    const business = businesses.find((b) => String(b.id) === String(reservationBusinessId));
+    const business = reservationBusinessCatalog.find((b) => String(b.id) === String(reservationBusinessId));
     if (!business) {
       notify('warning', 'No se pudo encontrar el local seleccionado.');
       return null;
@@ -2686,7 +2983,10 @@ function App() {
     const params = new URLSearchParams();
     const categoryIdsForFilter = resolveCategoryIdsForFilter(filters.categoryId);
     const numericCategoryIds = categoryIdsForFilter.filter((id) => /^\d+$/.test(String(id)));
-    if (filters.search) params.set('search', filters.search);
+    const parsedSearch = parsePublicationSearchQuery(filters.search);
+    if (parsedSearch.backendSearch) {
+      params.set('search', parsedSearch.backendSearch);
+    }
     if (numericCategoryIds.length === 1) {
       params.set('categoryId', numericCategoryIds[0]);
     }
@@ -3548,20 +3848,68 @@ function App() {
       return acc;
     }, {});
   }, [adRequests]);
+  const reservationBusinessCatalog = useMemo(() => {
+    const map = new Map();
+    const addBusiness = (business) => {
+      if (!business?.id) return;
+      const key = String(business.id);
+      if (map.has(key)) return;
+      map.set(key, business);
+    };
+    (Array.isArray(businesses) ? businesses : []).forEach(addBusiness);
+    if (shouldShowPublicFeed) {
+      (Array.isArray(feed) ? feed : []).forEach((publication) => addBusiness(publication?.business));
+    }
+    return Array.from(map.values()).sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
+  }, [businesses, feed, shouldShowPublicFeed]);
   const reservationBusiness = useMemo(() => {
     if (!reservationBusinessId) return null;
-    return businesses.find((b) => String(b.id) === String(reservationBusinessId)) || null;
-  }, [businesses, reservationBusinessId]);
+    return (
+      reservationBusinessCatalog.find((business) => String(business.id) === String(reservationBusinessId)) || null
+    );
+  }, [reservationBusinessCatalog, reservationBusinessId]);
   const reservationBusinessOptions = useMemo(() => {
     const searchValue = normalizeSearchValue(reservationSearch);
     const targetType = normalizeBusinessType(reservationType);
-    return (Array.isArray(businesses) ? businesses : [])
+    return reservationBusinessCatalog
       .filter((business) => (!targetType ? true : getBusinessTypeTags(business).includes(targetType)))
       .filter((business) => {
         if (!searchValue) return true;
         return normalizeSearchValue(business.name || '').includes(searchValue);
       });
-  }, [businesses, reservationSearch, reservationType]);
+  }, [reservationBusinessCatalog, reservationSearch, reservationType]);
+  useEffect(() => {
+    if (reservationStep !== 'business') return;
+    const pendingIds = reservationBusinessOptions
+      .map((business) => String(business.id))
+      .filter(Boolean)
+      .filter((id) => {
+        const alreadyLoaded = Array.isArray(reservationTablesByBusiness?.[id]);
+        const isLoading = Boolean(reservationAvailabilityLoadingByBusiness?.[id]);
+        return !alreadyLoaded && !isLoading;
+      });
+    if (!pendingIds.length) return;
+
+    let cancelled = false;
+    const preloadAvailability = async () => {
+      await Promise.allSettled(
+        pendingIds.map(async (businessId) => {
+          if (cancelled) return;
+          await loadReservationAvailabilityForBusiness(businessId);
+        })
+      );
+    };
+    preloadAvailability();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    reservationStep,
+    reservationBusinessOptions,
+    reservationTablesByBusiness,
+    reservationAvailabilityLoadingByBusiness,
+  ]);
   const reservationTablesForSelectedBusiness = useMemo(
     () => getReservationTablesForBusiness(reservationBusinessId),
     [reservationBusinessId, reservationTablesByBusiness]
@@ -4528,33 +4876,19 @@ function App() {
     return decoratePublicationList(enriched);
   }, [businessProfilePublications, businessProfile, categories, businesses]);
 
-  const normalizedSearch = useMemo(() => normalizeSearchValue(filters.search), [filters.search]);
+  const parsedSearchQuery = useMemo(
+    () => parsePublicationSearchQuery(filters.search),
+    [filters.search]
+  );
 
   const businessProfileFiltered = useMemo(() => {
-    if (!normalizedSearch) return businessProfileDecorated;
-    return businessProfileDecorated.filter((pub) => {
-      const categoryValues = (pub.categories || []).flatMap((cat) => [
-        cat?.name,
-        cat?.type,
-        cat?.slug,
-        cat?.id,
-      ]);
-      const searchable = [
-        pub.titulo,
-        pub.contenido,
-        pub.business?.name,
-        pub.authorName,
-        ...categoryValues,
-      ]
-        .filter(Boolean)
-        .map((value) => normalizeSearchValue(value));
-      return searchable.some((value) => value.includes(normalizedSearch));
-    });
-  }, [businessProfileDecorated, normalizedSearch]);
+    if (!parsedSearchQuery.hasFilters) return businessProfileDecorated;
+    return businessProfileDecorated.filter((pub) => publicationMatchesSearchQuery(pub, parsedSearchQuery));
+  }, [businessProfileDecorated, parsedSearchQuery]);
 
   useEffect(() => {
     setBusinessProfileVisibleCount(BUSINESS_PROFILE_PAGE_INITIAL);
-  }, [businessProfile?.id, normalizedSearch]);
+  }, [businessProfile?.id, filters.search]);
 
   const visibleBusinessProfilePublications = useMemo(
     () =>
@@ -4974,6 +5308,9 @@ function App() {
 
   const filteredPublicFeed = useMemo(() => {
     let list = randomizedPublicFeed;
+    if (parsedSearchQuery.hasFilters) {
+      list = list.filter((pub) => publicationMatchesSearchQuery(pub, parsedSearchQuery));
+    }
     const categoryIdsToMatch = resolveCategoryIdsForFilter(filters.categoryId);
     if (categoryIdsToMatch.length) {
       const targets = categoryIdsToMatch.map(String);
@@ -5030,7 +5367,7 @@ function App() {
       });
     }
     return topHeartsMode ? sorted.slice(0, 100) : sorted;
-  }, [randomizedPublicFeed, filters, derivedCategories, categories, topHeartsMode]);
+  }, [randomizedPublicFeed, parsedSearchQuery, filters, derivedCategories, categories, topHeartsMode]);
 
   const feedFilterKey = useMemo(
     () =>
@@ -7633,7 +7970,7 @@ function App() {
                     <p className="text-sm uppercase tracking-wide text-muted-foreground">Con registro</p>
                     <h4 className="text-lg font-semibold">Reservar como cliente</h4>
                     <p className="text-sm text-muted-foreground">
-                      Accede a tus reservas y notificaciones de confirmación.
+                      Guarda publicaciones y revisa tus reservas realizadas en la misma página para repetir tus favoritas sin esfuerzo.
                     </p>
                   </div>
                   <Button type="button" variant="danger" onClick={handleReservationRegisteredStart} className="w-full">
@@ -7711,17 +8048,19 @@ function App() {
               <div className="mt-5 space-y-4">
                 <div>
                   <p className="text-sm font-semibold">¿En qué tipo de local desea reservar?</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {defaultBusinessTypes.map((type) => (
-                      <Button
-                        key={type}
-                        type="button"
-                        variant={reservationType === type ? 'danger' : 'outline'}
-                        onClick={() => setReservationType(type)}
-                      >
-                        {humanizeCategoryType(type)}
-                      </Button>
-                    ))}
+                  <div className="mt-2">
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-soft"
+                      value={reservationType}
+                      onChange={(e) => setReservationType(e.target.value)}
+                    >
+                      <option value="">Todos</option>
+                      {defaultBusinessTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {humanizeCategoryType(type)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -7734,27 +8073,73 @@ function App() {
                 </div>
                 <div className="space-y-2">
                   {reservationBusinessOptions.length ? (
-                    reservationBusinessOptions.map((business) => (
-                      <button
-                        key={business.id}
-                        type="button"
-                        className="flex w-full items-center gap-3 rounded-xl border border-border bg-card/80 px-4 py-3 text-left transition hover:border-primary/40 hover:bg-muted/40"
-                        onClick={() => handleReservationBusinessSelect(business.id)}
-                      >
-                        <Avatar src={business.imageUrl} alt={business.name} className="h-10 w-10">
-                          <AvatarFallback className="bg-muted text-muted-foreground">
-                            {(business.name || 'N')[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <p className="font-semibold">{business.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatBusinessTypeTags(business)}</p>
-                        </div>
-                        <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
-                          {business.city || business.region || 'Chile'}
-                        </span>
-                      </button>
-                    ))
+                    reservationBusinessOptions.map((business) => {
+                      const businessKey = String(business.id);
+                      const businessTables = reservationTablesByBusiness?.[businessKey];
+                      const hasAvailability = Array.isArray(businessTables);
+                      const isAvailabilityLoading =
+                        !hasAvailability && Boolean(reservationAvailabilityLoadingByBusiness?.[businessKey]);
+                      const isAvailableForReservation = hasAvailability ? businessTables.length > 0 : null;
+                      const isDisabled = isAvailableForReservation === false || isAvailabilityLoading;
+                      const availabilityLabel =
+                        isAvailableForReservation === true
+                          ? 'Disponible'
+                          : isAvailableForReservation === false
+                          ? 'No disponible'
+                          : 'Verificando...';
+                      const availabilityBadgeClass =
+                        isAvailableForReservation === true
+                          ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                          : isAvailableForReservation === false
+                          ? 'border-rose-200 bg-rose-100 text-rose-700'
+                          : 'border-slate-200 bg-slate-100 text-slate-600';
+
+                      return (
+                        <button
+                          key={business.id}
+                          type="button"
+                          disabled={isDisabled}
+                          className={cn(
+                            'flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition',
+                            isDisabled
+                              ? 'cursor-not-allowed border-border/70 bg-muted/35 opacity-85'
+                              : 'border-border bg-card/80 hover:border-primary/40 hover:bg-muted/40'
+                          )}
+                          onClick={async () => {
+                            if (isDisabled) return;
+                            let tables = hasAvailability ? businessTables : null;
+                            if (!Array.isArray(tables)) {
+                              tables = await loadReservationAvailabilityForBusiness(business.id, { force: true });
+                            }
+                            if (!Array.isArray(tables) || tables.length === 0) return;
+                            handleReservationBusinessSelect(business.id);
+                          }}
+                        >
+                          <Avatar src={business.imageUrl} alt={business.name} className="h-10 w-10">
+                            <AvatarFallback className="bg-muted text-muted-foreground">
+                              {(business.name || 'N')[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1">
+                            <p className="font-semibold">{business.name}</p>
+                            <p className="text-xs text-muted-foreground">{formatBusinessTypeTags(business)}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span
+                              className={cn(
+                                'rounded-full border px-3 py-1 text-xs font-semibold',
+                                availabilityBadgeClass
+                              )}
+                            >
+                              {availabilityLabel}
+                            </span>
+                            <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
+                              {business.city || business.region || 'Chile'}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })
                   ) : (
                     <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
                       No hay locales disponibles con los filtros seleccionados.

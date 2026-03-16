@@ -47,7 +47,7 @@ const Header = ({
           </button>
           <nav className="hidden items-center gap-2 md:flex">
             <Button variant="ghost" className="text-sm font-medium" onClick={onExplore}>
-              Explorar
+              Filtrar
             </Button>
             <Button variant="ghost" className="text-sm font-medium" onClick={onReservations}>
               Reservas
@@ -169,7 +169,7 @@ const Header = ({
                   </Button>
                   <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onExplore)}>
                     <Heart className="h-5 w-5" />
-                    Explorar
+                    Filtrar
                   </Button>
                   <Button variant="ghost" className="justify-start" onClick={() => handleAndClose(onReservations)}>
                     <CalendarDays className="h-5 w-5" />
